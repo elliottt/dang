@@ -28,6 +28,9 @@ data Decl = Decl
 instance FreeVars Decl where
   freeVars d = Set.delete (declName d) (freeVars (declBody d))
 
+declNames :: [Decl] -> [Var]
+declNames  = map declName
+
 deriving instance Show a => Show (SCC a)
 
 sccDecls :: [Decl] -> [SCC Decl]
@@ -54,6 +57,13 @@ instance FreeVars Term where
   freeVars (App f x)  = Set.union (freeVars f) (freeVars x)
   freeVars (Lit l)    = freeVars l
   freeVars (Var x)    = Set.singleton x
+
+-- | Collapse an abstraction into its arguments, and the body.
+splitAbs :: Term -> ([Var],Term)
+splitAbs t = loop t id
+  where
+  loop (Abs as b) f = loop b ((++ as) . f)
+  loop b          f = (f [], b)
 
 
 data Literal

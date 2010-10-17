@@ -57,21 +57,32 @@ subst v = do
     Nothing -> return v
     Just x  -> return x
 
+-- | Introduce a fresh name into a renaming context.
+intro :: (Var -> Rename a) -> Rename a
+intro k = do
+  i  <- get
+  ro <- ask
+  let (ro',i',[v]) = findFresh ro i [""]
+  set i'
+  local ro' (k v)
+
+-- | Give fresh names to all that are passed, in the context of the given
+-- action.
 fresh :: [Var] -> Rename a -> Rename a
 fresh vs m = do
   i  <- get
   ro <- ask
-  let (ro',i') = findFresh ro i vs
+  let (ro',i',_) = findFresh ro i vs
   set i'
   local ro' m
 
-findFresh :: RO -> Int -> [Var] -> (RO,Int)
-findFresh  = loop
+findFresh :: RO -> Int -> [Var] -> (RO,Int,[Var])
+findFresh  = loop []
   where
-  loop ro i []         = (ro, i)
-  loop ro i (v:vs)
-    | ro `captures` v' = loop ro                 i' (v:vs)
-    | otherwise        = loop (addSubst v v' ro) i'    vs
+  loop rs ro i []      = (ro, i,reverse rs)
+  loop rs ro i (v:vs)
+    | ro `captures` v' = loop     rs                 ro  i' (v:vs)
+    | otherwise        = loop (v':rs) (addSubst v v' ro) i'    vs
     where
     i' = i + 1
     v' = "_rename_" ++ v ++ show i
@@ -80,6 +91,8 @@ findFresh  = loop
 
 -- Term Renaming ---------------------------------------------------------------
 
+-- | Rename all of the declarations at the top-level.  None of the declarations
+-- at the top-level get new names, only their bodies.
 renameTopDecls :: [Decl] -> [Decl]
 renameTopDecls ds = runRename bound (renameDecls ds)
   where
@@ -107,12 +120,16 @@ renameDecl d = do
 renameTerm :: Term -> Rename Term
 renameTerm t =
   case t of
-    Abs vs b -> fresh vs (Abs <$> mapM subst vs <*> renameTerm b)
     App f x  -> App <$> renameTerm f <*> renameTerm x
     Var v    -> Var <$> subst v
     Lit l    -> Lit <$> renameLiteral l
     Let ds e ->
       fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
+    Abs vs b -> intro $ \abs -> fresh vs $ do
+      vs' <- mapM subst vs
+      b'  <- renameTerm b
+      return (Let [Decl abs vs' False b'] (Var abs))
+
 
 -- | Rename literals.  For the time being, this doesn't do anything.
 renameLiteral :: Literal -> Rename Literal
