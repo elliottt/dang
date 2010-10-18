@@ -29,8 +29,7 @@ data Decl = Decl
   } deriving Show
 
 instance FreeVars Decl where
-  freeVars d = freeVars (declBody d) Set.\\ Set.fromList ns
-    where ns = declName d : declVars d
+  freeVars d = freeVars (declBody d) Set.\\ Set.fromList (declBinds d)
 
 instance Pretty Decl where
   pp _ d = text (declName d) <+> hsep (map text (declVars d)) <+>
@@ -45,6 +44,9 @@ notExported d = d { declExported = False }
 
 hasArguments :: Decl -> Bool
 hasArguments  = not . null . declVars
+
+declBinds :: Decl -> [Var]
+declBinds d = declName d : declVars d
 
 
 deriving instance Show a => Show (SCC a)
@@ -68,8 +70,8 @@ data Term
 
 instance FreeVars Term where
   freeVars (Abs vs t) = freeVars t Set.\\ Set.fromList vs
-  freeVars (Let ds t) = Set.union (freeVars ds)
-                      $ freeVars t Set.\\ Set.fromList (map declName ds)
+  freeVars (Let ds t) = (freeVars ds `Set.union` freeVars t) Set.\\
+                        Set.fromList (concatMap declBinds ds)
   freeVars (App f x)  = Set.union (freeVars f) (freeVars x)
   freeVars (Lit l)    = freeVars l
   freeVars (Var x)    = Set.singleton x
@@ -82,7 +84,7 @@ instance Pretty Term where
       Let ds e -> optParens (p > 0)
                 $ text "let" <+> braces (semis (map (pp 0) ds)) <+>
                   text "in"  <+> pp 0 e
-      App f x  -> optParens (p > 0) (pp 1 f <+> pp 0 x)
+      App f x  -> optParens (p > 0) (pp 0 f <+> pp 1 x)
       Var v    -> text v
       Lit l    -> pp 0 l
 
@@ -97,6 +99,9 @@ splitAbs t = loop t id
 lambda :: [Var] -> Term -> Term
 lambda [] t = t
 lambda as t = Abs as t
+
+apply :: Term -> [Term] -> Term
+apply  = foldl App
 
 data Literal
   = LInt Int

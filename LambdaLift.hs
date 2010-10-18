@@ -64,13 +64,13 @@ llDecls  = fmap concat . mapM step . sccDecls
   step (AcyclicSCC d) = do
     let n   = declName d
     let fvs = Set.toList (Set.delete n (freeVars d))
-    extend [ (n, lambda fvs (Var n)) ]
+    extend [ (n, apply (Var n) (map Var fvs)) ]
     d' <- llDecl d
     return [extendVars fvs d']
   step (CyclicSCC ds) = do
     let ns  = declNames ds
     let fvs = Set.toList (freeVars ds Set.\\ Set.fromList ns)
-    extend [ (n, lambda fvs (Var n)) | n <- ns ]
+    extend [ (n, apply (Var n) (map Var fvs)) | n <- ns ]
     mapM (fmap (extendVars fvs) . llDecl) ds
 
 llDecl :: Decl -> LL Decl
