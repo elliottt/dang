@@ -85,7 +85,7 @@ findFresh  = loop []
     | otherwise        = loop (v':rs) (addSubst v v' ro) i'    vs
     where
     i' = i + 1
-    v' = "_rename_" ++ v ++ show i
+    v' = "_" ++ v ++ show i
 
 
 

@@ -28,7 +28,9 @@ optBraces True = braces
 optBraces _    = id
 
 semis :: [Doc] -> Doc
-semis  = hsep . intersperse (space <> semi <> space)
+semis  = foldr step empty
+  where
+  step d r = d <> semi $+$ r
 
 class Pretty a where
   pp     :: Int -> a -> Doc

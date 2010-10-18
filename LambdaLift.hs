@@ -12,6 +12,7 @@ import Rename
 import Control.Applicative (Applicative(..),(<$>))
 import Control.Arrow (first)
 import Data.Graph (SCC(..))
+import Data.List (partition)
 import MonadLib
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -34,7 +35,10 @@ instance StateM LL Subst where
   set = LL . set
 
 emit :: Decl -> LL ()
-emit d = put [d]
+emit d = emits [d]
+
+emits :: [Decl] -> LL ()
+emits  = put . map notExported
 
 extend :: [(Var,Term)] -> LL ()
 extend ns = do
@@ -81,4 +85,11 @@ llTerm t =
     App f x  -> App <$> llTerm f <*> llTerm x
     Var v    -> subst v
     Lit l    -> return (Lit l)
-    Let ds e -> Let <$> llDecls ds <*> llTerm e
+    Let ds e -> do
+      ds' <- llDecls ds
+      let (as,bs) = partition hasArguments ds'
+      emits as
+      e' <- llTerm e
+      if null bs
+         then return e'
+         else return (Let bs e')

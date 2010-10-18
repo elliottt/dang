@@ -40,6 +40,13 @@ instance Pretty Decl where
 declNames :: [Decl] -> [Var]
 declNames  = map declName
 
+notExported :: Decl -> Decl
+notExported d = d { declExported = False }
+
+hasArguments :: Decl -> Bool
+hasArguments  = not . null . declVars
+
+
 deriving instance Show a => Show (SCC a)
 
 sccDecls :: [Decl] -> [SCC Decl]
