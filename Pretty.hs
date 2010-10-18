@@ -19,10 +19,25 @@ commas ds = hcat (intersperse (comma <> space) ds)
 ppr :: Pretty a => a -> Doc
 ppr  = pp 0
 
+optParens :: Bool -> Doc -> Doc
+optParens True = parens
+optParens _    = id
+
+optBraces :: Bool -> Doc -> Doc
+optBraces True = braces
+optBraces _    = id
+
+semis :: [Doc] -> Doc
+semis  = hsep . intersperse (space <> semi <> space)
+
 class Pretty a where
   pp     :: Int -> a -> Doc
   ppList :: Int -> [a] -> Doc
   ppList p as = hsep (map (pp p) as)
+
+instance Pretty Char where
+  pp _ = char
+  ppList _ = text
 
 instance Pretty a => Pretty (Maybe a) where
   pp p (Just a) = pp p a
