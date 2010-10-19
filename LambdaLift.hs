@@ -17,11 +17,8 @@ module LambdaLift (
 
 import AST
 import Error
-import Pretty
-import Rename
 
 import Control.Applicative (Applicative(..),(<$>))
-import Control.Arrow (first)
 import Data.Graph (SCC(..))
 import Data.List (partition)
 import Data.Typeable (Typeable)
@@ -32,9 +29,8 @@ import qualified Data.Set as Set
 
 type Subst = Map.Map Var Term
 
-newtype LL m a = LL
-  { unLL :: StateT Subst (WriterT [Decl] m) a
-  } deriving (Functor,Applicative,Monad)
+newtype LL m a = LL (StateT Subst (WriterT [Decl] m) a)
+    deriving (Functor,Applicative,Monad)
 
 runLL :: ExceptionM m i => LL m a -> m (a,[Decl])
 runLL (LL m) = do
@@ -56,9 +52,8 @@ instance Error LLError
 raiseLL :: ExceptionM m SomeError => String -> LL m a
 raiseLL  = LL . raiseError . LLError
 
-emit :: Monad m => Decl -> LL m ()
-emit d = emits [d]
-
+-- | Float a group of declarations out to the top-level, marking them as not
+-- exported.
 emits :: Monad m => [Decl] -> LL m ()
 emits  = put . map notExported
 
@@ -103,8 +98,7 @@ llDecl d = do
   return d { declBody = b' }
 
 -- | Lambda lift terms.  Abstractions will cause an error here, as the invariant
--- for lambda-lifting is that they have been named in a let before
--- lambda-lifting can happen.
+-- for lambda-lifting is that they have been named in a let.
 llTerm :: ExceptionM m SomeError => Term -> LL m Term
 llTerm t =
   case t of

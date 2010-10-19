@@ -11,10 +11,8 @@ module Rename (
 import AST
 
 import Control.Applicative (Applicative(..),(<$>))
-import Data.Graph (SCC(..))
 import MonadLib
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
 
 -- Renaming Monad --------------------------------------------------------------
@@ -119,10 +117,10 @@ renameTerm t =
     Lit l    -> Lit <$> renameLiteral l
     Let ds e ->
       fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
-    Abs vs b -> intro $ \abs -> fresh vs $ do
+    Abs vs b -> intro $ \name -> fresh vs $ do
       vs' <- mapM subst vs
       b'  <- renameTerm b
-      return (Let [Decl abs vs' False b'] (Var abs))
+      return (Let [Decl name vs' False b'] (Var name))
 
 
 -- | Rename literals.  For the time being, this doesn't do anything.

@@ -28,4 +28,4 @@ catchError m k = do
     Left se ->
       case fromSomeError se of
         Nothing -> raise se
-        Just e  -> k e
+        Just e' -> k e'
