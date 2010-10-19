@@ -3,9 +3,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Rename (
-    renameDecls
-  , Rename()
+    Rename()
   , runRename
+  , renameDecls
   ) where
 
 import AST
@@ -29,28 +29,29 @@ addSubst a b ro = ro { roSubst = Map.insert a b (roSubst ro) }
 captures :: RO -> Var -> Bool
 captures ro v = Map.member v (roSubst ro)
 
-newtype Rename a = Rename
-  { unRename :: StateT Int (ReaderT RO Lift) a
+newtype Rename m a = Rename
+  { unRename :: StateT Int (ReaderT RO m) a
   } deriving (Functor,Applicative,Monad)
 
-runRename :: [Var] -> Rename a -> a
-runRename bound = fst . runLift . runReaderT ro . runStateT 0 . unRename
-  where
-  ro = RO
-    { roSubst = Map.fromList [ (x,x) | x <- bound ]
-    }
+runRename :: Monad m => [Var] -> Rename m a -> m a
+runRename bound (Rename m) = do
+  let ro = RO
+        { roSubst = Map.fromList [ (x,x) | x <- bound ]
+        }
+  (a,_) <- runReaderT ro (runStateT 0 m)
+  return a
 
-instance StateM Rename Int where
+instance Monad m => StateM (Rename m) Int where
   get = Rename get
   set = Rename . set
 
-instance ReaderM Rename RO where
+instance Monad m => ReaderM (Rename m) RO where
   ask = Rename ask
 
-instance RunReaderM Rename RO where
+instance Monad m => RunReaderM (Rename m) RO where
   local ro = Rename . local ro . unRename
 
-subst :: Var -> Rename Var
+subst :: Monad m => Var -> Rename m Var
 subst v = do
   ro <- ask
   case Map.lookup v (roSubst ro) of
@@ -58,7 +59,7 @@ subst v = do
     Just x  -> return x
 
 -- | Introduce a fresh name into a renaming context.
-intro :: (Var -> Rename a) -> Rename a
+intro :: Monad m => (Var -> Rename m a) -> Rename m a
 intro k = do
   i  <- get
   ro <- ask
@@ -68,7 +69,7 @@ intro k = do
 
 -- | Give fresh names to all that are passed, in the context of the given
 -- action.
-fresh :: [Var] -> Rename a -> Rename a
+fresh :: Monad m => [Var] -> Rename m a -> Rename m a
 fresh vs m = do
   i  <- get
   ro <- ask
@@ -91,20 +92,13 @@ findFresh  = loop []
 
 -- Term Renaming ---------------------------------------------------------------
 
--- | Rename all of the declarations at the top-level.  None of the declarations
--- at the top-level get new names, only their bodies.
-renameTopDecls :: [Decl] -> [Decl]
-renameTopDecls ds = runRename bound (renameDecls ds)
-  where
-  bound = map declName ds
-
 -- | Rename declarations, assuming that names are already present in the
 -- environment.
-renameDecls :: [Decl] -> Rename [Decl]
+renameDecls :: Monad m => [Decl] -> Rename m [Decl]
 renameDecls  = mapM renameDecl
 
 -- | Rename a declaration, assuming a fresh name is already in the environment.
-renameDecl :: Decl -> Rename Decl
+renameDecl :: Monad m => Decl -> Rename m Decl
 renameDecl d = do
   n' <- subst (declName d)
   fresh (declVars d) $ do
@@ -117,7 +111,7 @@ renameDecl d = do
       }
 
 -- | Rename variable occurrences and bindings in terms.
-renameTerm :: Term -> Rename Term
+renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
   case t of
     App f x  -> App <$> renameTerm f <*> renameTerm x
@@ -132,5 +126,5 @@ renameTerm t =
 
 
 -- | Rename literals.  For the time being, this doesn't do anything.
-renameLiteral :: Literal -> Rename Literal
+renameLiteral :: Monad m => Literal -> Rename m Literal
 renameLiteral (LInt i) = return (LInt i)

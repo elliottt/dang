@@ -1,11 +1,22 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
-module LambdaLift where
+module LambdaLift (
+    -- * Lambda Lifting Monad
+    LL()
+  , runLL
+  , llDecls
+
+    -- * Errors
+  , LLError(..)
+  ) where
 
 import AST
+import Error
 import Pretty
 import Rename
 
@@ -13,6 +24,7 @@ import Control.Applicative (Applicative(..),(<$>))
 import Control.Arrow (first)
 import Data.Graph (SCC(..))
 import Data.List (partition)
+import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -20,68 +32,83 @@ import qualified Data.Set as Set
 
 type Subst = Map.Map Var Term
 
-newtype LL a = LL
-  { unLL :: StateT Subst (WriterT [Decl] Lift) a
+newtype LL m a = LL
+  { unLL :: StateT Subst (WriterT [Decl] m) a
   } deriving (Functor,Applicative,Monad)
 
-runLL :: LL a -> (a,[Decl])
-runLL  = first fst . runLift . runWriterT . runStateT Map.empty . unLL
+runLL :: ExceptionM m i => LL m a -> m (a,[Decl])
+runLL (LL m) = do
+  ((a,_),ds) <- runWriterT (runStateT Map.empty m)
+  return (a,ds)
 
-instance WriterM LL [Decl] where
+instance Monad m => WriterM (LL m) [Decl] where
   put = LL . put
 
-instance StateM LL Subst where
+instance Monad m => StateM (LL m) Subst where
   get = LL get
   set = LL . set
 
-emit :: Decl -> LL ()
+data LLError = LLError String
+    deriving Typeable
+
+instance Error LLError
+
+raiseLL :: ExceptionM m SomeError => String -> LL m a
+raiseLL  = LL . raiseError . LLError
+
+emit :: Monad m => Decl -> LL m ()
 emit d = emits [d]
 
-emits :: [Decl] -> LL ()
+emits :: Monad m => [Decl] -> LL m ()
 emits  = put . map notExported
 
-extend :: [(Var,Term)] -> LL ()
+extend :: Monad m => [(Var,Term)] -> LL m ()
 extend ns = do
   u <- get
   set $! Map.union (Map.fromList ns) u
 
-subst :: Var -> LL Term
+subst :: Monad m => Var -> LL m Term
 subst v = do
   u <- get
   case Map.lookup v u of
     Nothing -> return (Var v)
     Just t  -> return t
 
-lambdaLift :: [Decl] -> [Decl]
-lambdaLift ds = uncurry (++) (runLL (llDecls ds))
-
 extendVars :: [Var] -> Decl -> Decl
 extendVars vs d = d { declVars = vs ++ declVars d }
 
-llDecls :: [Decl] -> LL [Decl]
+-- | Lambda-lift a group of declarations, checking recursive declarations in a
+-- group.
+llDecls :: ExceptionM m SomeError => [Decl] -> LL m [Decl]
 llDecls  = fmap concat . mapM step . sccDecls
   where
-  step (AcyclicSCC d) = do
-    let n   = declName d
-    let fvs = Set.toList (Set.delete n (freeVars d))
-    extend [ (n, apply (Var n) (map Var fvs)) ]
-    d' <- llDecl d
-    return [extendVars fvs d']
-  step (CyclicSCC ds) = do
-    let ns  = declNames ds
-    let fvs = Set.toList (freeVars ds Set.\\ Set.fromList ns)
-    extend [ (n, apply (Var n) (map Var fvs)) | n <- ns ]
-    mapM (fmap (extendVars fvs) . llDecl) ds
+  step (AcyclicSCC d) = createClosure [d]
+  step (CyclicSCC ds) = createClosure ds
 
-llDecl :: Decl -> LL Decl
+-- | Rewrite references to declared names with applications that fill in its
+-- free variables.  Augment the variables list for each declaration to include
+-- the free variables. Descend, and lambda-lift each declaration individually.
+createClosure :: ExceptionM m SomeError => [Decl] -> LL m [Decl]
+createClosure ds = do
+  let ns  = declNames ds
+  let fvs = Set.toList (freeVars ds Set.\\ Set.fromList ns)
+  extend [ (n, apply (Var n) (map Var fvs)) | n <- ns ]
+  mapM (fmap (extendVars fvs) . llDecl) ds
+
+-- | Lambda lift the body of a declaration.  Assume that all modifications to
+-- the free variables have been performed already.
+llDecl :: ExceptionM m SomeError => Decl -> LL m Decl
 llDecl d = do
   b' <- llTerm (declBody d)
   return d { declBody = b' }
 
-llTerm :: Term -> LL Term
+-- | Lambda lift terms.  Abstractions will cause an error here, as the invariant
+-- for lambda-lifting is that they have been named in a let before
+-- lambda-lifting can happen.
+llTerm :: ExceptionM m SomeError => Term -> LL m Term
 llTerm t =
   case t of
-    Abs{}    -> error "Abs should have been removed during renaming"
+    Abs{}    -> raiseLL "Abs should have been removed during renaming"
     App f x  -> App <$> llTerm f <*> llTerm x
     Var v    -> subst v
     Lit l    -> return (Lit l)
