@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module LambdaLift (
     -- * Lambda Lifting Monad
@@ -29,13 +30,17 @@ import qualified Data.Set as Set
 
 type Subst = Map.Map Var Term
 
-newtype LL m a = LL (StateT Subst (WriterT [Decl] m) a)
-    deriving (Functor,Applicative,Monad)
+newtype LL m a = LL
+  { unLL :: StateT Subst (WriterT [Decl] m) a
+  } deriving (Functor,Applicative,Monad)
 
 runLL :: ExceptionM m i => LL m a -> m (a,[Decl])
 runLL (LL m) = do
   ((a,_),ds) <- runWriterT (runStateT Map.empty m)
   return (a,ds)
+
+instance BaseM m n => BaseM (LL m) n where
+  inBase = LL . inBase
 
 instance Monad m => WriterM (LL m) [Decl] where
   put = LL . put
@@ -44,13 +49,19 @@ instance Monad m => StateM (LL m) Subst where
   get = LL get
   set = LL . set
 
+instance ExceptionM m SomeError => ExceptionM (LL m) SomeError where
+  raise = LL . raise
+
+instance RunExceptionM m SomeError => RunExceptionM (LL m) SomeError where
+  try = LL . try . unLL
+
 data LLError = LLError String
     deriving Typeable
 
 instance Error LLError
 
 raiseLL :: ExceptionM m SomeError => String -> LL m a
-raiseLL  = LL . raiseError . LLError
+raiseLL  = LL . raiseE . LLError
 
 -- | Float a group of declarations out to the top-level, marking them as not
 -- exported.
