@@ -109,6 +109,13 @@ ret a = do
   emit (text "ret" <+> ppType a <+> ppr a)
   return Result
 
+observe :: HasType a => LLVM (Result a) -> LLVM (Var a)
+observe m = do
+  (_,body) <- LLVM (collect (unLLVM m))
+  res      <- freshVar
+  emit (ppr res <+> char '=' <+> body)
+  return res
+
 
 -- Argument Lists --------------------------------------------------------------
 
@@ -205,18 +212,24 @@ define n body = do
 
 -- Function Calls --------------------------------------------------------------
 
-class CallArgs args res k | args -> k where
-  callArgs :: Fun args res -> [Doc] -> k
+class HasType res => CallArgs args res k | args -> res k where
+  call' :: Fun args res -> [Doc] -> k
 
-instance CallArgs () res Doc where
-  callArgs fun ds = commas ds
+instance HasType res => CallArgs () res (LLVM (Result res)) where
+  call' fun ds = do
+    let rty = funResult fun
+    emit (text "call" <+> ppType rty <+> ppr (funSym fun) <> parens (commas ds))
+    return Result
 
-instance (Pretty val, GetType val ty, CallArgs args res k)
+instance (Pretty val, GetType val ty, CallArgs args res k, HasType res)
   => CallArgs (ty :> args) res (val -> k) where
-  callArgs fun ds val =
-    callArgs (fun { funArgs = args }) (ppr (WithType val) :ds)
-    where
-    _ :> args = funArgs fun
+  call' fun ds val = do
+    let _ :> args = funArgs fun
+    call' (fun { funArgs = args }) (ppr (WithType val) :ds)
+
+
+call :: CallArgs args res k => Fun args res -> k
+call fun = call' fun []
 
 
 -- Tests -----------------------------------------------------------------------
@@ -224,5 +237,12 @@ instance (Pretty val, GetType val ty, CallArgs args res k)
 id32 :: Var Int32 -> LLVM (Result (Var Int32))
 id32 x = ret x
 
-c32 :: LLVM (Result Int32)
-c32  = ret 10
+c32 :: Var Int32 -> Var Int32 -> LLVM (Result Int32)
+c32 x y = ret 10
+
+test = do
+  f <- define "f" id32
+  g <- define "g" c32
+  define "main" $ do
+    res <- observe (call f (0 :: Int32))
+    ret res

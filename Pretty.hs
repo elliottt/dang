@@ -3,7 +3,7 @@ module Pretty (
   , module Text.PrettyPrint
   ) where
 
-import Data.Int (Int32)
+import Data.Int (Int8,Int32,Int64)
 import Data.List (intersperse)
 import Text.PrettyPrint
 
@@ -15,6 +15,12 @@ dot  = char '.'
 
 commas :: [Doc] -> Doc
 commas ds = hcat (intersperse (comma <> space) ds)
+
+commaSep :: Doc -> Doc -> Doc
+commaSep a b
+  | isEmpty b = a
+  | isEmpty a = b
+  | otherwise = a <> comma <+> b
 
 ppr :: Pretty a => a -> Doc
 ppr  = pp 0
@@ -48,5 +54,11 @@ instance Pretty a => Pretty (Maybe a) where
 instance Pretty a => Pretty [a] where
   pp p as = ppList p as
 
+instance Pretty Int8 where
+  pp _ i = integer (fromIntegral i)
+
 instance Pretty Int32 where
+  pp _ i = integer (fromIntegral i)
+
+instance Pretty Int64 where
   pp _ i = integer (fromIntegral i)
