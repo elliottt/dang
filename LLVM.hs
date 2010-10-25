@@ -100,6 +100,17 @@ instance GetType Int64 Int64
 instance GetType a a => GetType (Var a) a
 
 
+-- Pointers --------------------------------------------------------------------
+
+data PtrTo a = PtrTo
+
+ptrType :: PtrTo a -> a
+ptrType  = error "ptrToType"
+
+instance HasType a => HasType (PtrTo a) where
+  ppType a = ppType (ptrType a) <> char '*'
+
+
 -- Return Values ---------------------------------------------------------------
 
 data Result a = Result
@@ -121,17 +132,6 @@ observe m = do
 
 infixr 9 :>
 data a :> b = a :> b
-
--- | Walk down a use of :>, producing an argument list suitable for use in a
--- forward declaration, or function definition.
-class FmtArgs a where
-  fmtArgs :: a -> Doc
-
-instance FmtArgs (Result a) where
-  fmtArgs _ = empty
-
-instance (HasType a, FmtArgs b) => FmtArgs (Var a :> b) where
-  fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
 
 -- | Walk down a function description until the result type is found, then
 -- return its phantom parameter.  For example:
@@ -175,6 +175,18 @@ instance Pretty (Fun args res) where
 
 -- Function Definition ---------------------------------------------------------
 
+-- | Walk down a use of :>, producing an argument list suitable for use in a
+-- forward declaration, or function definition.
+class FmtArgs a where
+  fmtArgs :: a -> Doc
+
+instance FmtArgs (Result a) where
+  fmtArgs _ = empty
+
+instance (HasType a, FmtArgs b) => FmtArgs (Var a :> b) where
+  fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
+
+-- | Arguments to the define function.
 class FmtArgs ty => HasArgs fun args ty | fun -> args ty where
   typeOf :: fun -> LLVM (args,ty)
   apply  :: ty -> fun -> LLVM ()
@@ -210,6 +222,23 @@ define n body = do
     }
 
 
+-- Function Declaration --------------------------------------------------------
+
+class Declare a where
+  fmtDeclare :: a -> Doc
+
+instance Declare () where
+  fmtDeclare _ = empty
+
+instance (HasType h, Declare tl) => Declare (h :> tl) where
+  fmtDeclare (h :> tl) = commaSep (ppType h) (fmtDeclare tl)
+
+declare :: (Declare args, HasType res) => Fun args res -> LLVM ()
+declare fun =
+  emit $  text "declare" <+> ppType (funResult fun)
+      <+> ppr fun <+> parens (fmtDeclare (funArgs fun))
+
+
 -- Function Calls --------------------------------------------------------------
 
 class HasType res => CallArgs args res k | args -> res k where
@@ -227,7 +256,6 @@ instance (Pretty val, GetType val ty, CallArgs args res k, HasType res)
     let _ :> args = funArgs fun
     call' (fun { funArgs = args }) (ppr (WithType val) :ds)
 
-
 call :: CallArgs args res k => Fun args res -> k
 call fun = call' fun []
 
@@ -239,6 +267,13 @@ id32 x = ret x
 
 c32 :: Var Int32 -> Var Int32 -> LLVM (Result Int32)
 c32 x y = ret 10
+
+malloc :: Fun (Int32 :> ()) (PtrTo Int8)
+malloc  = Fun
+  { funSym = "malloc"
+  , funArgs = undefined :> ()
+  , funResult = undefined
+  }
 
 test = do
   f <- define "f" id32
