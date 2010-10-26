@@ -54,6 +54,9 @@ instance Pretty a => Pretty (Maybe a) where
 instance Pretty a => Pretty [a] where
   pp p as = ppList p as
 
+instance Pretty () where
+  pp _ _ = empty
+
 instance Pretty Int8 where
   pp _ i = integer (fromIntegral i)
 

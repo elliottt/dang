@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module LLVM where
 
@@ -17,9 +18,18 @@ import Data.Monoid (Monoid(..))
 import MonadLib
 
 
+-- Doc Utilities ---------------------------------------------------------------
+
 instance Monoid Doc where
   mempty  = Pretty.empty
   mappend = ($+$)
+
+-- | Add a line of output
+emit :: WriterM m Doc => Doc -> m ()
+emit  = put
+
+
+-- Top-level LLVM Monad --------------------------------------------------------
 
 newtype LLVM a = LLVM
   { unLLVM :: StateT Int (WriterT Doc Lift) a
@@ -30,9 +40,25 @@ runLLVM (LLVM m) = (a,d)
   where
   ((a,_),d) = runLift (runWriterT (runStateT 0 m))
 
--- | Add a line of output
-emit :: Doc -> LLVM ()
-emit  = LLVM . put
+instance WriterM LLVM Doc where
+  put = LLVM . put
+
+instance RunWriterM LLVM Doc where
+  collect m = LLVM (collect (unLLVM m))
+
+
+-- Block-level LLVM Monad ------------------------------------------------------
+
+newtype B a = B
+  { runB :: LLVM a
+  } deriving (Functor,Applicative,Monad)
+
+instance WriterM B Doc where
+  put = B . put
+
+instance RunWriterM B Doc where
+  collect m = B (collect (runB m))
+
 
 -- LLVM Primitives -------------------------------------------------------------
 
@@ -74,26 +100,41 @@ instance Pretty (Var a) where
 instance HasType a => HasType (Var a) where
   ppType = ppType . varType
 
+-- | Extract the type of a variable.  This will throw an error if it is ever
+-- evaluated.
 varType :: Var a -> a
 varType  = error "varType"
 
+-- | Generate the @Doc@ that describes the definition of the variable.
 varDecl :: HasType a => Var a -> Doc
 varDecl v = ppType (varType v) <+> ppr v
 
--- | Generate a fresh variable.
-freshVar :: HasType a => LLVM (Var a)
-freshVar  = LLVM $ do
-  i <- get
-  set $! i + 1
-  return (Var ("x" ++ show i))
+
+class FreshVar m where
+  -- | Generate a fresh variable.
+  freshVar :: HasType a => m (Var a)
+
+instance FreshVar LLVM where
+  freshVar = LLVM $ do
+    i <- get
+    set $! i + 1
+    return (Var ("x" ++ show i))
+
+instance FreshVar B where
+  freshVar = B freshVar
 
 
 -- Literals --------------------------------------------------------------------
 
+-- | Get the type associated with a value.  In literal cases, this is the
+-- haskell type that is already associated with the value, but variables, for
+-- example, have an underlying type, and are tagged as variables, thus the type
+-- function to extract the underlying type.
 class HasType ty => GetType a ty | a -> ty where
   getType :: a -> ty
   getType  = error "getType"
 
+instance GetType ()    ()
 instance GetType Int8  Int8
 instance GetType Int32 Int32
 instance GetType Int64 Int64
@@ -104,8 +145,10 @@ instance GetType a a => GetType (Var a) a
 
 data PtrTo a = PtrTo
 
+-- | Extract the underlying type of the pointer.  This will throw an error if it
+-- is ever evaluated.
 ptrType :: PtrTo a -> a
-ptrType  = error "ptrToType"
+ptrType  = error "ptrType"
 
 instance HasType a => HasType (PtrTo a) where
   ppType a = ppType (ptrType a) <> char '*'
@@ -115,14 +158,17 @@ instance HasType a => HasType (PtrTo a) where
 
 data Result a = Result
 
-ret :: (Pretty a, HasType a) => a -> LLVM (Result a)
+-- | Return something returnable via the ``ret'' llvm instruction.
+ret :: (Pretty a, HasType a) => a -> B (Result a)
 ret a = do
   emit (text "ret" <+> ppType a <+> ppr a)
   return Result
 
-observe :: HasType a => LLVM (Result a) -> LLVM (Var a)
+-- | Observe something that produces a result, generating a fresh variable that
+-- holds its value.
+observe :: HasType a => B (Result a) -> B (Var a)
 observe m = do
-  (_,body) <- LLVM (collect (unLLVM m))
+  (_,body) <- collect m
   res      <- freshVar
   emit (ppr res <+> char '=' <+> body)
   return res
@@ -168,7 +214,6 @@ data Fun args res = Fun
   , funResult :: res
   }
 
-
 instance Pretty (Fun args res) where
   pp _ fun = char '@' <> text (funSym fun)
 
@@ -187,18 +232,24 @@ instance (HasType a, FmtArgs b) => FmtArgs (Var a :> b) where
   fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
 
 -- | Arguments to the define function.
-class FmtArgs ty => HasArgs fun args ty | fun -> args ty where
+class FmtArgs ty => Define fun args ty | fun -> args ty where
+  -- | Walk down the type of the function, generating a list of types with a
+  -- result on the end.  Also, collect a list of fresh variable names that can
+  -- be used during the output of the function.
   typeOf :: fun -> LLVM (args,ty)
-  apply  :: ty -> fun -> LLVM ()
 
-instance HasArgs (LLVM (Result a)) () (Result a) where
+  -- | Apply the structure of fresh names to the function that will define the
+  -- body of the LLVM function.
+  apply :: ty -> fun -> LLVM ()
+
+instance Define (B (Result a)) () (Result a) where
   typeOf _  = return (error "HasArgs:args", Result)
   apply _ m = do
-    _ <- m
+    _ <- runB m
     return ()
 
-instance (HasType a, HasArgs b args ty)
-  => HasArgs (Var a -> b) (a :> args) (Var a :> ty) where
+instance (HasType a, Define b args ty)
+  => Define (Var a -> b) (a :> args) (Var a :> ty) where
   typeOf k = do
     var      <- freshVar
     (args,r) <- typeOf (k var)
@@ -207,18 +258,21 @@ instance (HasType a, HasArgs b args ty)
   apply (a :> rest) fun = apply rest (fun a)
 
 
-define :: (HasArgs fun args ty, ResultOf ty res)
+-- | Define an LLVM function.
+define :: (Define fun args ty, ResultOf ty res, HasType res)
        => String -> fun -> LLVM (Fun args res)
 define n body = do
   (args,t) <- typeOf body
-  emit (text "define" <+> char '@' <> text n <> parens (fmtArgs t) <+> char '{')
-  (_,d)    <- LLVM (collect (unLLVM (apply t body)))
+  let res = resultOf t
+  emit $  text "define" <+> ppType res
+      <+> char '@' <> text n <> parens (fmtArgs t) <+> char '{'
+  (_,d)    <- collect (apply t body)
   emit (nest 2 d)
   emit (char '}')
   return Fun
     { funSym    = n
     , funArgs   = args
-    , funResult = resultOf t
+    , funResult = res
     }
 
 
@@ -233,6 +287,7 @@ instance Declare () where
 instance (HasType h, Declare tl) => Declare (h :> tl) where
   fmtDeclare (h :> tl) = commaSep (ppType h) (fmtDeclare tl)
 
+-- | Declare an external function binding, given its type.
 declare :: (Declare args, HasType res) => Fun args res -> LLVM ()
 declare fun =
   emit $  text "declare" <+> ppType (funResult fun)
@@ -244,7 +299,7 @@ declare fun =
 class HasType res => CallArgs args res k | args -> res k where
   call' :: Fun args res -> [Doc] -> k
 
-instance HasType res => CallArgs () res (LLVM (Result res)) where
+instance HasType res => CallArgs () res (B (Result res)) where
   call' fun ds = do
     let rty = funResult fun
     emit (text "call" <+> ppType rty <+> ppr (funSym fun) <> parens (commas ds))
@@ -256,16 +311,17 @@ instance (Pretty val, GetType val ty, CallArgs args res k, HasType res)
     let _ :> args = funArgs fun
     call' (fun { funArgs = args }) (ppr (WithType val) :ds)
 
+-- | Given a function symbol, generate a call to it.
 call :: CallArgs args res k => Fun args res -> k
 call fun = call' fun []
 
 
 -- Tests -----------------------------------------------------------------------
 
-id32 :: Var Int32 -> LLVM (Result (Var Int32))
+id32 :: Var Int32 -> B (Result (Var Int32))
 id32 x = ret x
 
-c32 :: Var Int32 -> Var Int32 -> LLVM (Result Int32)
+c32 :: Var Int32 -> Var Int32 -> B (Result Int32)
 c32 x y = ret 10
 
 malloc :: Fun (Int32 :> ()) (PtrTo Int8)
