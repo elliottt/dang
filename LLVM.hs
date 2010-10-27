@@ -68,7 +68,8 @@ instance RunWriterM (B r) Doc where
   collect m = B (collect (runB m))
 
 
--- LLVM Types ------------------------------------------------------------------
+
+-- Literals --------------------------------------------------------------------
 
 -- | Types that have values.
 data NonEmpty = NonEmpty
@@ -76,26 +77,33 @@ data NonEmpty = NonEmpty
 -- | Types that have no values associated with them.
 data Empty = Empty
 
--- | Types that have an LLVM analogue.  The i parameter describes the number of
--- inhabitants in that type.  There are two acceptable types here, @NonEmpty@
--- for types that have values in LLVM, and @Empty@ for types that exist, but
--- don't have any values (like void).
-class HasType a i | a -> i where
+-- | Get the type associated with a value.  In literal cases, this is the
+-- haskell type that is already associated with the value, but variables, for
+-- example, have an underlying type, and are tagged as variables, thus the type
+-- function to extract the underlying type.
+class Pretty a => GetType a ty i | a -> ty i where
+  -- | Derive the underlying type of the a parameter.
+  getType :: a -> ty
+  getType  = error "getType"
+
+  -- | Pretty-print the ty parameter.  a is used here, as it determines ty, the
+  -- assumption being that instances will implement this as printing the type of
+  -- a, and not printing a itself.
   ppType :: a -> Doc
 
-instance HasType () Empty where
+instance GetType () () Empty where
   ppType _ = text "void"
 
-instance HasType Bool NonEmpty where
+instance GetType Bool  Bool  NonEmpty where
   ppType _ = text "i1"
 
-instance HasType Int8 NonEmpty where
+instance GetType Int8  Int8  NonEmpty where
   ppType _ = text "i8"
 
-instance HasType Int32 NonEmpty where
+instance GetType Int32 Int32 NonEmpty where
   ppType _ = text "i32"
 
-instance HasType Int64 NonEmpty where
+instance GetType Int64 Int64 NonEmpty where
   ppType _ = text "i64"
 
 
@@ -108,44 +116,30 @@ newtype Var a = Var String
 instance Pretty (Var a) where
   pp _ (Var s) = char '%' <> text s
 
+instance GetType a ty i => GetType (Var a) ty i where
+  ppType = ppType . varType
+
+
 -- | Extract the type of a variable.  This will throw an error if it is ever
 -- evaluated.
 varType :: Var a -> a
 varType  = error "varType"
 
 -- | Generate the @Doc@ that describes the definition of the variable.
-varDecl :: HasType a i => Var a -> Doc
-varDecl v = ppType (varType v) <+> ppr v
+varDecl :: GetType a ty NonEmpty => Var a -> Doc
+varDecl v = ppType v <+> ppr v
 
 
 -- | Monads that will produce a fresh variable of the given type.
 class FreshVar m where
   -- | Generate a fresh variable.
-  freshVar :: HasType a i => m (Var a)
+  freshVar :: GetType a ty i => m (Var a)
 
 instance FreshVar LLVM where
   freshVar = Var `fmap` freshName "x"
 
 instance FreshVar (B r) where
   freshVar = B freshVar
-
-
--- Literals --------------------------------------------------------------------
-
--- | Get the type associated with a value.  In literal cases, this is the
--- haskell type that is already associated with the value, but variables, for
--- example, have an underlying type, and are tagged as variables, thus the type
--- function to extract the underlying type.
-class (Pretty a, HasType ty i) => GetType a ty i | a -> ty i where
-  getType :: a -> ty
-  getType  = error "getType"
-
-instance GetType ()    ()    Empty
-instance GetType Bool  Bool  NonEmpty
-instance GetType Int8  Int8  NonEmpty
-instance GetType Int32 Int32 NonEmpty
-instance GetType Int64 Int64 NonEmpty
-instance GetType a ty i => GetType (Var a) ty i
 
 
 -- Pointers --------------------------------------------------------------------
@@ -166,10 +160,8 @@ ptrType  = error "ptrType"
 nullPtr :: GetType a a i => PtrTo a
 nullPtr  = NullPtr
 
-instance HasType a i => HasType (PtrTo a) NonEmpty where
+instance (Pretty a, GetType a a i) => GetType (PtrTo a) (PtrTo a) NonEmpty where
   ppType a = ppType (ptrType a) <> char '*'
-
-instance (Pretty a, GetType a a i) => GetType (PtrTo a) (PtrTo a) NonEmpty
 
 
 -- Return Values ---------------------------------------------------------------
@@ -182,7 +174,7 @@ data Result a = Result
 -- definition.
 ret :: (Pretty a, GetType a ty i) => a -> B ty ()
 ret a = do
-  emit (text "ret" <+> ppType (getType a) <+> ppr a)
+  emit (text "ret" <+> ppType a <+> ppr a)
   return ()
 
 
@@ -190,7 +182,7 @@ ret a = do
 
 -- | Observe something that produces a result, generating a fresh variable that
 -- holds its value.
-observe :: HasType a NonEmpty => B r (Result a) -> B r (Var a)
+observe :: GetType a ty NonEmpty => B r (Result a) -> B r (Var a)
 observe m = do
   (_,body) <- collect m
   res      <- freshVar
@@ -224,8 +216,7 @@ br c t f =
 icmpEq :: (GetType a ty NonEmpty, GetType b ty NonEmpty)
        => a -> b -> B r (Result Bool)
 icmpEq a b = do
-  let ty = getType a
-  emit (text "icmp eq" <+> ppType ty <+> ppr a <> comma <+> ppr b)
+  emit (text "icmp eq" <+> ppType a <+> ppr a <> comma <+> ppr b)
   return Result
 
 
@@ -265,7 +256,7 @@ newtype WithType a = WithType a
 
 instance (Pretty a, GetType a ty NonEmpty)
   => Pretty (WithType a) where
-  pp _ (WithType a) = ppType (getType a) <+> ppr a
+  pp _ (WithType a) = ppType a <+> ppr a
 
 
 -- Functions -------------------------------------------------------------------
@@ -300,7 +291,7 @@ class FmtArgs a where
 instance FmtArgs (Result a) where
   fmtArgs _ = empty
 
-instance (HasType a i, FmtArgs b) => FmtArgs (Var a :> b) where
+instance (GetType a ty NonEmpty, FmtArgs b) => FmtArgs (Var a :> b) where
   fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
 
 -- | Arguments to the define function.
@@ -320,7 +311,7 @@ instance Define (B a ()) () (Result a) where
     _ <- runB m
     return ()
 
-instance (HasType a i, Define b args ty)
+instance (GetType a aty NonEmpty, Define b args ty)
   => Define (Var a -> b) (a :> args) (Var a :> ty) where
   typeOf k = do
     var      <- freshVar
@@ -331,7 +322,7 @@ instance (HasType a i, Define b args ty)
 
 
 -- | Define an LLVM function.
-define :: (Define fun args ty, ResultOf ty res, HasType res i)
+define :: (Define fun args ty, ResultOf ty res, GetType res resty i)
        => String -> fun -> LLVM (Fun args res)
 define n body = do
   (_args,t) <- typeOf body
@@ -353,11 +344,11 @@ class Declare a where
 instance Declare () where
   fmtDeclare _ = empty
 
-instance (HasType h i, Declare tl) => Declare (h :> tl) where
+instance (GetType h hty i, Declare tl) => Declare (h :> tl) where
   fmtDeclare a = commaSep (ppType (argHead a)) (fmtDeclare (argTail a))
 
 -- | Declare an external function binding, given its type.
-declare :: (Declare args, HasType res i) => Fun args res -> LLVM ()
+declare :: (Declare args, GetType res resty i) => Fun args res -> LLVM ()
 declare fun =
   emit $  text "declare" <+> ppType (funResult fun)
       <+> ppr fun <+> parens (fmtDeclare (funArgs fun))
@@ -372,13 +363,14 @@ class CallArgs args res k | args -> res k where
   -- function call.
   call' :: Fun args res -> [Doc] -> k
 
-instance HasType res i => CallArgs () res (B res (Result res)) where
+instance GetType res resty i => CallArgs () res (B res (Result res)) where
   call' fun ds = do
     let rty = funResult fun
     emit (text "call" <+> ppType rty <+> ppr (funSym fun) <> parens (commas ds))
     return Result
 
-instance (GetType val ty NonEmpty, CallArgs args res k, HasType res NonEmpty)
+instance ( GetType val ty NonEmpty, CallArgs args res k
+         , GetType res resty NonEmpty)
   => CallArgs (ty :> args) res (val -> k) where
   call' fun ds val = do
     let _ :> args = funArgs fun
@@ -391,8 +383,9 @@ call fun = call' fun []
 
 -- Numeric Functions -----------------------------------------------------------
 
-class HasType a NonEmpty => HasNum a where
+class HasNum a where
 
+instance HasNum Bool
 instance HasNum Int8
 instance HasNum Int32
 instance HasNum Int64
@@ -400,8 +393,7 @@ instance HasNum Int64
 mul :: (HasNum ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
     => a -> b -> B r (Result ty)
 mul x y = do
-  let ty = getType x
-  emit (text "mul" <+> ppType ty <+> ppr x <> comma <+> ppr y)
+  emit (text "mul" <+> ppType x <+> ppr x <> comma <+> ppr y)
   return Result
 
 
