@@ -43,6 +43,10 @@ class Pretty a where
   ppList :: Int -> [a] -> Doc
   ppList p as = hsep (map (pp p) as)
 
+instance Pretty Bool where
+  pp _ True  = int 1
+  pp _ False = int 0
+
 instance Pretty Char where
   pp _ = char
   ppList _ = text
