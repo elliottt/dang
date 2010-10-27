@@ -243,7 +243,7 @@ argTail _ = error "argTail"
 class ResultOf ty res | ty -> res where
   resultOf :: ty -> res
 
-instance GetType a b i => ResultOf (Result a) b where
+instance GetType a ty i => ResultOf (Result a) ty where
   resultOf _ = error "resultOf"
 
 instance ResultOf b r => ResultOf (a :> b) r where
@@ -254,8 +254,7 @@ instance ResultOf b r => ResultOf (a :> b) r where
 
 newtype WithType a = WithType a
 
-instance (Pretty a, GetType a ty NonEmpty)
-  => Pretty (WithType a) where
+instance (Pretty a, GetType a ty NonEmpty) => Pretty (WithType a) where
   pp _ (WithType a) = ppType a <+> ppr a
 
 
@@ -311,7 +310,7 @@ instance Define (B a ()) () (Result a) where
     _ <- runB m
     return ()
 
-instance (GetType a aty NonEmpty, Define b args ty)
+instance (GetType a a NonEmpty, Define b args ty)
   => Define (Var a -> b) (a :> args) (Var a :> ty) where
   typeOf k = do
     var      <- freshVar
@@ -322,7 +321,7 @@ instance (GetType a aty NonEmpty, Define b args ty)
 
 
 -- | Define an LLVM function.
-define :: (Define fun args ty, ResultOf ty res, GetType res resty i)
+define :: (Define fun args ty, ResultOf ty res, GetType res res i)
        => String -> fun -> LLVM (Fun args res)
 define n body = do
   (_args,t) <- typeOf body
@@ -344,11 +343,11 @@ class Declare a where
 instance Declare () where
   fmtDeclare _ = empty
 
-instance (GetType h hty i, Declare tl) => Declare (h :> tl) where
+instance (GetType h h i, Declare tl) => Declare (h :> tl) where
   fmtDeclare a = commaSep (ppType (argHead a)) (fmtDeclare (argTail a))
 
 -- | Declare an external function binding, given its type.
-declare :: (Declare args, GetType res resty i) => Fun args res -> LLVM ()
+declare :: (Declare args, GetType res res i) => Fun args res -> LLVM ()
 declare fun =
   emit $  text "declare" <+> ppType (funResult fun)
       <+> ppr fun <+> parens (fmtDeclare (funArgs fun))
@@ -363,14 +362,14 @@ class CallArgs args res k | args -> res k where
   -- function call.
   call' :: Fun args res -> [Doc] -> k
 
-instance GetType res resty i => CallArgs () res (B res (Result res)) where
+instance GetType res res i => CallArgs () res (B res (Result res)) where
   call' fun ds = do
     let rty = funResult fun
     emit (text "call" <+> ppType rty <+> ppr (funSym fun) <> parens (commas ds))
     return Result
 
 instance ( GetType val ty NonEmpty, CallArgs args res k
-         , GetType res resty NonEmpty)
+         , GetType res res NonEmpty)
   => CallArgs (ty :> args) res (val -> k) where
   call' fun ds val = do
     let _ :> args = funArgs fun
