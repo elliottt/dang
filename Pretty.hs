@@ -3,7 +3,7 @@ module Pretty (
   , module Text.PrettyPrint
   ) where
 
-import Data.Int (Int8,Int32,Int64)
+import Data.Int (Int8,Int16,Int32,Int64)
 import Data.List (intersperse)
 import Text.PrettyPrint
 
@@ -64,8 +64,17 @@ instance Pretty () where
 instance Pretty Int8 where
   pp _ i = integer (fromIntegral i)
 
+instance Pretty Int16 where
+  pp _ i = integer (fromIntegral i)
+
 instance Pretty Int32 where
   pp _ i = integer (fromIntegral i)
 
 instance Pretty Int64 where
   pp _ i = integer (fromIntegral i)
+
+instance Pretty Float where
+  pp _ = float
+
+instance Pretty Double where
+  pp _ = double

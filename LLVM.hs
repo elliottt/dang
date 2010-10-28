@@ -15,7 +15,7 @@ import Pretty as Pretty
 
 import Control.Applicative (Applicative(..))
 import Control.Monad.Fix (MonadFix(..))
-import Data.Int (Int8,Int32,Int64)
+import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Monoid (Monoid(..))
 import MonadLib hiding (Label)
 import Numeric (showHex)
@@ -100,11 +100,42 @@ instance GetType Bool  Bool  NonEmpty where
 instance GetType Int8  Int8  NonEmpty where
   ppType _ = text "i8"
 
+instance GetType Int16 Int16 NonEmpty where
+  ppType _ = text "i16"
+
 instance GetType Int32 Int32 NonEmpty where
   ppType _ = text "i32"
 
 instance GetType Int64 Int64 NonEmpty where
   ppType _ = text "i64"
+
+instance GetType Float Float NonEmpty where
+  ppType _ = text "float"
+
+instance GetType Double Double NonEmpty where
+  ppType _ = text "double"
+
+value :: GetType a ty NonEmpty => a -> B r (Result ty)
+value a = do
+  emit (ppr a)
+  return Result
+
+
+-- Undefined Values ------------------------------------------------------------
+
+data Undef a = Undef
+
+instance Pretty (Undef a) where
+  pp _ Undef = text "undef"
+
+instance GetType a a NonEmpty => GetType (Undef a) a NonEmpty where
+  ppType = ppType . undefType
+
+undefType :: Undef a -> a
+undefType  = error "undefType"
+
+undef :: GetType a a NonEmpty => Undef a
+undef  = Undef
 
 
 -- Vars ------------------------------------------------------------------------
@@ -162,6 +193,21 @@ nullPtr  = NullPtr
 
 instance (Pretty a, GetType a a i) => GetType (PtrTo a) (PtrTo a) NonEmpty where
   ppType a = ppType (ptrType a) <> char '*'
+
+
+-- Arrays ----------------------------------------------------------------------
+
+data Array a = Array Int32
+
+instance Pretty a => Pretty (Array a) where
+  pp _ _ = error "pp array?"
+
+instance GetType a a NonEmpty => GetType (Array a) (Array a) NonEmpty where
+  ppType a@(Array len) =
+    brackets (ppr len <+> char 'x' <+> ppType (arrayType a))
+
+arrayType :: Array a -> a
+arrayType  = error "arrayType"
 
 
 -- Return Values ---------------------------------------------------------------
@@ -258,10 +304,48 @@ instance (Pretty a, GetType a ty NonEmpty) => Pretty (WithType a) where
   pp _ (WithType a) = ppType a <+> ppr a
 
 
+-- Linkage Types ---------------------------------------------------------------
+
+data Linkage
+  = Private
+  | LinkerPrivate
+  | LinkerPrivateWeak
+  | LinkerPrivateWeakDefAuto
+  | Internal
+  | AvailableExternally
+  | Linkonce
+  | Weak
+  | Common
+  | Appending
+  | ExternWeak
+  | LinkonceODR
+  | WeakODR
+  | DLLImport
+  | DLLExport
+
+instance Pretty Linkage where
+  pp _ Private                  = text "private"
+  pp _ LinkerPrivate            = text "linker_private"
+  pp _ LinkerPrivateWeak        = text "linker_private_weak"
+  pp _ LinkerPrivateWeakDefAuto = text "linker_private_weak_def_auto"
+  pp _ Internal                 = text "internal"
+  pp _ AvailableExternally      = text "available_externally"
+  pp _ Linkonce                 = text "linkonce"
+  pp _ Weak                     = text "weak"
+  pp _ Common                   = text "common"
+  pp _ Appending                = text "appending"
+  pp _ ExternWeak               = text "extern_weak"
+  pp _ LinkonceODR              = text "linkonce_ddr"
+  pp _ WeakODR                  = text "weak_odr"
+  pp _ DLLImport                = text "dllimport"
+  pp _ DLLExport                = text "dllexport"
+
+
 -- Functions -------------------------------------------------------------------
 
-newtype Fun args res = Fun
-  { funSym    :: String
+data Fun args res = Fun
+  { funSym     :: String
+  , funLinkage :: Linkage
   }
 
 funArgs :: Fun args res -> args
@@ -271,13 +355,26 @@ funResult :: Fun args res -> res
 funResult  = error "funResult"
 
 setArgs :: Fun a res -> b -> Fun b res
-setArgs (Fun s) _ = Fun s
+setArgs (Fun s l) _ = Fun s l
 
 setResult :: Fun args a -> b -> Fun args b
-setResult (Fun s) _ = Fun s
+setResult (Fun s l) _ = Fun s l
 
 instance Pretty (Fun args res) where
   pp _ fun = char '@' <> text (funSym fun)
+
+class ArgList a where
+  argList :: a -> Doc
+
+instance ArgList () where
+  argList _ = empty
+
+instance (GetType h h i, ArgList tl) => ArgList (h :> tl) where
+  argList l = commaSep (ppType (argHead l)) (argList (argTail l))
+
+instance (ArgList args, GetType res res i)
+  => GetType (Fun args res) (Fun args res) NonEmpty where
+  ppType f = ppType (funResult f) <+> parens (argList (funArgs f))
 
 
 -- Function Definition ---------------------------------------------------------
@@ -292,6 +389,7 @@ instance FmtArgs (Result a) where
 
 instance (GetType a ty NonEmpty, FmtArgs b) => FmtArgs (Var a :> b) where
   fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
+
 
 -- | Arguments to the define function.
 class FmtArgs ty => Define fun args ty | fun -> args ty, args -> fun where
@@ -319,19 +417,46 @@ instance (GetType a a NonEmpty, Define b args ty)
 
   apply (a :> rest) fun = apply rest (fun a)
 
+-- | Create a new function symbol, with a fresh name.
+newFun :: Linkage -> LLVM (Fun args res)
+newFun l = do
+  sym <- freshName "f"
+  return (Fun sym l)
+
+-- | Create a new function symbol with the provided name.
+newNamedFun :: Linkage -> String -> LLVM (Fun args res)
+newNamedFun l sym = return Fun
+  { funSym     = sym
+  , funLinkage = l
+  }
 
 -- | Define an LLVM function.
 define :: (Define fun args ty, ResultOf ty res, GetType res res i)
-       => String -> fun -> LLVM (Fun args res)
-define n body = do
+       => Fun args res -> fun -> LLVM ()
+define fun body = do
   (_args,t) <- typeOf body
   let res = resultOf t
-  emit $  text "define" <+> ppType res
-      <+> char '@' <> text n <> parens (fmtArgs t) <+> char '{'
-  (_,d)    <- collect (apply t body)
+  emit $ text "define" <+> ppr (funLinkage fun) <+> ppType res <+> ppr fun
+      <> parens (fmtArgs t) <+> char '{'
+  (_,d) <- collect (apply t body)
   emit (nest 2 d)
   emit (char '}')
-  return Fun { funSym = n }
+
+-- | Define a function with a fresh name.
+defineFun :: (Define fun args ty, ResultOf ty res, GetType res res i)
+          => Linkage -> fun -> LLVM (Fun args res)
+defineFun l body = do
+  fun <- newFun l
+  define fun body
+  return fun
+
+-- | Define a function with the given name.
+defineNamedFun :: (Define fun args ty, ResultOf ty res, GetType res res i)
+               => Linkage -> String -> fun -> LLVM (Fun args res)
+defineNamedFun l n body = do
+  fun <- newNamedFun l n
+  define fun body
+  return fun
 
 
 -- Function Declaration --------------------------------------------------------
@@ -380,12 +505,20 @@ call fun = call' fun []
 
 -- Numeric Functions -----------------------------------------------------------
 
-class HasNum a where
+class HasNum ty
 
-instance HasNum Bool
 instance HasNum Int8
+instance HasNum Int16
 instance HasNum Int32
 instance HasNum Int64
+instance HasNum Float
+instance HasNum Double
+
+add :: (HasNum ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
+    => a -> b -> B r (Result ty)
+add x y = do
+  emit (text "add" <+> ppType x <+> ppr x <> comma <+> ppr y)
+  return Result
 
 mul :: (HasNum ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
     => a -> b -> B r (Result ty)
@@ -403,14 +536,13 @@ const' :: (GetType a a NonEmpty, GetType b b NonEmpty)
        => Var a -> Var b -> B a ()
 const' a _ = ret a
 
-id32 :: Var Int32 -> B Int32 ()
-id32 x = ret x
-
 test1 :: LLVM ()
 test1 = do
-  id32 <- define "id32" id' :: LLVM (Fun (Int32 :> ()) Int32)
-  _    <- define "main" $ do
+
+  id32 <- newFun Private
+  define id32 (\x -> id' (x :: Var Int32))
+
+  main <- newFun Private
+  define main $ do
     res <- observe (call id32 (0 :: Int32))
     ret res
-
-  return ()
