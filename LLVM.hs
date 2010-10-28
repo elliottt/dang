@@ -504,25 +504,39 @@ call fun = call' fun []
 
 -- Numeric Functions -----------------------------------------------------------
 
-class HasNum ty
+class HasInt ty
 
-instance HasNum Int8
-instance HasNum Int16
-instance HasNum Int32
-instance HasNum Int64
-instance HasNum Float
-instance HasNum Double
+instance HasInt Int8
+instance HasInt Int16
+instance HasInt Int32
+instance HasInt Int64
 
-add :: (HasNum ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
+class HasFloat ty
+instance HasFloat Float
+instance HasFloat Double
+
+add :: (HasInt ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
     => a -> b -> B r (Result ty)
 add x y = do
   emit (text "add" <+> ppType x <+> ppr x <> comma <+> ppr y)
   return Result
 
-mul :: (HasNum ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
+fadd :: (HasFloat ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
+     => a -> b -> B r (Result ty)
+fadd x y = do
+  emit (text "fadd" <+> ppType x <+> ppr x <> comma <+> ppr y)
+  return Result
+
+mul :: (HasInt ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
     => a -> b -> B r (Result ty)
 mul x y = do
   emit (text "mul" <+> ppType x <+> ppr x <> comma <+> ppr y)
+  return Result
+
+fmul :: (HasFloat ty, GetType a ty NonEmpty, GetType b ty NonEmpty)
+     => a -> b -> B r (Result ty)
+fmul x y = do
+  emit (text "fmul" <+> ppType x <+> ppr x <> comma <+> ppr y)
   return Result
 
 
