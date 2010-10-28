@@ -362,18 +362,16 @@ class CallArgs args res k | args -> res k where
   -- function call.
   call' :: Fun args res -> [Doc] -> k
 
-instance GetType res res i => CallArgs () res (B res (Result res)) where
+instance GetType res res i => CallArgs () res (B r (Result res)) where
   call' fun ds = do
     let rty = funResult fun
-    emit (text "call" <+> ppType rty <+> ppr (funSym fun) <> parens (commas ds))
+    emit (text "call" <+> ppType rty <+> ppr fun <> parens (commas ds))
     return Result
 
-instance ( GetType val ty NonEmpty, CallArgs args res k
-         , GetType res res NonEmpty)
+instance (GetType val ty NonEmpty, CallArgs args res k, GetType res res i)
   => CallArgs (ty :> args) res (val -> k) where
-  call' fun ds val = do
-    let _ :> args = funArgs fun
-    call' (setArgs fun args) (ppr (WithType val) :ds)
+  call' fun ds val =
+    call' (setArgs fun (argTail (funArgs fun))) (ppr (WithType val):ds)
 
 -- | Given a function symbol, generate a call to it.
 call :: CallArgs args res k => Fun args res -> k
@@ -398,44 +396,21 @@ mul x y = do
 
 -- Tests -----------------------------------------------------------------------
 
+id' :: GetType a a NonEmpty => Var a -> B a ()
+id' x = ret x
+
+const' :: (GetType a a NonEmpty, GetType b b NonEmpty)
+       => Var a -> Var b -> B a ()
+const' a _ = ret a
+
 id32 :: Var Int32 -> B Int32 ()
 id32 x = ret x
 
-test3 :: LLVM (Fun (Int32 :> ()) Int32)
-test3 = define "id32" id32
-
-c32 :: Var Int32 -> Var Int32 -> B Int32 ()
-c32 _x _y = ret (10 :: Int32)
-
-malloc :: Fun (Int32 :> ()) (PtrTo Int8)
-malloc  = Fun { funSym = "malloc" }
-
-test4 :: LLVM (Fun (Int32 :> Int32 :> ()) Int32)
-test4  = define "cond" (\x _y -> ret x)
-
-test :: LLVM ()
-test = do
-  f <- define "f" id32
-  _g <- define "g" c32
-
-  _ <- define "main" $ do
-    res <- observe (call f (0 :: Int32))
+test1 :: LLVM ()
+test1 = do
+  id32 <- define "id32" id' :: LLVM (Fun (Int32 :> ()) Int32)
+  _    <- define "main" $ do
+    res <- observe (call id32 (0 :: Int32))
     ret res
 
   return ()
-
-
-test2 :: LLVM ()
-test2 = define "main" body >> return ()
-  where
-  body :: Var Int32 -> B Int32 ()
-  body x = do
-    t <- newLabel
-    f <- newLabel
-
-    b <- observe (icmpEq x (0 :: Int32))
-    br b t f
-    _ <- label t (ret (0 :: Int32))
-    label f $ do
-      a <- observe (mul x (10 :: Int32))
-      ret a
