@@ -81,14 +81,13 @@ data Empty = Empty
 -- example, have an underlying type, and are tagged as variables, thus the type
 -- function to extract the underlying type.
 class Pretty a => GetType a ty i | a -> ty i where
-  -- | Derive the underlying type of the a parameter.
-  getType :: a -> ty
-  getType  = error "getType"
-
   -- | Pretty-print the ty parameter.  a is used here, as it determines ty, the
   -- assumption being that instances will implement this as printing the type of
   -- a, and not printing a itself.
   ppType :: a -> Doc
+
+getType :: GetType a ty i => a -> ty
+getType  = error "getType"
 
 instance GetType () () Empty where
   ppType _ = text "void"
@@ -344,7 +343,7 @@ instance Pretty Linkage where
 
 data Fun args res = Fun
   { funSym     :: String
-  , funLinkage :: Linkage
+  , funLinkage :: Maybe Linkage
   }
 
 funArgs :: Fun args res -> args
@@ -354,10 +353,10 @@ funResult :: Fun args res -> res
 funResult  = error "funResult"
 
 setArgs :: Fun a res -> b -> Fun b res
-setArgs (Fun s l) _ = Fun s l
+setArgs (Fun s ml) _ = Fun s ml
 
 setResult :: Fun args a -> b -> Fun args b
-setResult (Fun s l) _ = Fun s l
+setResult (Fun s ml) _ = Fun s ml
 
 instance Pretty (Fun args res) where
   pp _ fun = char '@' <> text (funSym fun)
@@ -417,16 +416,16 @@ instance (GetType a a NonEmpty, Define b args ty)
   apply (a :> rest) fun = apply rest (fun a)
 
 -- | Create a new function symbol, with a fresh name.
-newFun :: Linkage -> LLVM (Fun args res)
-newFun l = do
+newFun :: Maybe Linkage -> LLVM (Fun args res)
+newFun ml = do
   sym <- freshName "f"
-  return (Fun sym l)
+  return (Fun sym ml)
 
 -- | Create a new function symbol with the provided name.
-newNamedFun :: Linkage -> String -> LLVM (Fun args res)
-newNamedFun l sym = return Fun
+newNamedFun :: Maybe Linkage -> String -> LLVM (Fun args res)
+newNamedFun ml sym = return Fun
   { funSym     = sym
-  , funLinkage = l
+  , funLinkage = ml
   }
 
 -- | Define an LLVM function.
@@ -443,17 +442,17 @@ define fun body = do
 
 -- | Define a function with a fresh name.
 defineFun :: (Define fun args ty, ResultOf ty res, GetType res res i)
-          => Linkage -> fun -> LLVM (Fun args res)
-defineFun l body = do
-  fun <- newFun l
+          => Maybe Linkage -> fun -> LLVM (Fun args res)
+defineFun ml body = do
+  fun <- newFun ml
   define fun body
   return fun
 
 -- | Define a function with the given name.
 defineNamedFun :: (Define fun args ty, ResultOf ty res, GetType res res i)
-               => Linkage -> String -> fun -> LLVM (Fun args res)
-defineNamedFun l n body = do
-  fun <- newNamedFun l n
+               => Maybe Linkage -> String -> fun -> LLVM (Fun args res)
+defineNamedFun ml n body = do
+  fun <- newNamedFun ml n
   define fun body
   return fun
 
@@ -552,10 +551,10 @@ const' a _ = ret a
 test1 :: LLVM ()
 test1 = do
 
-  id32 <- newFun Private
-  define id32 (\x -> id' (x :: Var Int32))
+  id32 <- defineNamedFun Nothing "id32" (\x -> ret (x :: Var Int32))
 
-  main <- newFun Private
-  define main $ do
+  _    <- defineNamedFun Nothing "main" $ do
     res <- observe (call id32 (0 :: Int32))
     ret res
+
+  return ()
