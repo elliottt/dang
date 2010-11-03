@@ -8,9 +8,18 @@ import Data.Typeable (Typeable,cast)
 import MonadLib
 
 
-data SomeError = forall e. Typeable e => SomeError e
+data SomeError = forall e. (Show e, Typeable e) => SomeError e
 
-class Typeable e => Error e where
+instance Show SomeError where
+  showsPrec i (SomeError se) = parens body
+    where
+    parens b | i > 1     = showChar '(' . b . showChar ')'
+             | otherwise = b
+
+    body = showString "SomeError " . showsPrec 1 se
+
+
+class (Show e, Typeable e) => Error e where
   toSomeError :: e -> SomeError
   toSomeError  = SomeError
 

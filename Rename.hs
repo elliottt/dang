@@ -112,9 +112,9 @@ renameDecl d = do
 renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
   case t of
-    App f x  -> App <$> renameTerm f <*> renameTerm x
-    Var v    -> Var <$> subst v
-    Lit l    -> Lit <$> renameLiteral l
+    App f xs -> apply <$> renameTerm f <*> mapM renameTerm xs
+    Var v    -> Var   <$> subst v
+    Lit l    -> Lit   <$> renameLiteral l
     Let ds e ->
       fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
     Abs vs b -> intro $ \name -> fresh vs $ do

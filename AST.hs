@@ -7,6 +7,7 @@ import Pretty
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
+import Data.Int (Int64)
 import qualified Data.Set as Set
 
 
@@ -64,7 +65,7 @@ declsFvGraph ds = graph
 data Term
   = Abs [Var] Term
   | Let [Decl] Term
-  | App Term Term
+  | App Term [Term]
   | Var Var
   | Lit Literal
     deriving Show
@@ -73,7 +74,7 @@ instance FreeVars Term where
   freeVars (Abs vs t) = freeVars t Set.\\ Set.fromList vs
   freeVars (Let ds t) = (freeVars ds `Set.union` freeVars t) Set.\\
                         Set.fromList (concatMap declBinds ds)
-  freeVars (App f x)  = Set.union (freeVars f) (freeVars x)
+  freeVars (App f xs) = Set.union (freeVars f) (freeVars xs)
   freeVars (Lit l)    = freeVars l
   freeVars (Var x)    = Set.singleton x
 
@@ -85,7 +86,7 @@ instance Pretty Term where
       Let ds e -> optParens (p > 0)
                 $ text "let" <+> braces (semis (map (pp 0) ds)) <+>
                   text "in"  <+> pp 0 e
-      App f x  -> optParens (p > 0) (pp 0 f <+> pp 1 x)
+      App f xs -> optParens (p > 0) (pp 0 f <+> ppList 1 xs)
       Var v    -> text v
       Lit l    -> pp 0 l
 
@@ -97,19 +98,27 @@ splitAbs t = loop t id
   loop (Abs as b) f = loop b ((++ as) . f)
   loop b          f = (f [], b)
 
+-- | Collapse an application into its arguments, and the function to be called.
+splitApp :: Term -> (Term,[Term])
+splitApp (App f xs) = (f', xs' ++ xs)
+  where
+  (f',xs') = splitApp f
+splitApp t          = (t,[])
+
 lambda :: [Var] -> Term -> Term
 lambda [] t = t
 lambda as t = Abs as t
 
 apply :: Term -> [Term] -> Term
-apply  = foldl App
+apply f [] = f
+apply f xs = App f xs
 
 data Literal
-  = LInt Int
+  = LInt Int64
     deriving Show
 
 instance FreeVars Literal where
   freeVars _ = Set.empty
 
 instance Pretty Literal where
-  pp _ (LInt i) = int i
+  pp _ (LInt i) = ppr i

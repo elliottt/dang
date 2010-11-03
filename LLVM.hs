@@ -8,7 +8,83 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module LLVM where
+module LLVM (
+    -- * Monadic Interface
+    LLVM()
+  , runLLVM
+  , B()
+
+    -- * Types
+  , NonEmpty
+  , Empty
+  , GetType(ppType), getType
+  , value
+
+    -- ** Undefined Values
+  , Undef()
+  , undefType
+  , undef
+
+    -- ** Variables
+  , Var()
+  , varType
+  , varDecl
+  , FreshVar(freshVar)
+
+    -- ** Pointers
+  , PtrTo()
+  , ptrType
+  , nullPtr
+
+    -- ** Array
+  , Array()
+  , arrayType
+
+    -- * Return Values
+  , Result()
+  , ret
+  , observe
+  , ignore
+
+    -- * Labels
+  , Label()
+  , newLabel
+  , label
+  , goto
+  , br
+
+    -- * Conditionals
+  , icmpEq
+
+    -- * Argument Lists
+  , (:>)()
+  , argHead
+  , argTail
+  , ResultOf(resultOf)
+
+    -- * Functions
+    -- ** Definition
+  , Linkage(..)
+  , Fun(..)
+  , funArgs
+  , funResult
+  , Define()
+  , newFun, newNamedFun
+  , define, defineFun, defineNamedFun
+
+    -- ** Declaration
+  , Declare()
+  , declare
+
+    -- ** Calling
+  , CallArgs()
+  , call
+
+    -- ** Numeric
+  , HasInt(), HasFloat()
+  , add, fadd
+  , mul, fmul
+  ) where
 
 import Pretty as Pretty
 
@@ -145,7 +221,7 @@ newtype Var a = Var String
 instance Pretty (Var a) where
   pp _ (Var s) = char '%' <> text s
 
-instance GetType a ty i => GetType (Var a) ty i where
+instance GetType a a NonEmpty => GetType (Var a) a NonEmpty where
   ppType = ppType . varType
 
 
@@ -155,7 +231,7 @@ varType :: Var a -> a
 varType  = error "varType"
 
 -- | Generate the @Doc@ that describes the definition of the variable.
-varDecl :: GetType a ty NonEmpty => Var a -> Doc
+varDecl :: GetType a a NonEmpty => Var a -> Doc
 varDecl v = ppType v <+> ppr v
 
 
@@ -213,6 +289,9 @@ arrayType  = error "arrayType"
 -- | A result value.
 data Result a = Result
 
+resultType :: Result a -> a
+resultType  = error "resultType"
+
 -- | Return something returnable via the ``ret'' llvm instruction.  This fixes
 -- the r parameter to the B monad, enforcing a return type across a function
 -- definition.
@@ -226,12 +305,15 @@ ret a = do
 
 -- | Observe something that produces a result, generating a fresh variable that
 -- holds its value.
-observe :: GetType a ty NonEmpty => B r (Result a) -> B r (Var a)
+observe :: GetType a a NonEmpty => B r (Result a) -> B r (Var a)
 observe m = do
   (_,body) <- collect m
   res      <- freshVar
   emit (ppr res <+> char '=' <+> body)
   return res
+
+ignore :: B r (Result a) -> B r ()
+ignore m = m >> return ()
 
 
 -- Labels ----------------------------------------------------------------------
@@ -385,7 +467,7 @@ class FmtArgs a where
 instance FmtArgs (Result a) where
   fmtArgs _ = empty
 
-instance (GetType a ty NonEmpty, FmtArgs b) => FmtArgs (Var a :> b) where
+instance (GetType a a NonEmpty, FmtArgs b) => FmtArgs (Var a :> b) where
   fmtArgs (a :> b) = commaSep (varDecl a) (fmtArgs b)
 
 
@@ -479,7 +561,7 @@ declare fun =
 -- Function Calls --------------------------------------------------------------
 
 -- | Arguments to the call function.
-class CallArgs args res k | args -> res k where
+class CallArgs args res k | k -> args res where
   -- | Take a function symbol, and a list of already defined arguments that have
   -- been rendered, and produce a continuation that will use them to produce a
   -- function call.
@@ -488,11 +570,12 @@ class CallArgs args res k | args -> res k where
 instance GetType res res i => CallArgs () res (B r (Result res)) where
   call' fun ds = do
     let rty = funResult fun
-    emit (text "call" <+> ppType rty <+> ppr fun <> parens (commas ds))
+    emit $ text "call" <+> ppType rty <+> ppr fun
+        <> parens (commas (reverse ds))
     return Result
 
-instance (GetType val ty NonEmpty, CallArgs args res k, GetType res res i)
-  => CallArgs (ty :> args) res (val -> k) where
+instance (GetType a ty NonEmpty, CallArgs args res k)
+  => CallArgs (ty :> args) res (a -> k) where
   call' fun ds val =
     call' (setArgs fun (argTail (funArgs fun))) (ppr (WithType val):ds)
 
@@ -539,6 +622,15 @@ fmul x y = do
   return Result
 
 
+-- Stack Allocation ------------------------------------------------------------
+
+alloca :: GetType a a NonEmpty => Int32 -> LLVM (Result (PtrTo a))
+alloca len = mfix $ \ res -> do
+  let ty = ptrType (resultType res)
+  emit (text "alloca" <+> ppType ty <> comma <+> ppr (WithType len))
+  return Result
+
+
 -- Tests -----------------------------------------------------------------------
 
 id' :: GetType a a NonEmpty => Var a -> B a ()
@@ -555,6 +647,17 @@ test1 = do
 
   _    <- defineNamedFun Nothing "main" $ do
     res <- observe (call id32 (0 :: Int32))
+    ret res
+
+  return ()
+
+test2 :: LLVM ()
+test2  = do
+
+  id32  <- defineFun Nothing (\x -> ret (x :: Var Int32))
+  _     <- defineNamedFun Nothing "main" $ do
+    res <- observe (call id32 (0 :: Int32))
+    ignore (call id32 res)
     ret res
 
   return ()
