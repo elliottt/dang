@@ -7,11 +7,13 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
+module LLVM where
+
 import Pretty as Pretty
 
 import Control.Applicative (Applicative(..))
 import Control.Monad.Fix (MonadFix(..))
-import Data.Int (Int8,Int32)
+import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Monoid (Monoid(..))
 import MonadLib
 import Numeric (showHex)
@@ -83,8 +85,20 @@ class Pretty a => IsValue a where
 instance IsValue Int8 where
   ppType _ = text "i8"
 
+instance IsValue Int16 where
+  ppType _ = text "i16"
+
 instance IsValue Int32 where
   ppType _ = text "i32"
+
+instance IsValue Int64 where
+  ppType _ = text "i64"
+
+instance IsValue Float where
+  ppType _ = text "float"
+
+instance IsValue Double where
+  ppType _ = text "double"
 
 
 -- Pointers --------------------------------------------------------------------
@@ -111,6 +125,14 @@ ptrTo  = toValue . PtrTo
 nullPtr :: IsValue a => Value (PtrTo a)
 nullPtr  = toValue NullPtr
 
+-- | Allocate some memory on the stack.
+alloca :: IsValue a => Int32 -> Maybe Int -> BB r (Result (PtrTo a))
+alloca n mb = mfix $ \ res -> do
+  put $ text "alloca" <+> ppType (ptrType (resultType res))
+     <> comma <+> ppWithType (toValue n)
+     <> maybe empty (\a -> comma <+> text "align" <+> int a) mb
+  return Result
+
 
 -- Variables -------------------------------------------------------------------
 
@@ -129,6 +151,9 @@ instance FreshVar (BB r) where
 -- Results ---------------------------------------------------------------------
 
 data Result a = Result
+
+resultType :: Result a -> a
+resultType  = error "resultType"
 
 retVoid :: BB () ()
 retVoid  = put (text "ret void")
@@ -253,3 +278,12 @@ test1  = Fun "test1"
 
 test2 :: Fun (Fun (Int32 -> IO Int32) -> Int8 -> IO Int32)
 test2  = Fun "test2"
+
+test3 = do
+  id32 <- define "id32" $ \ x -> ret (x :: Value Int32)
+  main <- define "main" $ do
+    a <- observe $ call id32 (toValue 10)
+    b <- observe $ call id32 a
+    ret a
+
+  return ()
