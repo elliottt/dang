@@ -57,3 +57,5 @@ test4 =
   , AST.Decl "g" [] True
     $ AST.App (AST.Var "f") [AST.Var "y"]
   ]
+
+main = return ()

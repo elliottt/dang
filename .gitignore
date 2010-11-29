@@ -1,4 +1,6 @@
 dist
+ghc
 *.o
 *.swp
 *.a
+test
