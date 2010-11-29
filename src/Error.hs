@@ -43,7 +43,7 @@ onError :: RunExceptionM m SomeError => m a -> m b -> m a
 onError a b = do
   e <- try a
   case e of
-    Right a -> return a
+    Right r -> return r
     Left se -> do
       _ <- b
       raise se
