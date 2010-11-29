@@ -1,26 +1,28 @@
 module Interface where
 
-import AST
-import LLVM
-
+import Data.Int (Int32)
+import Text.LLVM
 import qualified Data.Map as Map
 
 
-newtype Symbol = Symbol String
+data FunDecl = FunDecl
+  { funSymbol :: String
+  , funArity  :: Int32
+  } deriving Show
 
 data Interface = Interface
-  { intSymbols :: Map.Map Var Symbol
+  { intFunDecls :: Map.Map String FunDecl
   }
 
 emptyInterface :: Interface
 emptyInterface  = Interface
-  { intSymbols = Map.empty
+  { intFunDecls = Map.empty
   }
 
-addSymbol :: Var -> Symbol -> Interface -> Interface
-addSymbol n s i = i
-  { intSymbols = Map.insert n s (intSymbols i)
+addFunDecl :: String -> FunDecl -> Interface -> Interface
+addFunDecl n s i = i
+  { intFunDecls = Map.insert n s (intFunDecls i)
   }
 
-findSymbol :: Var -> Interface -> Maybe Symbol
-findSymbol n = Map.lookup n . intSymbols
+findFunDecl :: String -> Interface -> Maybe FunDecl
+findFunDecl n = Map.lookup n . intFunDecls

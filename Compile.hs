@@ -3,15 +3,15 @@
 
 module Compile where
 
-import AST hiding (Var)
 import Interface
-import LLVM
+import LambdaLift
 import Pretty
 import qualified AST
 
 import Data.Int (Int32,Int64)
-import Data.List (elemIndex)
+import Data.List (elemIndex,genericLength)
 import MonadLib
+import Text.LLVM
 
 
 -- RTS Types -------------------------------------------------------------------
@@ -19,71 +19,62 @@ import MonadLib
 type Nat = Int32
 
 
-data Closure = Closure
+newtype Closure = Closure (PtrTo Int32)
 
-instance Pretty Closure where
-  pp _ _ = error "pp Closure"
+instance IsType Closure where
+  getType (Closure ptr)= getType ptr
 
-instance GetType Closure Closure NonEmpty where
-  ppType _ = ppType (undefined :: PtrTo Int32)
-
-
-data Value = Value
-
-instance Pretty Value where
-  pp _ _ = error "pp Value"
-
-instance GetType Value Value NonEmpty where
-  ppType _ = ppType (undefined :: PtrTo Int32)
+instance HasValues Closure
 
 
-data ValueType = ValueInt | ValueClosure
-    deriving (Show)
+newtype Val = Val (PtrTo Int32)
 
-instance Pretty ValueType where
-  pp _ ValueInt     = int 0x0
-  pp _ ValueClosure = int 0x1
+instance IsType Val where
+  getType (Val ptr) = getType ptr
 
--- The underlying type of ValueType is i32, but we're only going to make that
--- available when pretty printing, as there's no need for arithmetic operations
--- on the value tags.
-instance GetType ValueType ValueType NonEmpty where
-  ppType _ = ppType (undefined :: Int32)
+instance HasValues Val
+
+
+type ValType = Int32
+
+valInt, valClosure :: Value ValType
+valInt     = toValue 0x0
+valClosure = toValue 0x1
 
 
 -- RTS Primitives --------------------------------------------------------------
 
-rts_argument :: Fun (Closure :> Nat :> ()) Value
+rts_argument :: Fun (Closure -> Nat -> Res Val)
 rts_argument  = Fun
   { funSym     = "argument"
   , funLinkage = Nothing
   }
 
-rts_apply :: Fun (Closure :> PtrTo Value :> Nat :> ()) Value
+rts_apply :: Fun (Closure -> PtrTo Val -> Nat -> Res Val)
 rts_apply  = Fun
   { funSym     = "apply"
   , funLinkage = Nothing
   }
 
-rts_alloc_closure :: Fun () Closure
+rts_alloc_closure :: Fun (Nat -> Fn -> Res Closure)
 rts_alloc_closure  = Fun
   { funSym     = "alloc_closure"
   , funLinkage = Nothing
   }
 
-rts_alloc_value :: Fun (ValueType :> ()) Value
+rts_alloc_value :: Fun (ValType -> Res Val)
 rts_alloc_value  = Fun
   { funSym     = "alloc_value"
   , funLinkage = Nothing
   }
 
-rts_set_ival :: Fun (Value :> Int64 :> ()) ()
+rts_set_ival :: Fun (Val -> Int64 -> Res ())
 rts_set_ival  = Fun
   { funSym     = "set_ival"
   , funLinkage = Nothing
   }
 
-rts_set_cval :: Fun (Value :> Closure :> ()) ()
+rts_set_cval :: Fun (Val -> Closure -> Res ())
 rts_set_cval  = Fun
   { funSym     = "set_cval"
   , funLinkage = Nothing
@@ -100,60 +91,75 @@ rtsImports  = do
 
 -- Compilation Monad -----------------------------------------------------------
 
-type Fn = Fun (Closure :> ()) Value
+type Fn = Fun (Closure -> Res Val)
 
 declLinkage :: Decl -> Maybe Linkage
 declLinkage d
   | declExported d = Nothing
   | otherwise      = Just Private
 
-lookupFn :: AST.Var -> Interface -> LLVM Fn
+lookupFn :: Monad m => String -> Interface -> m (Nat,Fn)
 lookupFn n i =
-  case findSymbol n i of
-    Nothing -> (error "lookupFn: " ++ n)
-    Just s  -> Fun
-      { funName    = n
-      , funLinkage = Nothing
-      }
+  case findFunDecl n i of
+    Nothing -> fail ("lookupFn: " ++ n)
+    Just f  -> return (funArity f, fn)
+      where
+      fn = Fun
+        { funSym     = funSymbol f
+        , funLinkage = Nothing
+        }
 
 compModule :: [Decl] -> LLVM Interface
 compModule ds = do
   let step (fns,i) d = do
         fn <- newFun (declLinkage d)
-        let sym = Symbol (funSym fn)
-        return (fn:fns, addSymbol (declName d) sym i)
+        let sym = FunDecl (funSym fn) (genericLength (declVars d))
+        return (fn:fns, addFunDecl (declName d) sym i)
   (fns0,i) <- foldM step ([],emptyInterface) ds
-  zipWithM_ compDecl (reverse fns0) ds
+  zipWithM_ (compDecl i) (reverse fns0) ds
   return i
 
-compDecl :: Fn -> Decl -> LLVM ()
-compDecl fn d = define fn $ \ env ->
-  ret =<< compTerm (declVars d) env (declBody d)
+compDecl :: Interface -> Fn -> Decl -> LLVM ()
+compDecl i fn d = define fn $ \ env ->
+  ret =<< compTerm i (declVars d) env (declBody d)
 
-compTerm :: [AST.Var] -> Var Closure -> Term -> B r (Var Value)
-compTerm env rtsEnv t =
+compTerm :: Interface -> [String] -> Value Closure -> Term -> BB r (Value Val)
+compTerm i env rtsEnv t =
   case t of
-    Abs vs b  -> error "compTerm: Abs"
-    Let ds e  -> compLet env rtsEnv ds e
-    App f xs  -> compApp env rtsEnv f xs
-    AST.Var v -> compVar env rtsEnv v
-    Lit l     -> compLit l
+    Apply c xs -> compApp i env rtsEnv c xs
+    Let ds e   -> compLet i env rtsEnv ds e
+    Symbol s   -> compSymbol i s
+    Argument i -> compArgument rtsEnv i
+    Lit l      -> compLit l
 
-compLet :: [AST.Var] -> Var Closure -> [Decl] -> Term -> B r (Var Value)
-compLet env rtsEnv ds e = do
-  compDecls ds
+compApp :: Interface -> [String] -> Value Closure -> Call -> [Term]
+        -> BB r (Value Val)
+compApp i env rtsEnv c xs = do
+  vs   <- mapM (compTerm i env rtsEnv) xs
+  cvar <- compCall i rtsEnv c
+  -- allocate enough space for vs, load them, call apply and return its result
+  --args <- alloca (toValue (genericLength vs)) Nothing
+  undefined
 
-compApp :: [AST.Var] -> Var Closure -> Term -> [Term] -> B r (Var Value)
-compApp env rtsEnv f xs = undefined
+compCall = undefined
 
-compVar :: [AST.Var] -> Var Closure -> AST.Var -> B r (Var Value)
-compVar env rtsEnv v = observe (call rts_argument rtsEnv idx)
-  where
-  idx :: Int32
-  idx  = maybe (error "compVar") fromIntegral (elemIndex v env)
+compLet :: Interface -> [String] -> Value Closure -> [Decl] -> Term
+        -> BB r (Value Val)
+compLet i env rtsEnv ds e = undefined
 
-compLit :: Literal -> B r (Var Value)
-compLit (LInt i) = do
-  ival <- observe (call rts_alloc_value ValueInt)
-  ignore (call rts_set_ival ival i)
+compSymbol :: Interface -> String -> BB r (Value Val)
+compSymbol i s = do
+  (n,fn) <- lookupFn s i
+  clos   <- call rts_alloc_closure (toValue n) (toValue fn)
+  cval   <- call rts_alloc_value valClosure
+  call_ rts_set_cval cval clos
+  return cval
+
+compArgument :: Value Closure -> Int32 -> BB r (Value Val)
+compArgument rtsEnv i = call rts_argument rtsEnv (toValue i)
+
+compLit :: AST.Literal -> BB r (Value Val)
+compLit (AST.LInt i) = do
+  ival <- call rts_alloc_value valInt
+  call_ rts_set_ival ival (toValue i)
   return ival
