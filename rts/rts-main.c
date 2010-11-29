@@ -17,7 +17,7 @@ int main() {
 
     switch(res->type) {
         case TYPE_INT:
-            printf("Int: %d\n", res->v.ival);
+            printf("Int: %lld\n", res->v.ival);
             break;
 
         case TYPE_CLOSURE:

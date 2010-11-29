@@ -28,4 +28,4 @@ librts.a: $(OBJECTS)
 
 clean:
 	$(QUIET_CLEAN)
-	$(Q)$(RM) -f rts.a $(OBJECTS)
+	$(Q)$(RM) -f librts.a $(OBJECTS)
