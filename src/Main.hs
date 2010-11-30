@@ -23,15 +23,15 @@ testLL :: [AST.Decl] -> IO ()
 testLL ds = do
   e <- runExceptionT (runLL . llDecls =<< runRename [] (renameDecls ds))
   case e of
-    Left se      -> print (se :: SomeError)
-    Right (ds,_) -> mapM_ print (map ppr ds)
+    Left se       -> print (se :: SomeError)
+    Right (ds,ls) -> mapM_ print (map ppr (ds ++ ls))
 
 testComp :: [AST.Decl] -> IO ()
 testComp ds = do
   e <- runExceptionT (runLL . llDecls =<< runRename [] (renameDecls ds))
   case e of
-    Left se       -> print (se :: SomeError)
-    Right (ds',_) -> print (snd (runLLVM (rtsImports >> compModule ds')))
+    Left se        -> print (se :: SomeError)
+    Right (ds',ls) -> print (snd (runLLVM (rtsImports >> compModule (ds'++ls))))
 
 
 idD    = AST.Decl "id" ["x"] True (AST.Var "x")
