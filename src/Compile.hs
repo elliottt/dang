@@ -148,8 +148,8 @@ compModule ds = do
   return i
 
 compDecl :: Interface -> Fn -> Decl -> LLVM ()
-compDecl i fn d = define fn $ \ env ->
-  ret =<< compTerm i (declVars d) env (declBody d)
+compDecl i fn d = define fn $ \ rtsEnv ->
+  ret =<< compTerm i (declVars d) rtsEnv (declBody d)
 
 compTerm :: Interface -> [String] -> Value Closure -> Term -> BB r (Value Val)
 compTerm i env rtsEnv t =
@@ -203,6 +203,8 @@ argumentClosure rtsEnv i = do
 
   return clos
 
+-- This requires a mechanism that isn't really present yet... A local
+-- environment.
 compLet :: Interface -> [String] -> Value Closure -> [Decl] -> Term
         -> BB r (Value Val)
 compLet i env rtsEnv ds e = error "compLet"
