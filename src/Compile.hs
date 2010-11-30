@@ -55,7 +55,7 @@ rts_apply  = Fun
   , funLinkage = Nothing
   }
 
-rts_alloc_closure :: Fun (Nat -> Fn -> Res Closure)
+rts_alloc_closure :: Fun (Nat -> PtrTo Fn -> Res Closure)
 rts_alloc_closure  = Fun
   { funSym     = "alloc_closure"
   , funLinkage = Nothing
@@ -187,7 +187,7 @@ compCall _ rtsEnv (CArg i) = argumentClosure rtsEnv i
 symbolClosure :: Interface -> String -> BB r (Value Closure)
 symbolClosure i n = do
   (arity,fn) <- lookupFn n i
-  call rts_alloc_closure (toValue arity) (toValue fn)
+  call rts_alloc_closure (toValue arity) (funAddr fn)
 
 argumentClosure :: Value Closure -> Nat -> BB r (Value Closure)
 argumentClosure rtsEnv i = do
@@ -210,7 +210,7 @@ compLet i env rtsEnv ds e = error "compLet"
 compSymbol :: Interface -> String -> BB r (Value Val)
 compSymbol i s = do
   (n,fn) <- lookupFn s i
-  clos   <- call rts_alloc_closure (toValue n) (toValue fn)
+  clos   <- call rts_alloc_closure (toValue n) (funAddr fn)
   cval   <- call rts_alloc_value valClosure
   call_ rts_set_cval cval clos
   return cval
