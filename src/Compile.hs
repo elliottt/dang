@@ -140,7 +140,7 @@ lookupFn n i =
 compModule :: [Decl] -> LLVM Interface
 compModule ds = do
   let step (fns,i) d = do
-        fn <- newFun (declLinkage d)
+        fn <- newNamedFun (declName d) (declLinkage d)
         let sym = FunDecl (funSym fn) (genericLength (declVars d))
         return (fn:fns, addFunDecl (declName d) sym i)
   (fns0,i) <- foldM step ([],emptyInterface) ds

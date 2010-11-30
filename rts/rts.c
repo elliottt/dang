@@ -67,7 +67,7 @@ value_t value_type(struct value *v) {
     return v->type;
 }
 
-s64 * get_ival(struct value *v) {
+s64 get_ival(struct value *v) {
     return v->v.ival;
 }
 

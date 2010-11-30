@@ -2,6 +2,7 @@
 #define __RTS_TYPES_H
 
 typedef unsigned long nat;
+typedef long s32;
 typedef long long s64;
 
 typedef enum

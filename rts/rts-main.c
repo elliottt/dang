@@ -13,7 +13,7 @@ int main() {
 
     // main is a zero-argument function
     env = alloc_closure(0, _cvmain);
-    res = apply(env, NULL, 0);
+    res = _cvmain(env);
 
     switch(res->type) {
         case TYPE_INT:

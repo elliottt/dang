@@ -58,4 +58,15 @@ test4 =
     $ AST.App (AST.Var "f") [AST.Var "y"]
   ]
 
+test5 =
+  [ idD
+  , AST.Decl "_cvmain" [] True
+    $ AST.App (AST.Var "id") [AST.Lit (AST.LInt 0)]
+  ]
+
+test6 =
+  [ AST.Decl "_cvmain" [] True
+    $ AST.Lit (AST.LInt 0)
+  ]
+
 main = return ()
