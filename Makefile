@@ -2,6 +2,7 @@
 ifeq ($(V),)
 	Q	= @
 	Q_GHC	= @echo "  GHC    $@ ";
+	Q_LD	= @echo "  LD     $@ ";
 else
 	Q	=
 	Q_GHC	=
@@ -20,10 +21,13 @@ HS_LIBS		:= $(addprefix -package ,$(LIBS))
 
 TARGET		:= test
 
-all: $(TARGET)
+all: $(TARGET) rts
+
+rts:
+	$(MAKE) -C rts all
 
 $(TARGET): $(HS_OBJECTS)
-	$(GHC) $(GHC_FLAGS) -o $@ $(HS_LIBS) $(HS_OBJECTS)
+	$(Q_LD) $(GHC) $(GHC_FLAGS) -o $@ $(HS_LIBS) $(HS_OBJECTS)
 
 $(GHC_DIR):
 	$(Q) mkdir $(GHC_DIR)

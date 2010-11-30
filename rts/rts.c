@@ -63,6 +63,18 @@ void set_cval(struct value *v, struct closure *cval) {
     v->v.cval = cval;
 }
 
+value_t value_type(struct value *v) {
+    return v->type;
+}
+
+s64 * get_ival(struct value *v) {
+    return v->v.ival;
+}
+
+struct closure * get_cval(struct value *v) {
+    return v->v.cval;
+}
+
 struct value * apply(struct closure *c, struct value **vs, nat size) {
     nat arity    = c->arity;
     nat cur_size = c->size;
@@ -100,4 +112,9 @@ struct value * apply(struct closure *c, struct value **vs, nat size) {
 
 struct value * argument(struct closure *env, nat idx) {
     return env->env[idx];
+}
+
+void barf() {
+    fprintf(stderr, "barf...\n");
+    exit(1);
 }

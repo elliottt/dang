@@ -5,11 +5,10 @@ module Compile where
 
 import Interface
 import LambdaLift
-import Pretty
 import qualified AST
 
 import Data.Int (Int32,Int64)
-import Data.List (elemIndex,genericLength)
+import Data.List (genericLength)
 import MonadLib
 import Text.LLVM
 
@@ -80,6 +79,30 @@ rts_set_cval  = Fun
   , funLinkage = Nothing
   }
 
+rts_get_ival :: Fun (Val -> Res Int64)
+rts_get_ival  = Fun
+  { funSym     = "get_ival"
+  , funLinkage = Nothing
+  }
+
+rts_get_cval :: Fun (Val -> Res Closure)
+rts_get_cval  = Fun
+  { funSym     = "get_cval"
+  , funLinkage = Nothing
+  }
+
+rts_get_type :: Fun (Val -> Res Int32)
+rts_get_type  = Fun
+  { funSym     = "get_type"
+  , funLinkage = Nothing
+  }
+
+rts_barf :: Fun (Res ())
+rts_barf  = Fun
+  { funSym     = "barf"
+  , funLinkage = Nothing
+  }
+
 rtsImports :: LLVM ()
 rtsImports  = do
   declare rts_argument
@@ -87,6 +110,11 @@ rtsImports  = do
   declare rts_alloc_closure
   declare rts_alloc_value
   declare rts_set_ival
+  declare rts_get_ival
+  declare rts_set_cval
+  declare rts_get_cval
+  declare rts_get_type
+  declare rts_barf
 
 
 -- Compilation Monad -----------------------------------------------------------
@@ -126,26 +154,58 @@ compDecl i fn d = define fn $ \ env ->
 compTerm :: Interface -> [String] -> Value Closure -> Term -> BB r (Value Val)
 compTerm i env rtsEnv t =
   case t of
-    Apply c xs -> compApp i env rtsEnv c xs
-    Let ds e   -> compLet i env rtsEnv ds e
-    Symbol s   -> compSymbol i s
-    Argument i -> compArgument rtsEnv i
-    Lit l      -> compLit l
+    Apply c xs  -> compApp i env rtsEnv c xs
+    Let ds e    -> compLet i env rtsEnv ds e
+    Symbol s    -> compSymbol i s
+    Argument ix -> compArgument rtsEnv ix
+    Lit l       -> compLit l
 
+allocValBuffer :: Int32 -> BB r (Value (PtrTo Val))
+allocValBuffer len = alloca (toValue len) Nothing
+
+storeValAt :: Value (PtrTo Val) -> Int32 -> Value Val -> BB r ()
+storeValAt args ix v = do
+  addr <- getelementptr args (ix :: Int32)
+  store v addr
+
+-- allocate enough space for vs, load them, call apply and return its result
 compApp :: Interface -> [String] -> Value Closure -> Call -> [Term]
         -> BB r (Value Val)
 compApp i env rtsEnv c xs = do
   vs   <- mapM (compTerm i env rtsEnv) xs
-  cvar <- compCall i rtsEnv c
-  -- allocate enough space for vs, load them, call apply and return its result
-  --args <- alloca (toValue (genericLength vs)) Nothing
-  undefined
+  let len = genericLength vs
+  args <- allocValBuffer len
+  zipWithM_ (storeValAt args) [0..] vs
+  clos <- compCall i rtsEnv c
+  call rts_apply clos args (toValue len)
 
-compCall = undefined
+compCall :: Interface -> Value Closure -> Call -> BB r (Value Closure)
+compCall i _      (CFun n) = symbolClosure i n
+compCall _ rtsEnv (CArg i) = argumentClosure rtsEnv i
+
+-- | Allocate a new closure that uses the given function symbol.
+symbolClosure :: Interface -> String -> BB r (Value Closure)
+symbolClosure i n = do
+  (arity,fn) <- lookupFn n i
+  call rts_alloc_closure (toValue arity) (toValue fn)
+
+argumentClosure :: Value Closure -> Nat -> BB r (Value Closure)
+argumentClosure rtsEnv i = do
+  val <- call rts_argument rtsEnv (toValue i)
+  ty  <- call rts_get_type val
+  cmp <- icmp Ieq ty valClosure
+
+  exit <- newLabel
+  barf <- newLabel
+  condBr cmp exit barf
+  _        <- defineLabel_ barf (call_ rts_barf)
+  (clos,_) <- defineLabel  exit (call rts_get_cval val)
+
+  return clos
 
 compLet :: Interface -> [String] -> Value Closure -> [Decl] -> Term
         -> BB r (Value Val)
-compLet i env rtsEnv ds e = undefined
+compLet i env rtsEnv ds e = error "compLet"
 
 compSymbol :: Interface -> String -> BB r (Value Val)
 compSymbol i s = do
