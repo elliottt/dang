@@ -1,6 +1,8 @@
 #ifndef __RTS_TYPES_H
 #define __RTS_TYPES_H
 
+#define EXPORT extern "C"
+
 typedef unsigned long nat;
 typedef long s32;
 typedef long long s64;

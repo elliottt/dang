@@ -4,3 +4,4 @@ ghc
 *.swp
 *.a
 test
+.depend

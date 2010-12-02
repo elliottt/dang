@@ -1,12 +1,7 @@
 
-ifeq ($(V),)
-	Q	= @
-	Q_GHC	= @echo "  GHC    $@ ";
-	Q_LD	= @echo "  LD     $@ ";
-else
-	Q	=
-	Q_GHC	=
-endif
+TOPDIR	:= .
+
+include $(TOPDIR)/mk/verbose.mk
 
 GHC_DIR		:= ghc
 GHC		= ghc -hidir $(GHC_DIR) -odir $(GHC_DIR) -i$(GHC_DIR)
@@ -27,7 +22,7 @@ rts:
 	$(MAKE) -C rts all
 
 $(TARGET): $(HS_OBJECTS)
-	$(Q_LD) $(GHC) $(GHC_FLAGS) -o $@ $(HS_LIBS) $(HS_OBJECTS)
+	$(call cmd,GHC) $(GHC_FLAGS) -o $@ $(HS_LIBS) $(HS_OBJECTS)
 
 $(GHC_DIR):
 	$(Q) mkdir $(GHC_DIR)
@@ -40,7 +35,7 @@ $(GHC_DIR)/depend: $(GHC_DIR)
 %.hi: %.o ;
 
 $(GHC_DIR)/%.o: src/%.hs
-	$(Q_GHC) $(GHC) $(GHC_FLAGS) -c $< -o $@
+	$(call cmd,GHC) $(GHC_FLAGS) -c $< -o $@
 
 clean:
 	$(Q) $(RM) -r ghc
