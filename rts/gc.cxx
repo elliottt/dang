@@ -7,7 +7,7 @@
 #include "gc.h"
 
 
-void *allocate(char * type, nat size) {
+void *allocate(const char * type, nat size) {
     void *res = NULL;
 
     res = malloc(size);

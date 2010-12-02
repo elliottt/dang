@@ -10,8 +10,8 @@ else
 	Q	=
 endif
 
-SOURCES	= rts.c rts-main.c gc.c
-OBJECTS	= $(SOURCES:.c=.o)
+SOURCES	= rts.cxx rts-main.cxx gc.cxx
+OBJECTS	= $(SOURCES:.cxx=.o)
 
 .PHONY: all
 all: librts.a
@@ -19,7 +19,7 @@ all: librts.a
 librts.a: $(OBJECTS)
 	$(call cmd,AR) rcu $@ $^
 
-%.o: %.c
+%.o: %.cxx
 	$(call cmd,CXX) $(CFLAGS) -c $< -o $@
 
 clean:

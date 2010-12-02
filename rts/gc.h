@@ -3,6 +3,6 @@
 
 #include "types.h"
 
-void *allocate(char *, nat);
+void *allocate(const char *, nat);
 
 #endif
