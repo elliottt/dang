@@ -2,6 +2,8 @@
 TOPDIR	:= ..
 
 include $(TOPDIR)/mk/verbose.mk
+include $(TOPDIR)/mk/build.mk
+include $(TOPDIR)/mk/clean.mk
 
 AR		= llvm-ar
 CXX		= clang
@@ -15,10 +17,10 @@ OBJECTS	:= $(SOURCES:.cxx=.o)
 all: librts.a
 
 librts.a: $(OBJECTS)
-	$(call cmd,AR) rcu $@ $^
+	$(call cmd,ar) rcu $@ $^
 
 %.o: %.cxx
-	$(call cmd,CXX) $(CXXFLAGS) -c $< -o $@
+	$(call cmd,cxx_o_cxx)
 
 -include .depend
 

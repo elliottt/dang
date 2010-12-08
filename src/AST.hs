@@ -28,7 +28,7 @@ data Decl = Decl
   , declVars     :: [Var]
   , declExported :: Bool
   , declBody     :: Term
-  } deriving Show
+  } deriving (Eq,Show)
 
 instance FreeVars Decl where
   freeVars d = freeVars (declBody d) Set.\\ Set.fromList (declBinds d)
@@ -68,7 +68,8 @@ data Term
   | App Term [Term]
   | Var Var
   | Lit Literal
-    deriving Show
+  | Prim Var
+    deriving (Eq,Show)
 
 instance FreeVars Term where
   freeVars (Abs vs t) = freeVars t Set.\\ Set.fromList vs
@@ -77,6 +78,7 @@ instance FreeVars Term where
   freeVars (App f xs) = Set.union (freeVars f) (freeVars xs)
   freeVars (Lit l)    = freeVars l
   freeVars (Var x)    = Set.singleton x
+  freeVars (Prim _)   = Set.empty
 
 instance Pretty Term where
   pp p t =
@@ -89,7 +91,15 @@ instance Pretty Term where
       App f xs -> optParens (p > 0) (pp 0 f <+> ppList 1 xs)
       Var v    -> text v
       Lit l    -> pp 0 l
+      Prim n   -> char '#' <> text n
 
+instance Num Term where
+  fromInteger i = Lit (LInt (fromIntegral i))
+  a + b         = App (Prim "prim_add_i")    [a,b]
+  a * b         = App (Prim "prim_mul_i")    [a,b]
+  a - b         = App (Prim "prim_sub_i")    [a,b]
+  abs x         = App (Prim "prim_abs_i")    [x]
+  signum x      = App (Prim "prim_signum_i") [x]
 
 -- | Collapse an abstraction into its arguments, and the body.
 splitAbs :: Term -> ([Var],Term)
@@ -115,7 +125,7 @@ apply f xs = App f xs
 
 data Literal
   = LInt Int64
-    deriving Show
+    deriving (Eq,Show)
 
 instance FreeVars Literal where
   freeVars _ = Set.empty

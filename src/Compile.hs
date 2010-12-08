@@ -117,6 +117,35 @@ rtsImports  = do
   declare rts_barf
 
 
+-- Primitives ------------------------------------------------------------------
+
+type PrimBinary = Fun (Val -> Val -> Res Val)
+
+--prim_add_i :: PrimBinary
+--prim_add_i  = Fun "prim_add_i" Nothing
+
+prim_mul_i :: PrimBinary
+prim_mul_i  = Fun "prim_mul_i" Nothing
+
+prim_sub_i :: PrimBinary
+prim_sub_i  = Fun "prim_sub_i" Nothing
+
+type PrimUnary = Fun (Val -> Res Val)
+
+prim_abs_i :: PrimUnary
+prim_abs_i  = Fun "prim_abs_i" Nothing
+
+prim_signum_i :: PrimUnary
+prim_signum_i  = Fun "prim_signum_i" Nothing
+
+rtsPrims :: LLVM ()
+rtsPrims  = do
+  declare prim_mul_i
+  declare prim_sub_i
+  declare prim_abs_i
+  declare prim_signum_i
+
+
 -- Compilation Monad -----------------------------------------------------------
 
 type Fn = Fun (Closure -> Res Val)
@@ -159,6 +188,7 @@ compTerm i env rtsEnv t =
     Symbol s    -> compSymbol i s
     Argument ix -> compArgument rtsEnv ix
     Lit l       -> compLit l
+    Prim n a as -> compPrim i env rtsEnv n a =<< mapM (compTerm i env rtsEnv) as
 
 allocValBuffer :: Int32 -> BB r (Value (PtrTo Val))
 allocValBuffer len = alloca (toValue len) Nothing
@@ -207,7 +237,8 @@ argumentClosure rtsEnv i = do
 -- environment.
 compLet :: Interface -> [String] -> Value Closure -> [Decl] -> Term
         -> BB r (Value Val)
-compLet i env rtsEnv ds e = error "compLet"
+compLet = error "compLet"
+--compLet i env rtsEnv ds e = error "compLet"
 
 compSymbol :: Interface -> String -> BB r (Value Val)
 compSymbol i s = do
@@ -225,3 +256,35 @@ compLit (AST.LInt i) = do
   ival <- call rts_alloc_value valInt
   call_ rts_set_ival ival (toValue i)
   return ival
+
+compPrim :: Interface -> [String] -> Value Closure -> String -> Int
+         -> [Value Val] -> BB r (Value Val)
+compPrim i env rtsEnv n arity ts =
+  case arity of
+    1 -> do
+      let [a] = ts
+      case n of
+        "prim_abs_i"    -> call prim_abs_i a
+        "prim_signum_i" -> call prim_signum_i a
+        _            -> fail ("unknown primitive: " ++ n)
+
+    2 -> do
+      let [a,b] = ts
+      case n of
+        "prim_add_i" -> prim_add_i a b
+        "prim_mul_i" -> call prim_mul_i a b
+        "prim_sub_i" -> call prim_sub_i a b
+        _            -> fail ("unknown primitive: " ++ n)
+
+    _ -> fail ("unknown primitive: " ++ n)
+
+-- | Add two Int64 values.  This makes the assumption that the values are
+-- actually of the correct type.
+prim_add_i :: Value Val -> Value Val -> BB r (Value Val)
+prim_add_i a b = do
+  aI  <- call rts_get_ival a
+  bI  <- call rts_get_ival b
+  res <- add aI bI
+  val <- call rts_alloc_value valInt
+  call_ rts_set_ival val res
+  return val

@@ -1,11 +1,11 @@
 
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdio>
 
 #include "rts.h"
 #include "types.h"
 
-extern struct value * _cvmain (struct closure *);
+EXPORT struct value * _cvmain (struct closure *);
 
 int main() {
     struct closure *env = NULL;

@@ -1,11 +1,9 @@
 
 TOPDIR	:= .
 
-include $(TOPDIR)/mk/verbose.mk
-
-GHC_DIR		:= ghc
-GHC		= ghc -hidir $(GHC_DIR) -odir $(GHC_DIR) -i$(GHC_DIR)
-GHC_FLAGS	= -Wall
+include mk/verbose.mk
+include mk/build.mk
+include mk/clean.mk
 
 SLASH_MODS	:= $(subst src/,,$(basename $(shell find src -name '*.hs')))
 LIBS		:= base monadLib llvm-pretty pretty containers GraphSCC
@@ -22,7 +20,7 @@ rts:
 	$(MAKE) -C rts all
 
 $(TARGET): $(HS_OBJECTS)
-	$(call cmd,GHC) $(GHC_FLAGS) -o $@ $(HS_LIBS) $(HS_OBJECTS)
+	$(call cmd,ghc_ld) $(HS_LIBS)
 
 $(GHC_DIR):
 	$(Q) mkdir $(GHC_DIR)
@@ -32,11 +30,9 @@ $(GHC_DIR):
 $(GHC_DIR)/depend: $(GHC_DIR)
 	$(Q) $(GHC) -M -dep-makefile $@ $(HS_SOURCES)
 
-%.hi: %.o ;
-
 $(GHC_DIR)/%.o: src/%.hs
-	$(call cmd,GHC) $(GHC_FLAGS) -c $< -o $@
+	$(call cmd,ghc_o_hs)
 
 clean:
-	$(Q) $(RM) -r ghc
-	$(Q) $(RM) $(TARGET)
+	$(call cmd,RM) -r ghc
+	$(call cmd,RM) $(TARGET)

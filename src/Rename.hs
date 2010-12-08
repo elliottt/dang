@@ -115,6 +115,7 @@ renameTerm t =
     App f xs -> apply <$> renameTerm f <*> mapM renameTerm xs
     Var v    -> Var   <$> subst v
     Lit l    -> Lit   <$> renameLiteral l
+    Prim _   -> return t
     Let ds e ->
       fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
     Abs vs b -> intro $ \name -> fresh vs $ do

@@ -1,8 +1,13 @@
 
 ifeq ($(V),)
-	cmd	= @echo -e "  $1\t$@"; $($1)
+	quiet	= quiet_
 	Q	= @
 else
-	cmd	= $1
+	quiet	=
 	Q	=
 endif
+
+echo-cmd = $(if $($(quiet)cmd_$(1)),\
+	echo "  $($(quiet)cmd_$(1))";)
+
+cmd = @$(echo-cmd) $(cmd_$(1))

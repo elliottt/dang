@@ -1,7 +1,6 @@
 module Interface where
 
 import Data.Int (Int32)
-import Text.LLVM
 import qualified Data.Map as Map
 
 
