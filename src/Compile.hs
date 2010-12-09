@@ -7,6 +7,7 @@ import Interface
 import LambdaLift
 import qualified AST
 
+import Data.Bits (complement,bit)
 import Data.Int (Int32,Int64)
 import Data.List (genericLength)
 import MonadLib
@@ -119,17 +120,6 @@ rtsImports  = do
 
 -- Primitives ------------------------------------------------------------------
 
-type PrimBinary = Fun (Val -> Val -> Res Val)
-
---prim_add_i :: PrimBinary
---prim_add_i  = Fun "prim_add_i" Nothing
-
-prim_mul_i :: PrimBinary
-prim_mul_i  = Fun "prim_mul_i" Nothing
-
-prim_sub_i :: PrimBinary
-prim_sub_i  = Fun "prim_sub_i" Nothing
-
 type PrimUnary = Fun (Val -> Res Val)
 
 prim_abs_i :: PrimUnary
@@ -140,8 +130,6 @@ prim_signum_i  = Fun "prim_signum_i" Nothing
 
 rtsPrims :: LLVM ()
 rtsPrims  = do
-  declare prim_mul_i
-  declare prim_sub_i
   declare prim_abs_i
   declare prim_signum_i
 
@@ -219,6 +207,8 @@ symbolClosure i n = do
   (arity,fn) <- lookupFn n i
   call rts_alloc_closure (toValue arity) (funAddr fn)
 
+-- | Pull a closure out of the environment, calling rts_barf if the value isn't
+-- actually a closure.
 argumentClosure :: Value Closure -> Nat -> BB r (Value Closure)
 argumentClosure rtsEnv i = do
   val <- call rts_argument rtsEnv (toValue i)
@@ -228,7 +218,7 @@ argumentClosure rtsEnv i = do
   exit <- newLabel
   barf <- newLabel
   condBr cmp exit barf
-  _        <- defineLabel_ barf (call_ rts_barf)
+  _        <- defineLabel_ barf (call_ rts_barf >> unreachable)
   (clos,_) <- defineLabel  exit (call rts_get_cval val)
 
   return clos
@@ -264,27 +254,49 @@ compPrim i env rtsEnv n arity ts =
     1 -> do
       let [a] = ts
       case n of
-        "prim_abs_i"    -> call prim_abs_i a
+        "prim_abs_i"    -> primAbs a
         "prim_signum_i" -> call prim_signum_i a
         _            -> fail ("unknown primitive: " ++ n)
 
     2 -> do
       let [a,b] = ts
       case n of
-        "prim_add_i" -> prim_add_i a b
-        "prim_mul_i" -> call prim_mul_i a b
-        "prim_sub_i" -> call prim_sub_i a b
+        "prim_add_i" -> intPrimBinop add a b
+        "prim_sub_i" -> intPrimBinop sub a b
+        "prim_mul_i" -> intPrimBinop mul a b
         _            -> fail ("unknown primitive: " ++ n)
 
     _ -> fail ("unknown primitive: " ++ n)
 
--- | Add two Int64 values.  This makes the assumption that the values are
--- actually of the correct type.
-prim_add_i :: Value Val -> Value Val -> BB r (Value Val)
-prim_add_i a b = do
+-- | Lift an Int64 primitive over Vals.
+intPrimBinop :: (Value Int64 -> Value Int64 -> BB r (Value Int64))
+             -> Value Val -> Value Val -> BB r (Value Val)
+intPrimBinop k a b = do
   aI  <- call rts_get_ival a
   bI  <- call rts_get_ival b
-  res <- add aI bI
+  res <- k aI bI
   val <- call rts_alloc_value valInt
   call_ rts_set_ival val res
   return val
+
+primAbs :: Value Val -> BB r (Value Val)
+primAbs a = do
+  aI <- call rts_get_ival a
+
+  pos <- newLabel
+  neg <- newLabel
+  out <- newLabel
+  b   <- icmp Ilt aI (toValue 0)
+  condBr b neg pos
+
+  posOut <- defineLabel pos $ do
+    br out
+    return a
+
+  negOut <- defineLabel neg $ do
+    val <- call rts_alloc_value valInt
+    call_ rts_set_ival val =<< sub (toValue 0) aI
+    br out
+    return val
+
+  defineLabel_ out (phi negOut posOut)

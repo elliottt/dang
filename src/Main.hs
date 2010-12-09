@@ -85,7 +85,7 @@ test6  =
 
 test7 :: Test
 test7  =
-  [ AST.Decl "_cvmain" [] True (1 + 1 * 3)
+  [ AST.Decl "_cvmain" [] True (abs (1 + (negate (1 * 3))))
   ]
 
 main :: IO ()
