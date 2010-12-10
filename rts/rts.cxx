@@ -68,7 +68,6 @@ struct value * argument(struct env *env, nat i) {
             i  -= env->len;
             env = env->next;
         } else {
-            printf("argument: %lu\n", i);
             return env->env[i];
         }
     }
@@ -173,8 +172,6 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
         res         = alloc_value(TYPE_CLOSURE);
         res->v.cval = c2;
     }
-
-    printf("apply: res = 0x%x\n", res);
 
     return res;
 }
