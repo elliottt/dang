@@ -1,6 +1,6 @@
 module Main where
 
-import Compile
+import CodeGen
 import Error
 import LambdaLift
 import Pretty

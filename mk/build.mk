@@ -5,7 +5,7 @@ GHC_FLAGS	= -Wall
 CFLAGS		= -Wall
 CXXFLAGS	= -Wall
 
-cmd_ghc_o_hs		= $(GHC) $(GHC_FLAGS) -c -o $@ $<
+cmd_ghc_o_hs		= $(GHC) $(GHC_FLAGS) -c $<
 quiet_cmd_ghc_o_hs	= GHC     $@
 
 cmd_ghc_ld		= $(GHC) -o $@ $^

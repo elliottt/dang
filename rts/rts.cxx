@@ -7,13 +7,80 @@
 #include "rts.h"
 #include "gc.h"
 
+static struct env * alloc_env() {
+    return (struct env *)allocate("environment", sizeof(struct env));
+}
+
+// duplicate the spine of an environment.
+struct env * copy_env(struct env *env) {
+    struct env *root = NULL;
+    struct env *cur  = NULL;
+    struct env *prev = NULL;
+
+    while(env) {
+        cur      = (struct env *)allocate("environment", sizeof(struct env));
+        cur->len = env->len;
+        cur->env = env->env;
+
+        // either set the root, or fixup the next pointer
+        if(prev) {
+            prev->next = cur;
+        } else if(!root) {
+            root = cur;
+        }
+
+        env = env->next;
+    }
+
+    return root;
+}
+
+static nat env_size(struct env *env) {
+    nat total = 0;
+
+    while(env) {
+        total += env->len;
+        env    = env->next;
+    }
+
+    return total;
+}
+
+static void env_extend(struct env *head, struct value **vals, nat len) {
+    struct env *tail = alloc_env();
+
+    tail->env = (struct value **)allocate("env", len * sizeof(struct value *));
+    tail->len = len;
+
+    while(head->next) {
+        head = head->next;
+    }
+
+    head->next = tail;
+    memcpy(tail->env, vals, len);
+}
+
+struct value * argument(struct env *env, nat i) {
+    while(env) {
+        // i is too big, so decrement by the current env size, and look
+        // at the next cell
+        if(i >= env->len) {
+            i  -= env->len;
+            env = env->next;
+        } else {
+            printf("argument: %lu\n", i);
+            return env->env[i];
+        }
+    }
+
+    barf();
+    return NULL;
+}
 
 struct closure * alloc_closure(nat arity, code_ptr code) {
     struct closure *c = NULL;
 
     c        = (struct closure *)allocate("closure", sizeof(struct closure));
-    c->env   = (struct value **)allocate("environment",
-            sizeof(struct value *) * arity);
     c->arity = arity;
     c->code  = code;
 
@@ -22,17 +89,11 @@ struct closure * alloc_closure(nat arity, code_ptr code) {
 
 static struct closure * copy_closure(struct closure *c) {
     struct closure *c2 = NULL;
-    struct value **env = NULL;
-    nat i;
 
-    c2 = alloc_closure(c->arity, c->code);
-    c2->size = c->size;
-
-    env = c2->env;
-
-    for(i=0; i < c->size; ++i) {
-        env[i] = c->env[i];
-    }
+    c2        = (struct closure *)allocate("closure", sizeof(struct closure));
+    c2->env   = copy_env(c->env);
+    c2->arity = c->arity;
+    c2->code  = c->code;
 
     return c2;
 }
@@ -75,15 +136,13 @@ struct closure * get_cval(struct value *v) {
     return v->v.cval;
 }
 
-struct value * apply(struct closure *c, struct value **vs, nat size) {
+struct value * apply(struct closure *c, struct value **vs, nat len) {
     nat arity    = c->arity;
-    nat cur_size = c->size;
-    nat new_size = cur_size + size;
-    nat i;
+    nat cur_size = env_size(c->env);
+    nat new_size = cur_size + len;
 
-    struct closure *c2 = NULL;
-    struct value **env = NULL;
-    struct value *res  = NULL;
+    struct closure *c2  = NULL;
+    struct value   *res = NULL;
 
     // make sure there is enough space left for the new arguments
     if(new_size > arity) {
@@ -91,27 +150,33 @@ struct value * apply(struct closure *c, struct value **vs, nat size) {
         exit(1);
     }
 
-    // copy the closure, and fill in the new arguments
-    c2  = copy_closure(c);
-    c2->size = new_size;
-    env = c2->env;
-    for(i=c2->size; i < new_size; ++i) {
-        env[i] = vs[i];
+    // when the environment is empty, this closure is fresh, and doesn't need
+    // to be copied.
+    if(c->env == NULL) {
+        struct env *env = alloc_env();
+        env->len        = len;
+        env->env        = (struct value **)allocate("apply",
+                len * sizeof(struct value *));
+        memcpy(env->env, vs, len*sizeof(struct value *));
+
+        c2      = c;
+        c2->env = env;
+    } else {
+        c2 = copy_closure(c);
+        env_extend(c2->env, vs, len);
     }
 
     // if the new size is equal to the arity, jump to the code pointer
     if(new_size == arity) {
-        return c2->code(c2);
+        res = c2->code(c2->env);
     } else {
-        res = alloc_value(TYPE_CLOSURE);
+        res         = alloc_value(TYPE_CLOSURE);
         res->v.cval = c2;
-
-        return res;
     }
-}
 
-struct value * argument(struct closure *env, nat idx) {
-    return env->env[idx];
+    printf("apply: res = 0x%x\n", res);
+
+    return res;
 }
 
 void barf() {

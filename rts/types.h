@@ -20,13 +20,18 @@ struct value {
     } v;
 };
 
-typedef struct value *(*code_ptr)(struct closure *);
+struct env {
+    struct value **env;
+    nat len;
+    struct env *next;
+};
+
+typedef struct value *(*code_ptr)(struct env *);
 
 struct closure {
     code_ptr code;
     nat arity;
-    nat size;
-    struct value** env;
+    struct env *env;
 };
 
 #endif

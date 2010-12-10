@@ -7,7 +7,7 @@ include $(TOPDIR)/mk/clean.mk
 
 AR		= llvm-ar
 CXX		= clang
-CXXFLAGS	= -emit-llvm -Wall
+CXXFLAGS	= -emit-llvm -Wall -g
 
 SOURCES	:= $(shell find . -name '*.cxx')
 HEADERS	:= $(shell find . -name '*.h')

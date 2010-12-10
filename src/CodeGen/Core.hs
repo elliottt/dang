@@ -1,121 +1,19 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Compile where
+module CodeGen.Core where
 
+import CodeGen.PrimOps
+import CodeGen.Rts
+import CodeGen.Types
 import Interface
 import LambdaLift
 import qualified AST
 
-import Data.Bits (complement,bit)
-import Data.Int (Int32,Int64)
+import Data.Int (Int32)
 import Data.List (genericLength)
 import MonadLib
 import Text.LLVM
-
-
--- RTS Types -------------------------------------------------------------------
-
-type Nat = Int32
-
-
-newtype Closure = Closure (PtrTo Int32)
-
-instance IsType Closure where
-  getType (Closure ptr)= getType ptr
-
-instance HasValues Closure
-
-
-newtype Val = Val (PtrTo Int32)
-
-instance IsType Val where
-  getType (Val ptr) = getType ptr
-
-instance HasValues Val
-
-
-type ValType = Int32
-
-valInt, valClosure :: Value ValType
-valInt     = toValue 0x0
-valClosure = toValue 0x1
-
-
--- RTS Primitives --------------------------------------------------------------
-
-rts_argument :: Fun (Closure -> Nat -> Res Val)
-rts_argument  = Fun
-  { funSym     = "argument"
-  , funLinkage = Nothing
-  }
-
-rts_apply :: Fun (Closure -> PtrTo Val -> Nat -> Res Val)
-rts_apply  = Fun
-  { funSym     = "apply"
-  , funLinkage = Nothing
-  }
-
-rts_alloc_closure :: Fun (Nat -> PtrTo Fn -> Res Closure)
-rts_alloc_closure  = Fun
-  { funSym     = "alloc_closure"
-  , funLinkage = Nothing
-  }
-
-rts_alloc_value :: Fun (ValType -> Res Val)
-rts_alloc_value  = Fun
-  { funSym     = "alloc_value"
-  , funLinkage = Nothing
-  }
-
-rts_set_ival :: Fun (Val -> Int64 -> Res ())
-rts_set_ival  = Fun
-  { funSym     = "set_ival"
-  , funLinkage = Nothing
-  }
-
-rts_set_cval :: Fun (Val -> Closure -> Res ())
-rts_set_cval  = Fun
-  { funSym     = "set_cval"
-  , funLinkage = Nothing
-  }
-
-rts_get_ival :: Fun (Val -> Res Int64)
-rts_get_ival  = Fun
-  { funSym     = "get_ival"
-  , funLinkage = Nothing
-  }
-
-rts_get_cval :: Fun (Val -> Res Closure)
-rts_get_cval  = Fun
-  { funSym     = "get_cval"
-  , funLinkage = Nothing
-  }
-
-rts_get_type :: Fun (Val -> Res Int32)
-rts_get_type  = Fun
-  { funSym     = "get_type"
-  , funLinkage = Nothing
-  }
-
-rts_barf :: Fun (Res ())
-rts_barf  = Fun
-  { funSym     = "barf"
-  , funLinkage = Nothing
-  }
-
-rtsImports :: LLVM ()
-rtsImports  = do
-  declare rts_argument
-  declare rts_apply
-  declare rts_alloc_closure
-  declare rts_alloc_value
-  declare rts_set_ival
-  declare rts_get_ival
-  declare rts_set_cval
-  declare rts_get_cval
-  declare rts_get_type
-  declare rts_barf
 
 
 -- Primitives ------------------------------------------------------------------
@@ -135,8 +33,6 @@ rtsPrims  = do
 
 
 -- Compilation Monad -----------------------------------------------------------
-
-type Fn = Fun (Closure -> Res Val)
 
 declLinkage :: Decl -> Maybe Linkage
 declLinkage d
@@ -168,7 +64,7 @@ compDecl :: Interface -> Fn -> Decl -> LLVM ()
 compDecl i fn d = define fn $ \ rtsEnv ->
   ret =<< compTerm i (declVars d) rtsEnv (declBody d)
 
-compTerm :: Interface -> [String] -> Value Closure -> Term -> BB r (Value Val)
+compTerm :: Interface -> [String] -> Value RtsEnv -> Term -> BB r (Value Val)
 compTerm i env rtsEnv t =
   case t of
     Apply c xs  -> compApp i env rtsEnv c xs
@@ -187,7 +83,7 @@ storeValAt args ix v = do
   store v addr
 
 -- allocate enough space for vs, load them, call apply and return its result
-compApp :: Interface -> [String] -> Value Closure -> Call -> [Term]
+compApp :: Interface -> [String] -> Value RtsEnv -> Call -> [Term]
         -> BB r (Value Val)
 compApp i env rtsEnv c xs = do
   vs   <- mapM (compTerm i env rtsEnv) xs
@@ -197,7 +93,7 @@ compApp i env rtsEnv c xs = do
   clos <- compCall i rtsEnv c
   call rts_apply clos args (toValue len)
 
-compCall :: Interface -> Value Closure -> Call -> BB r (Value Closure)
+compCall :: Interface -> Value RtsEnv -> Call -> BB r (Value Closure)
 compCall i _      (CFun n) = symbolClosure i n
 compCall _ rtsEnv (CArg i) = argumentClosure rtsEnv i
 
@@ -209,7 +105,7 @@ symbolClosure i n = do
 
 -- | Pull a closure out of the environment, calling rts_barf if the value isn't
 -- actually a closure.
-argumentClosure :: Value Closure -> Nat -> BB r (Value Closure)
+argumentClosure :: Value RtsEnv -> Nat -> BB r (Value Closure)
 argumentClosure rtsEnv i = do
   val <- call rts_argument rtsEnv (toValue i)
   ty  <- call rts_get_type val
@@ -225,7 +121,7 @@ argumentClosure rtsEnv i = do
 
 -- This requires a mechanism that isn't really present yet... A local
 -- environment.
-compLet :: Interface -> [String] -> Value Closure -> [Decl] -> Term
+compLet :: Interface -> [String] -> Value RtsEnv -> [Decl] -> Term
         -> BB r (Value Val)
 compLet = error "compLet"
 --compLet i env rtsEnv ds e = error "compLet"
@@ -238,7 +134,7 @@ compSymbol i s = do
   call_ rts_set_cval cval clos
   return cval
 
-compArgument :: Value Closure -> Int32 -> BB r (Value Val)
+compArgument :: Value RtsEnv -> Int32 -> BB r (Value Val)
 compArgument rtsEnv i = call rts_argument rtsEnv (toValue i)
 
 compLit :: AST.Literal -> BB r (Value Val)
@@ -247,7 +143,7 @@ compLit (AST.LInt i) = do
   call_ rts_set_ival ival (toValue i)
   return ival
 
-compPrim :: Interface -> [String] -> Value Closure -> String -> Int
+compPrim :: Interface -> [String] -> Value RtsEnv -> String -> Int
          -> [Value Val] -> BB r (Value Val)
 compPrim i env rtsEnv n arity ts =
   case arity of
@@ -267,36 +163,3 @@ compPrim i env rtsEnv n arity ts =
         _            -> fail ("unknown primitive: " ++ n)
 
     _ -> fail ("unknown primitive: " ++ n)
-
--- | Lift an Int64 primitive over Vals.
-intPrimBinop :: (Value Int64 -> Value Int64 -> BB r (Value Int64))
-             -> Value Val -> Value Val -> BB r (Value Val)
-intPrimBinop k a b = do
-  aI  <- call rts_get_ival a
-  bI  <- call rts_get_ival b
-  res <- k aI bI
-  val <- call rts_alloc_value valInt
-  call_ rts_set_ival val res
-  return val
-
-primAbs :: Value Val -> BB r (Value Val)
-primAbs a = do
-  aI <- call rts_get_ival a
-
-  pos <- newLabel
-  neg <- newLabel
-  out <- newLabel
-  b   <- icmp Ilt aI (toValue 0)
-  condBr b neg pos
-
-  posOut <- defineLabel pos $ do
-    br out
-    return a
-
-  negOut <- defineLabel neg $ do
-    val <- call rts_alloc_value valInt
-    call_ rts_set_ival val =<< sub (toValue 0) aI
-    br out
-    return val
-
-  defineLabel_ out (phi negOut posOut)

@@ -5,15 +5,17 @@
 #include "rts.h"
 #include "types.h"
 
-EXPORT struct value * _cvmain (struct closure *);
+EXPORT struct value * _cvmain (struct env *);
 
 int main() {
-    struct closure *env = NULL;
-    struct value   *res = NULL;
+    struct value *res = NULL;
 
     // main is a zero-argument function
-    env = alloc_closure(0, _cvmain);
-    res = _cvmain(env);
+    res = _cvmain(NULL);
+
+    if(!res) {
+        printf("res = NULL?\n");
+    }
 
     switch(res->type) {
         case TYPE_INT:
@@ -29,7 +31,6 @@ int main() {
             break;
     }
 
-    free_closure(env);
     free_value(res);
 
     return 0;

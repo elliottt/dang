@@ -3,8 +3,12 @@
 
 #include "types.h"
 
+// environments
+EXPORT struct value * argument(struct env *, nat);
+
 EXPORT struct closure * alloc_closure(nat arity, code_ptr);
 EXPORT void free_closure(struct closure *);
+EXPORT struct value * argument(struct env *, nat i);
 
 EXPORT struct value * alloc_value(value_t);
 EXPORT void free_value(struct value *);
@@ -15,7 +19,6 @@ EXPORT s64 get_ival(struct value *);
 EXPORT struct closure * get_cval(struct value *);
 
 EXPORT struct value * apply(struct closure *, struct value **, nat);
-EXPORT struct value * argument(struct closure *, nat i);
 
 EXPORT void barf();
 
