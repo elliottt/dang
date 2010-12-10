@@ -56,9 +56,9 @@ rts_get_cval  = Fun
   , funLinkage = Nothing
   }
 
-rts_get_type :: Fun (Val -> Res Int32)
-rts_get_type  = Fun
-  { funSym     = "get_type"
+rts_value_type :: Fun (Val -> Res Int32)
+rts_value_type  = Fun
+  { funSym     = "value_type"
   , funLinkage = Nothing
   }
 
@@ -78,7 +78,7 @@ rtsImports  = do
   declare rts_get_ival
   declare rts_set_cval
   declare rts_get_cval
-  declare rts_get_type
+  declare rts_value_type
   declare rts_barf
 
 

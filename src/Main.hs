@@ -88,5 +88,12 @@ test7  =
   [ AST.Decl "_cvmain" [] True (abs (1 + (negate (1 * 3))))
   ]
 
+test8 :: Test
+test8  =
+  [ AST.Decl "_cvmain" []    True (AST.App (AST.Var "f") [AST.Var "id"])
+  , AST.Decl "f"       ["g"] True (AST.App (AST.Var "g") [0])
+  , idD
+  ]
+
 main :: IO ()
 main  = return ()

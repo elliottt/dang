@@ -108,7 +108,7 @@ symbolClosure i n = do
 argumentClosure :: Value RtsEnv -> Nat -> BB r (Value Closure)
 argumentClosure rtsEnv i = do
   val <- call rts_argument rtsEnv (toValue i)
-  ty  <- call rts_get_type val
+  ty  <- call rts_value_type val
   cmp <- icmp Ieq ty valClosure
 
   exit <- newLabel
