@@ -20,10 +20,14 @@ import Text.LLVM
 -- Compilation Monad -----------------------------------------------------------
 
 declFunSpec :: Decl -> FunSpec
-declFunSpec d = setGC   (GC "ll") (linkage emptyFunSpec)
-  where
-  linkage | declExported d = setLinkage Private
-          | otherwise      = id
+declFunSpec d = emptyFunSpec
+  { specLinkage = declLinkage d
+  }
+
+declLinkage :: Decl -> Maybe Linkage
+declLinkage d = do
+  guard (not (declExported d))
+  return Private
 
 lookupFn :: Monad m => String -> Env -> m (Nat,Fn)
 lookupFn n env =
