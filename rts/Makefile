@@ -5,10 +5,6 @@ include $(TOPDIR)/mk/verbose.mk
 include $(TOPDIR)/mk/build.mk
 include $(TOPDIR)/mk/clean.mk
 
-AR		= llvm-ar
-CXX		= clang
-CXXFLAGS	= -emit-llvm -Wall -g
-
 SOURCES	:= $(shell find . -name '*.cxx')
 HEADERS	:= $(shell find . -name '*.h')
 OBJECTS	:= $(SOURCES:.cxx=.o)
@@ -17,15 +13,15 @@ OBJECTS	:= $(SOURCES:.cxx=.o)
 all: librts.a
 
 librts.a: $(OBJECTS)
-	$(call cmd,ar) rcu $@ $^
+	$(call cmd,ar)
 
 %.o: %.cxx
 	$(call cmd,cxx_o_cxx)
 
--include .depend
+-include $(CURDIR)/.depend
 
-.depend: $(SOURCES) $(HEADERS)
+$(CURDIR)/.depend: $(SOURCES) $(HEADERS)
 	$(Q) $(CXX) -M $^ > $@
 
 clean:
-	$(Q)$(RM) -f librts.a $(OBJECTS)
+	$(call cmd,clean) $(RM) -f librts.a $(OBJECTS)

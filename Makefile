@@ -1,38 +1,44 @@
 
-TOPDIR	:= .
+TOPDIR := .
+
+TARGET := test
+
+all: $(TARGET) librts.a
 
 include mk/verbose.mk
 include mk/build.mk
 include mk/clean.mk
 
-SLASH_MODS	:= $(subst src/,,$(basename $(shell find src -name '*.hs')))
-LIBS		:= base monadLib llvm-pretty pretty containers GraphSCC
+LIBS := base monadLib llvm-pretty pretty containers GraphSCC bytestring \
+	utf8-string
 
-HS_SOURCES	:= $(addprefix src/,$(addsuffix .hs,$(SLASH_MODS)))
-HS_OBJECTS	:= $(addprefix $(GHC_DIR)/,$(addsuffix .o,$(SLASH_MODS)))
-HS_LIBS		:= $(addprefix -package ,$(LIBS))
+HAPPY_MODS := $(subst src/,,$(basename $(shell find src -name '*.y')))
+ALEX_MODS  := $(subst src/,,$(basename $(shell find src -name '*.x')))
+SLASH_MODS := $(subst src/,,$(basename $(shell find src -name '*.hs')))
 
-TARGET		:= test
+HS_SOURCES := $(addprefix src/,$(addsuffix .hs,$(SLASH_MODS))) \
+              $(addprefix ghc/,$(addsuffix .hs,$(ALEX_MODS) $(HAPPY_MODS)))
+HS_OBJECTS := $(addprefix $(GHC_DIR)/, \
+                $(addsuffix .o,$(SLASH_MODS) $(ALEX_MODS) $(HAPPY_MODS)))
+HS_LIBS    := $(addprefix -package ,$(LIBS))
 
-all: $(TARGET) rts
+$(eval $(foreach mod,$(ALEX_MODS),$(call alex_target,$(mod))))
+$(eval $(foreach mod,$(HAPPY_MODS),$(call happy_target,$(mod))))
 
-rts:
-	$(MAKE) -C rts all
+librts.a:
+	$(call cmd,make_rec) -C rts librts.a
 
 $(TARGET): $(HS_OBJECTS)
 	$(call cmd,ghc_ld) $(HS_LIBS)
 
-$(GHC_DIR):
-	$(Q) mkdir $(GHC_DIR)
+ghc/%.o : src/%.hs
+	$(call cmd,ghc_o_hs)
 
 -include $(GHC_DIR)/depend
 
-$(GHC_DIR)/depend: $(GHC_DIR)
+$(GHC_DIR)/depend: $(GHC_DIR) $(HS_SOURCES)
 	$(Q) $(GHC) -M -dep-makefile $@ $(HS_SOURCES)
 
-$(GHC_DIR)/%.o: src/%.hs
-	$(call cmd,ghc_o_hs)
-
 clean:
-	$(call cmd,RM) -r ghc
-	$(call cmd,RM) $(TARGET)
+	$(call cmd,clean) -r ghc $(TARGET)
+	$(call cmd,make_rec) -C rts clean
