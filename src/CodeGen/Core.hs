@@ -3,6 +3,7 @@
 
 module CodeGen.Core where
 
+import CodeGen.Env
 import CodeGen.PrimOps
 import CodeGen.Rts
 import CodeGen.Types
@@ -39,9 +40,9 @@ declLinkage d
   | declExported d = Nothing
   | otherwise      = Just Private
 
-lookupFn :: Monad m => String -> Interface -> m (Nat,Fn)
-lookupFn n i =
-  case findFunDecl n i of
+lookupFn :: Monad m => String -> Env -> m (Nat,Fn)
+lookupFn n env =
+  case envFunDecl n env of
     Nothing -> fail ("lookupFn: " ++ n)
     Just f  -> return (funArity f, fn)
       where
@@ -62,17 +63,18 @@ compModule ds = do
 
 compDecl :: Interface -> Fn -> Decl -> LLVM ()
 compDecl i fn d = define fn $ \ rtsEnv ->
-  ret =<< compTerm i (declVars d) rtsEnv (declBody d)
+   ret =<< compTerm (mkEnv i rtsEnv (declVars d)) (declBody d)
 
-compTerm :: Interface -> [String] -> Value RtsEnv -> Term -> BB r (Value Val)
-compTerm i env rtsEnv t =
+compTerm :: Env -> Term -> BB r (Value Val)
+compTerm env t =
   case t of
-    Apply c xs  -> compApp i env rtsEnv c xs
-    Let ds e    -> compLet i env rtsEnv ds e
-    Symbol s    -> compSymbol i s
-    Argument ix -> compArgument rtsEnv ix
+    Apply c xs  -> compApp env c xs
+    Let ds e    -> compLet env ds e
+    Symbol s    -> compSymbol env s
+    Var n       -> compVar env n
+    Argument ix -> argument env ix
     Lit l       -> compLit l
-    Prim n a as -> compPrim i env rtsEnv n a =<< mapM (compTerm i env rtsEnv) as
+    Prim n a as -> compPrim env n a =<< mapM (compTerm env) as
 
 allocValBuffer :: Int32 -> BB r (Value (PtrTo Val))
 allocValBuffer len = alloca (toValue len) Nothing
@@ -83,31 +85,35 @@ storeValAt args ix v = do
   store v addr
 
 -- allocate enough space for vs, load them, call apply and return its result
-compApp :: Interface -> [String] -> Value RtsEnv -> Call -> [Term]
-        -> BB r (Value Val)
-compApp i env rtsEnv c xs = do
-  vs   <- mapM (compTerm i env rtsEnv) xs
+compApp :: Env -> Call -> [Term] -> BB r (Value Val)
+compApp env c xs = do
+  vs   <- mapM (compTerm env) xs
   let len = genericLength vs
   args <- allocValBuffer len
   zipWithM_ (storeValAt args) [0..] vs
-  clos <- compCall i rtsEnv c
+  clos <- compCall env c
   call rts_apply clos args (toValue len)
 
-compCall :: Interface -> Value RtsEnv -> Call -> BB r (Value Closure)
-compCall i _      (CFun n) = symbolClosure i n
-compCall _ rtsEnv (CArg i) = argumentClosure rtsEnv i
+compCall :: Env -> Call -> BB r (Value Closure)
+compCall env (CFun n) = symbolClosure env n
+compCall env (CArg i) = argumentClosure env i
 
 -- | Allocate a new closure that uses the given function symbol.
-symbolClosure :: Interface -> String -> BB r (Value Closure)
-symbolClosure i n = do
-  (arity,fn) <- lookupFn n i
+symbolClosure :: Env -> String -> BB r (Value Closure)
+symbolClosure env n = do
+  (arity,fn) <- lookupFn n env
   call rts_alloc_closure (toValue arity) (funAddr fn)
+
+-- | Interestingly, if this is the only entry point to argument, no dynamically
+-- generated argument indexes can ever be used.
+argument :: Env -> Nat -> BB r (Value Val)
+argument env = call rts_argument (envClosure env) . toValue
 
 -- | Pull a closure out of the environment, calling rts_barf if the value isn't
 -- actually a closure.
-argumentClosure :: Value RtsEnv -> Nat -> BB r (Value Closure)
-argumentClosure rtsEnv i = do
-  val <- call rts_argument rtsEnv (toValue i)
+argumentClosure :: Env -> Nat -> BB r (Value Closure)
+argumentClosure env i = do
+  val <- argument env i
   ty  <- call rts_value_type val
   cmp <- icmp Ieq ty valClosure
 
@@ -119,23 +125,33 @@ argumentClosure rtsEnv i = do
 
   return clos
 
--- This requires a mechanism that isn't really present yet... A local
--- environment.
-compLet :: Interface -> [String] -> Value RtsEnv -> [Decl] -> Term
-        -> BB r (Value Val)
-compLet = error "compLet"
---compLet i env rtsEnv ds e = error "compLet"
+-- | Compile non-recursive let-declarations.
+compLet :: Env -> [LetDecl] -> Term -> BB r (Value Val)
+compLet env0 ds body = flip compTerm body =<< foldM stepDecl env0 ds
+  where
+  stepDecl env d = do
+    (n,v) <- compLetDecl env0 d
+    return (addLocal n v env)
 
-compSymbol :: Interface -> String -> BB r (Value Val)
-compSymbol i s = do
-  (n,fn) <- lookupFn s i
+-- | Compile a let-declaration.
+compLetDecl :: Env -> LetDecl -> BB r (String,Value Val)
+compLetDecl env d = name `fmap` compTerm env (letBody d)
+  where
+  name x = (letName d, x)
+
+compSymbol :: Env -> String -> BB r (Value Val)
+compSymbol env s = do
+  (n,fn) <- lookupFn s env
   clos   <- call rts_alloc_closure (toValue n) (funAddr fn)
   cval   <- call rts_alloc_value valClosure
   call_ rts_set_cval cval clos
   return cval
 
-compArgument :: Value RtsEnv -> Int32 -> BB r (Value Val)
-compArgument rtsEnv i = call rts_argument rtsEnv (toValue i)
+compVar :: Env -> String -> BB r (Value Val)
+compVar env n =
+  case lookupLocal n env of
+    Nothing -> fail ("Unknown local variable: " ++ n)
+    Just v  -> return v
 
 compLit :: AST.Literal -> BB r (Value Val)
 compLit (AST.LInt i) = do
@@ -143,9 +159,8 @@ compLit (AST.LInt i) = do
   call_ rts_set_ival ival (toValue i)
   return ival
 
-compPrim :: Interface -> [String] -> Value RtsEnv -> String -> Int
-         -> [Value Val] -> BB r (Value Val)
-compPrim i env rtsEnv n arity ts =
+compPrim :: Env -> String -> Int -> [Value Val] -> BB r (Value Val)
+compPrim env n arity ts =
   case arity of
     1 -> do
       let [a] = ts

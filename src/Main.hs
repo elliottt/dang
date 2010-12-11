@@ -43,6 +43,9 @@ idD  = AST.Decl "id" ["x"] True (AST.Var "x")
 constD :: AST.Decl
 constD  = AST.Decl "const" ["x", "y"] True (AST.Var "x")
 
+oneD :: AST.Decl
+oneD  = AST.Decl "one" [] False 1
+
 type Test = [AST.Decl]
 
 test1 :: Test
@@ -93,6 +96,12 @@ test8  =
   [ AST.Decl "_cvmain" []    True (AST.App (AST.Var "f") [AST.Var "id"])
   , AST.Decl "f"       ["g"] True (AST.App (AST.Var "g") [0])
   , idD
+  ]
+
+test9 :: Test
+test9  =
+  [ AST.Decl "_cvmain" [] True
+    $ AST.Let [idD,oneD] $ AST.apply (AST.Var "id") [AST.Var "one"]
   ]
 
 main :: IO ()

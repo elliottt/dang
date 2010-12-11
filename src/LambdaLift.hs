@@ -14,6 +14,7 @@ module LambdaLift (
 
     -- * Lambda Lifted AST
   , Decl(..)
+  , LetDecl(..)
   , Call(..)
   , Term(..)
 
@@ -38,6 +39,9 @@ import qualified Data.Set as Set
 
 type Subst = Map.Map AST.Var Term
 
+-- | The Lambda-lifting monad transformer.
+-- It is a reader for bound variables, state for a name substitution, and a
+-- writer for lifted declarations.
 newtype LL m a = LL
   { unLL :: ReaderT (Set.Set AST.Var) (StateT Subst (WriterT [Decl] m)) a
   } deriving (Functor,Applicative,Monad)
@@ -122,6 +126,15 @@ notExported d = d { declExported = False }
 hasArguments :: Decl -> Bool
 hasArguments  = not . null . declVars
 
+data LetDecl = LetDecl
+  { letName :: String
+  , letBody :: Term
+  } deriving Show
+
+instance Pretty LetDecl where
+  pp     _ d  = text (letName d) <+> char '=' <+> pp 0 (letBody d)
+  ppList _ ds = braces (semis (map (pp 0) ds))
+
 data Call
   = CFun  String
   | CArg  Int32
@@ -133,8 +146,9 @@ instance Pretty Call where
 
 data Term
   = Apply Call [Term]
-  | Let [Decl] Term
+  | Let [LetDecl] Term
   | Symbol String
+  | Var String
   | Argument Int32
   | Lit AST.Literal
   | Prim String Int [Term]
@@ -147,6 +161,7 @@ instance Pretty Term where
                      $ text "let" <+> braces (ppList 0 ds) <+> text "in"
                    <+> pp 0 t
   pp p (Symbol s)    = optParens (p > 0) (text "alloc_closure" <+> text s)
+  pp p (Var n)       = text n
   pp _ (Argument i)  = char '$' <> ppr i
   pp _ (Lit l)       = pp 0 l
   pp p (Prim n a as) = optParens (p > 0)
@@ -208,8 +223,20 @@ llDecl d = do
     , declBody     = b'
     }
 
+-- | Translate from a top-level declaration to a let declaration, which
+-- shouldn't introduce new variables to its body.
+llLetDecl :: ExceptionM m SomeError => Decl -> LL m LetDecl
+llLetDecl d = do
+  unless (null (declVars d)) (raiseLL "Function remained in let-decls")
+  let n = declName d
+  extend [(n,Var n)]
+  return LetDecl
+    { letName = n
+    , letBody = declBody d
+    }
+
 -- | Lambda lift terms.  Abstractions will cause an error here, as the invariant
--- for lambda-lifting is that they have been named in a let.
+-- for lambda-lifting is that they have been named.
 llTerm :: ExceptionM m SomeError => [AST.Var] -> AST.Term -> LL m Term
 llTerm args t =
   case t of
@@ -222,10 +249,11 @@ llTerm args t =
       ds' <- llDecls ds
       let (as,bs) = partition hasArguments ds'
       emits as
+      ls <- mapM llLetDecl bs
       e' <- llTerm args e
       if null bs
          then return e'
-         else return (Let bs e')
+         else return (Let ls e')
 
 llApp :: ExceptionM m SomeError
       => [AST.Var] -> AST.Term -> [AST.Term] -> LL m Term
