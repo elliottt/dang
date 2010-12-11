@@ -7,8 +7,10 @@ GHC_DIR := ghc
 $(GHC_DIR):
 	$(Q) mkdir -p $@
 
-GHC                = ghc -hidir $(GHC_DIR) -odir $(GHC_DIR) -i$(GHC_DIR)
-GHC_FLAGS          = -Wall
+GHC       = ghc -hidir $(GHC_DIR) -odir $(GHC_DIR) -i$(GHC_DIR)
+GHC_FLAGS = -Wall
+
+cmd_ghci = $(GHC) --interactive -v0
 
 cmd_ghc_o_hs       = $(GHC) $(GHC_FLAGS) -c $<
 quiet_cmd_ghc_o_hs = GHC     $@
@@ -64,5 +66,4 @@ quiet_cmd_ar = AR      $@
 
 # Make
 
-cmd_make_rec       = $(MAKE) --no-print-directory
-quiet_cmd_make_rec =
+cmd_make_rec = $(MAKE) --no-print-directory

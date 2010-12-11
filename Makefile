@@ -31,6 +31,9 @@ librts.a:
 $(TARGET): $(HS_OBJECTS)
 	$(call cmd,ghc_ld) $(HS_LIBS)
 
+ghci: $(HS_OBJECTS)
+	$(call cmd,ghci) $(HS_LIBS) -isrc
+
 ghc/%.o : src/%.hs
 	$(call cmd,ghc_o_hs)
 
