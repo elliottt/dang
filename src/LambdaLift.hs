@@ -161,7 +161,7 @@ instance Pretty Term where
                      $ text "let" <+> braces (ppList 0 ds) <+> text "in"
                    <+> pp 0 t
   pp p (Symbol s)    = optParens (p > 0) (text "alloc_closure" <+> text s)
-  pp p (Var n)       = text n
+  pp _ (Var n)       = text n
   pp _ (Argument i)  = char '$' <> ppr i
   pp _ (Lit l)       = pp 0 l
   pp p (Prim n a as) = optParens (p > 0)

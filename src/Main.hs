@@ -33,7 +33,6 @@ testComp ds = do
     Left se        -> print (se :: SomeError)
     Right (ds',ls) -> print $ snd $ runLLVM $ do
       rtsImports
-      rtsPrims
       compModule (ds' ++ ls)
 
 

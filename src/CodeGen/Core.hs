@@ -17,44 +17,24 @@ import MonadLib
 import Text.LLVM
 
 
--- Primitives ------------------------------------------------------------------
-
-type PrimUnary = Fun (Val -> Res Val)
-
-prim_abs_i :: PrimUnary
-prim_abs_i  = Fun "prim_abs_i" Nothing
-
-prim_signum_i :: PrimUnary
-prim_signum_i  = Fun "prim_signum_i" Nothing
-
-rtsPrims :: LLVM ()
-rtsPrims  = do
-  declare prim_abs_i
-  declare prim_signum_i
-
-
 -- Compilation Monad -----------------------------------------------------------
 
-declLinkage :: Decl -> Maybe Linkage
-declLinkage d
-  | declExported d = Nothing
-  | otherwise      = Just Private
+declFunSpec :: Decl -> FunSpec
+declFunSpec d = setGC   (GC "ll") (linkage emptyFunSpec)
+  where
+  linkage | declExported d = setLinkage Private
+          | otherwise      = id
 
 lookupFn :: Monad m => String -> Env -> m (Nat,Fn)
 lookupFn n env =
   case envFunDecl n env of
     Nothing -> fail ("lookupFn: " ++ n)
-    Just f  -> return (funArity f, fn)
-      where
-      fn = Fun
-        { funSym     = funSymbol f
-        , funLinkage = Nothing
-        }
+    Just f  -> return (funArity f, simpleFun (funSymbol f))
 
 compModule :: [Decl] -> LLVM Interface
 compModule ds = do
   let step (fns,i) d = do
-        fn <- newNamedFun (declName d) (declLinkage d)
+        let fn  = Fun (declName d) (declFunSpec d)
         let sym = FunDecl (funSym fn) (genericLength (declVars d))
         return (fn:fns, addFunDecl (declName d) sym i)
   (fns0,i) <- foldM step ([],emptyInterface) ds
@@ -74,7 +54,7 @@ compTerm env t =
     Var n       -> compVar env n
     Argument ix -> argument env ix
     Lit l       -> compLit l
-    Prim n a as -> compPrim env n a =<< mapM (compTerm env) as
+    Prim n a as -> compPrim n a =<< mapM (compTerm env) as
 
 allocValBuffer :: Int32 -> BB r (Value (PtrTo Val))
 allocValBuffer len = alloca (toValue len) Nothing
@@ -159,14 +139,14 @@ compLit (AST.LInt i) = do
   call_ rts_set_ival ival (toValue i)
   return ival
 
-compPrim :: Env -> String -> Int -> [Value Val] -> BB r (Value Val)
-compPrim env n arity ts =
+compPrim :: String -> Int -> [Value Val] -> BB r (Value Val)
+compPrim n arity ts =
   case arity of
     1 -> do
       let [a] = ts
       case n of
         "prim_abs_i"    -> primAbs a
-        "prim_signum_i" -> call prim_signum_i a
+        "prim_signum_i" -> error "prim_signum_i"
         _            -> fail ("unknown primitive: " ++ n)
 
     2 -> do

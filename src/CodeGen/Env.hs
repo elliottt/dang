@@ -3,7 +3,6 @@ module CodeGen.Env where
 import CodeGen.Types
 import Interface
 
-import Control.Monad (msum)
 import Text.LLVM (Value)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
