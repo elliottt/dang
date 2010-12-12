@@ -1,11 +1,11 @@
 {
 {-# OPTIONS_GHC -w #-}
 
-module Parser.Parser where
+module Syntax.Parser where
 
-import AST
-import Parser.Lexer
-import Parser.ParserCore
+import Syntax.AST
+import Syntax.Lexer
+import Syntax.ParserCore
 
 import MonadLib
 import qualified Codec.Binary.UTF8.Generic as UTF8

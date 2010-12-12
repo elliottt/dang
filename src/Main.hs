@@ -5,7 +5,7 @@ import Error
 import LambdaLift
 import Pretty
 import Rename
-import qualified AST
+import qualified Syntax.AST as AST
 
 import MonadLib
 import Text.LLVM

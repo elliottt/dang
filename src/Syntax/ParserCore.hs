@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Parser.ParserCore where
+module Syntax.ParserCore where
 
 import Control.Applicative (Applicative)
 import Data.Int (Int64)

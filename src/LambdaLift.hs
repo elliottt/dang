@@ -25,7 +25,7 @@ module LambdaLift (
 import Error
 import Pretty
 import Prim
-import qualified AST
+import qualified Syntax.AST as AST
 
 import Control.Applicative (Applicative(..))
 import Data.Graph (SCC(..))

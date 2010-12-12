@@ -8,7 +8,7 @@ module Rename (
   , renameDecls
   ) where
 
-import AST
+import Syntax.AST
 
 import Control.Applicative (Applicative(..),(<$>))
 import MonadLib

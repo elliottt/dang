@@ -9,7 +9,7 @@ import CodeGen.Rts
 import CodeGen.Types
 import Interface
 import LambdaLift
-import qualified AST
+import qualified Syntax.AST as AST
 
 import Data.Int (Int32)
 import Data.List (genericLength)
