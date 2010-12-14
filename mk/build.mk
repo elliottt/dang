@@ -26,7 +26,7 @@ quiet_cmd_ghc_ld   = LD      $@
 ALEX      = alex
 ALEXFLAGS =
 
-cmd_alex_hs_x       = $(ALEX) $(ALEXFLAGS) -o $@ $<
+cmd_alex_hs_x       = $(ALEX) $(ALEXFLAGS) -i -o $@ $<
 quiet_cmd_alex_hs_x = ALEX    $@
 
 define alex_target
@@ -38,7 +38,7 @@ endef
 HAPPY      = happy
 HAPPYFLAGS =
 
-cmd_happy_hs_y       = $(HAPPY) $(HAPPYFLAGS) -o $@ $<
+cmd_happy_hs_y       = $(HAPPY) $(HAPPYFLAGS) -i -o $@ $<
 quiet_cmd_happy_hs_y = HAPPY   $@
 
 define happy_target
