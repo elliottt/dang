@@ -5,10 +5,13 @@ import Error
 import LambdaLift
 import Pretty
 import Rename
-import qualified Syntax.AST as AST
+import Syntax.Parser
+import Syntax.ParserCore
+import qualified Syntax.AST        as AST
 
 import MonadLib
 import Text.LLVM
+import qualified Data.ByteString.UTF8 as UTF8
 
 type Base = ExceptionT SomeError IO
 
@@ -34,6 +37,12 @@ testComp ds = do
     Right (ds',ls) -> print $ snd $ runLLVM $ do
       rtsImports
       compModule (ds' ++ ls)
+
+testParse :: String -> IO ()
+testParse str =
+  case runParser "<interactive>" (UTF8.fromString str) parseFunBinds of
+    Left err -> print err
+    Right a  -> putStrLn (pretty a)
 
 
 idD :: AST.Decl

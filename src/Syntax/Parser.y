@@ -1,6 +1,8 @@
 {
 {-# OPTIONS_GHC -w #-}
 
+-- vim: filetype=haskell
+
 module Syntax.Parser where
 
 import Syntax.AST
