@@ -3,5 +3,6 @@ ghc
 *.o
 *.swp
 *.a
-test
 .depend
+*.info
+dang
