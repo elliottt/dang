@@ -13,10 +13,10 @@ data SomeError = forall e. (Show e, Typeable e) => SomeError e
 instance Show SomeError where
   showsPrec i (SomeError se) = parens body
     where
-    parens b | i > 1     = showChar '(' . b . showChar ')'
+    parens b | i > 10    = showChar '(' . b . showChar ')'
              | otherwise = b
 
-    body = showString "SomeError " . showsPrec 1 se
+    body = showString "SomeError " . showsPrec 11 se
 
 
 class (Show e, Typeable e) => Error e where
@@ -25,6 +25,10 @@ class (Show e, Typeable e) => Error e where
 
   fromSomeError :: SomeError -> Maybe e
   fromSomeError (SomeError e) = cast e
+
+liftEither :: ExceptionM m e => Either e a -> m a
+liftEither (Left e)  = raise e
+liftEither (Right a) = return a
 
 raiseE :: (ExceptionM m SomeError, Error e) => e -> m a
 raiseE  = raise . toSomeError
