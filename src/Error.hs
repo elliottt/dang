@@ -43,6 +43,13 @@ catchE m k = do
         Nothing -> raise se
         Just e' -> k e'
 
+catchJustE :: (RunExceptionM m SomeError, Error e)
+           => (e -> Maybe b) -> m a -> (b -> m a) -> m a
+catchJustE p m h = catchE m $ \ e ->
+  case p e of
+    Nothing -> raiseE e
+    Just b  -> h b
+
 onError :: RunExceptionM m SomeError => m a -> m b -> m a
 onError a b = do
   e <- try a

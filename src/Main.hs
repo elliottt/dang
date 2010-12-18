@@ -1,7 +1,9 @@
 module Main where
 
 import CodeGen
+import Dang.IO
 import Dang.Monad
+import Error
 import LambdaLift
 import Pretty
 import Rename
@@ -17,9 +19,15 @@ import qualified Data.ByteString.UTF8 as UTF8
 main :: IO ()
 main  = runDang $ do
   [file] <- inBase getArgs
-  source <- loadFile file
-  decls  <- parseSource file source
+  decls  <- loadSource file
   inBase . print . compile =<< lambdaLift (rename decls)
+
+loadSource :: FilePath -> Dang [AST.Decl]
+loadSource path = parseSource path =<< onFileNotFound (loadFile path) handler
+  where
+  handler x p = do
+    inBase (putStrLn ("Unable to open file: " ++ p))
+    raiseE x
 
 parseSource :: FilePath -> UTF8.ByteString -> Dang [AST.Decl]
 parseSource path source =

@@ -9,12 +9,8 @@ import Error
 import Control.Applicative (Applicative)
 import Data.Typeable (Typeable)
 import MonadLib
-import qualified Control.Exception as E
-import qualified Data.ByteString   as S
 
-data DangError
-  = DangError String
-  | IOError String
+data DangError = DangError String
     deriving (Show,Typeable)
 
 instance Error DangError
@@ -45,15 +41,6 @@ runDang (Dang m) = do
     Right a -> return a
 
 -- Utilities -------------------------------------------------------------------
-
--- | Lift IOExceptions into the DangError type.
-handleIOE :: E.IOException -> IO (Either SomeError a)
-handleIOE e = return (Left (toSomeError (IOError (show e))))
-
--- | Read in a file as a strict ByteString.
-loadFile :: FilePath -> Dang S.ByteString
-loadFile path =
-  liftEither =<< inBase (fmap Right (S.readFile path) `E.catch` handleIOE)
 
 raiseDang :: String -> Dang a
 raiseDang  = raiseE . DangError
