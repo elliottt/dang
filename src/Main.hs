@@ -3,7 +3,6 @@ module Main where
 import CodeGen
 import Dang.IO
 import Dang.Monad
-import Error
 import LambdaLift
 import Pretty
 import Rename
@@ -32,7 +31,7 @@ loadSource path = parseSource path =<< onFileNotFound (loadFile path) handler
 parseSource :: FilePath -> UTF8.ByteString -> Dang [AST.Decl]
 parseSource path source =
   case runParser path source parseFunBinds of
-    Left err -> raiseDang (show err)
+    Left err -> fail (show err)
     Right ds -> return ds
 
 rename :: [AST.Decl] -> [AST.Decl]
