@@ -15,7 +15,8 @@ $letter      = [a-zA-Z]
 $lowerletter = [a-z]
 $capletter   = [A-Z]
 
-@alphanumsymident = $lowerletter [$letter $digit [_ \! \? \']]*
+@conident = $capletter [$letter $digit [_ \! \? \']]*
+@symident = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
 
 :-
 
@@ -42,9 +43,14 @@ $white+         ;
 "{"             { reserved }
 "}"             { reserved }
 ";"             { reserved }
+"."             { reserved }
 
-@alphanumsymident { emitS TIdent        }
-$digit+           { emitS (TInt . read) }
+"module"        { reserved }
+"where"         { reserved }
+
+@conident       { emitS TConIdent     }
+@symident       { emitS TSymIdent     }
+$digit+         { emitS (TInt . read) }
 }
 
 {

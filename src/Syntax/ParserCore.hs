@@ -35,7 +35,8 @@ movePos (Position a line col path) c =
 
 data Token
   = TReserved String
-  | TIdent String
+  | TConIdent String
+  | TSymIdent String
   | TInt Int64
   | TEof
     deriving (Eq,Show)

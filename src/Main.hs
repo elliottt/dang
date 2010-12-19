@@ -18,28 +18,28 @@ import qualified Data.ByteString.UTF8 as UTF8
 main :: IO ()
 main  = runDang $ do
   [file] <- inBase getArgs
-  decls  <- loadSource file
+  decls  <- loadModule file
   inBase . print . compile =<< lambdaLift (rename decls)
 
-loadSource :: FilePath -> Dang [AST.Decl]
-loadSource path = parseSource path =<< onFileNotFound (loadFile path) handler
+loadModule :: FilePath -> Dang AST.Module
+loadModule path = parseSource path =<< onFileNotFound (loadFile path) handler
   where
   handler x p = do
     inBase (putStrLn ("Unable to open file: " ++ p))
     raiseE x
 
-parseSource :: FilePath -> UTF8.ByteString -> Dang [AST.Decl]
+parseSource :: FilePath -> UTF8.ByteString -> Dang AST.Module
 parseSource path source =
-  case runParser path source parseFunBinds of
-    Left err -> fail (show err)
-    Right ds -> return ds
+  case runParser path source parseModule of
+    Left err -> inBase (putStrLn (show err)) >> fail "Parse error"
+    Right m  -> return m
 
-rename :: [AST.Decl] -> [AST.Decl]
-rename  = runLift . runRename [] . renameDecls
+rename :: AST.Module -> AST.Module
+rename  = runLift . runRename [] . renameModule
 
-lambdaLift :: [AST.Decl] -> Dang [Decl]
+lambdaLift :: AST.Module -> Dang [Decl]
 lambdaLift ds = do
-  (as,bs) <- runLL (llDecls ds)
+  (as,bs) <- runLL (llDecls (AST.modDecls ds))
   return (as ++ bs)
 
 compile :: [Decl] -> Doc

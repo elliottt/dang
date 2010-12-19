@@ -5,6 +5,7 @@
 module Rename (
     Rename()
   , runRename
+  , renameModule
   , renameDecls
   ) where
 
@@ -89,6 +90,11 @@ findFresh  = loop []
 
 
 -- Term Renaming ---------------------------------------------------------------
+
+renameModule :: Monad m => Module -> Rename m Module
+renameModule m = do
+  ds' <- renameDecls (modDecls m)
+  return m { modDecls = ds' }
 
 -- | Rename declarations, assuming that names are already present in the
 -- environment.

@@ -41,7 +41,6 @@ instance Monad Dang where
   {-# INLINE fail #-}
   fail msg = raiseE (DangError msg)
 
-
 instance ExceptionM Dang SomeException where
   {-# INLINE raise #-}
   raise = Dang . E.throwIO
@@ -54,10 +53,12 @@ instance BaseM Dang IO where
   {-# INLINE inBase #-}
   inBase = Dang
 
--- | Turn a Dang operation into an IO operation, by re-throwing any exceptions
--- in IO.
-runDang :: Dang a -> IO a
-runDang  = getDang
+-- | Turn a Dang operation into an IO operation, swallowing all exceptions.
+runDang :: Dang a -> IO ()
+runDang (Dang m) = (m >> return ()) `E.catch` handler
+  where
+  handler :: SomeException -> IO ()
+  handler _ = return ()
 
 -- | Raise an exception.
 raiseE :: (ExceptionM m SomeException, Exception e) => e -> m a

@@ -5,6 +5,7 @@
 
 module Syntax.Parser where
 
+import QualName
 import Syntax.AST
 import Syntax.Lexer
 import Syntax.ParserCore
@@ -28,13 +29,20 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   '{'  { Lexeme $$ (TReserved "{")  }
   '}'  { Lexeme $$ (TReserved "}")  }
   ';'  { Lexeme $$ (TReserved ";")  }
+  '.'  { Lexeme $$ (TReserved ".")  }
+
+-- reserved names
+  'module' { Lexeme $$ (TReserved "module") }
+  'where'  { Lexeme $$ (TReserved "where")  }
 
 -- identifiers
-  IDENT { Lexeme _ (TIdent $$) }
-  INT   { Lexeme _ (TInt $$)   }
+  CONIDENT { Lexeme _ (TConIdent $$) }
+  IDENT    { Lexeme _ (TSymIdent $$) }
+  INT      { Lexeme _ (TInt $$)      }
 
 
 %monad { Parser } { (>>=) } { return }
+%name parseModule top_module
 %name parseFunBind fun_bind
 %name parseFunBinds fun_binds
 %tokentype { Lexeme }
@@ -42,6 +50,21 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 %lexer { lexer } { Lexeme initPosition TEof }
 
 %%
+
+top_module :: { Module }
+  : 'module' mod_name 'where' '{' fun_binds '}' { Module $2 $5 }
+
+mod_name :: { QualName }
+  : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
+  | CONIDENT                      { QualName [] $1 }
+
+qual_name :: { QualName }
+  : qual_name_prefix '.' IDENT { QualName (reverse $1) $3 }
+  | IDENT                      { QualName [] $1 }
+
+qual_name_prefix :: { [Name] }
+  : qual_name_prefix '.' CONIDENT { $3:$1 }
+  | CONIDENT                      { [$1] }
 
 fun_bind :: { Decl }
   : IDENT arg_list '=' exp { Decl $1 (reverse $2) True $4 }

@@ -4,6 +4,7 @@
 module Syntax.AST where
 
 import Pretty
+import QualName
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
@@ -19,6 +20,12 @@ instance FreeVars a => FreeVars (Maybe a) where
 
 instance FreeVars a => FreeVars [a] where
   freeVars = Set.unions . map freeVars
+
+
+data Module = Module
+  { modName  :: QualName
+  , modDecls :: [Decl]
+  } deriving (Show)
 
 
 type Var = String
