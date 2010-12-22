@@ -144,9 +144,7 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
     struct closure *c2  = NULL;
     struct value   *res = NULL;
 
-
     while(len > 0) {
-
         arity    = c->arity;
         cur_size = env_size(c->env);
         new_size = cur_size + len;
@@ -156,7 +154,6 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
         if(new_size > arity) {
             copy     = arity - cur_size;
             new_size = arity;
-            len      = len - (arity - cur_size);
         }
 
         // when the environment is empty, this closure is fresh, and doesn't
@@ -172,7 +169,7 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
             c2->env = env;
         } else {
             c2 = copy_closure(c);
-            env_extend(c2->env, vs, len);
+            env_extend(c2->env, vs, copy);
         }
 
         // if the new size is equal to the arity, jump to the code pointer
@@ -183,15 +180,16 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
             res->v.cval = c2;
         }
 
+        // update the argument pointers
+        vs  += copy;
+        len -= copy;
+
         // make the assumption that the result is a closure, if there are still
         // arguments left.
-        if(len == 0) {
-            break;
-        } else {
+        if(len > 0) {
             c   = res->v.cval;
             res = NULL;
         }
-
     }
 
     return res;
