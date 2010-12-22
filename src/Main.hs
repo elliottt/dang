@@ -2,7 +2,9 @@ module Main where
 
 import CodeGen
 import Dang.IO
+import Dang.FileName
 import Dang.Monad
+import Dang.Tool
 import LambdaLift
 import Pretty
 import Rename
@@ -12,16 +14,25 @@ import qualified Syntax.AST as AST
 
 import MonadLib
 import Text.LLVM
-import System.Environment (getArgs)
+import System.IO (hPrint,hFlush)
 import qualified Data.ByteString.UTF8 as UTF8
+
+rtsPath :: FilePath
+rtsPath  = "rts/librts.a"
 
 main :: IO ()
 main  = runDang $ do
-  [file] <- inBase getArgs
+  opts   <- ask
+  let [file] = optSourceFiles opts
   decls  <- loadModule file
   decls' <- lambdaLift (rename decls)
-  inBase $ putStrLn $ unlines $ map (render . (char ';' <>) . ppr) decls'
-  inBase $ print $ compile decls'
+  withOpenTempFile $ \ asm h -> do
+    inBase $ do
+      hPrint h (compile decls')
+      hFlush h
+    sync llvm_as ["-o", ofile file, asm ]
+    sync llvm_ld ["-o", "prog", ofile file, rtsPath ]
+
 
 loadModule :: FilePath -> Dang AST.Module
 loadModule path = parseSource path =<< onFileNotFound (loadFile path) handler

@@ -7,6 +7,8 @@ module Dang.Monad (
     Dang
   , runDang
 
+  , Options(..)
+
   , raiseE
   , catchE
   , catchJustE
@@ -19,7 +21,13 @@ import Control.Applicative (Applicative)
 import Control.Exception (Exception(..),SomeException)
 import Data.Typeable (Typeable)
 import MonadLib
+import System.Console.GetOpt
+import System.Environment (getArgs, getProgName)
+import System.Exit (exitSuccess,exitFailure)
 import qualified Control.Exception as E
+
+
+-- Errors ----------------------------------------------------------------------
 
 data DangError = DangError String
     deriving (Show,Typeable)
@@ -27,8 +35,61 @@ data DangError = DangError String
 instance Exception DangError
 
 
+-- Environment Configuration ---------------------------------------------------
+
+data Options = Options
+  { optKeepTempFiles :: Bool
+  , optSourceFiles   :: [FilePath]
+  } deriving Show
+
+defaultOptions :: Options
+defaultOptions  = Options
+  { optKeepTempFiles = False
+  , optSourceFiles   = []
+  }
+
+type Option = Options -> IO Options
+
+parseOptions :: [String] -> IO Options
+parseOptions args =
+  case getOpt RequireOrder options args of
+    (os,fs,[]) -> buildOptions os fs
+    (_,_,errs) -> do
+      displayHelp errs
+      exitFailure
+
+buildOptions :: [Option] -> [String] -> IO Options
+buildOptions os fs = do
+  opts <- foldM (flip id) defaultOptions os
+  return opts { optSourceFiles = fs }
+
+displayHelp :: [String] -> IO ()
+displayHelp errs = do
+  prog <- getProgName
+  let banner = unlines (errs ++ ["Usage: " ++ prog ++ " [options] source"])
+  putStr (usageInfo banner options)
+
+options :: [OptDescr Option]
+options  =
+  [ Option "h" ["help"] (NoArg handleHelp)
+    "Display this message"
+  , Option [] ["keep-temp-files"] (NoArg setKeepTempFiles)
+    "Don't remove temp files created during compilation"
+  ]
+
+handleHelp :: Option
+handleHelp _ = do
+  displayHelp []
+  exitSuccess
+
+setKeepTempFiles :: Option
+setKeepTempFiles opts = return (opts { optKeepTempFiles = True })
+
+
+-- Monad -----------------------------------------------------------------------
+
 newtype Dang a = Dang
-  { getDang :: IO a
+  { getDang :: ReaderT Options IO a
   } deriving (Functor,Applicative)
 
 instance Monad Dang where
@@ -41,21 +102,31 @@ instance Monad Dang where
   {-# INLINE fail #-}
   fail msg = raiseE (DangError msg)
 
+instance ReaderM Dang Options where
+  ask = Dang ask
+
 instance ExceptionM Dang SomeException where
   {-# INLINE raise #-}
-  raise = Dang . E.throwIO
+  raise = inBase . E.throwIO
 
 instance RunExceptionM Dang SomeException where
   {-# INLINE try #-}
-  try = Dang . E.try . getDang
+  try m = do
+    opts <- ask
+    inBase (E.try (runReaderT opts (getDang m)))
 
 instance BaseM Dang IO where
   {-# INLINE inBase #-}
-  inBase = Dang
+  inBase = Dang . inBase
 
 -- | Turn a Dang operation into an IO operation, swallowing all exceptions.
 runDang :: Dang a -> IO ()
-runDang (Dang m) = (m >> return ()) `E.catch` handler
+runDang m = do
+  args <- getArgs
+  opts <- parseOptions args
+  E.handle handler $ do
+    _ <- runReaderT opts (getDang m)
+    return ()
   where
   handler :: SomeException -> IO ()
   handler e = print e
