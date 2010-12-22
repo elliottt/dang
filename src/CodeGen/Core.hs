@@ -9,15 +9,21 @@ import CodeGen.Rts
 import CodeGen.Types
 import Interface
 import LambdaLift
+import Pretty
+import QualName
 import qualified Syntax.AST as AST
 
 import Data.Int (Int32)
-import Data.List (genericLength)
+import Data.List (genericLength,intercalate)
 import MonadLib
 import Text.LLVM
 
 
 -- Compilation Monad -----------------------------------------------------------
+
+mangleName :: QualName -> Nat -> Name
+mangleName (PrimName n)    _ = n
+mangleName (QualName ps n) a = "_cv" ++ intercalate "_" (ps ++ [n]) ++ show a
 
 declFunSpec :: Decl -> FunSpec
 declFunSpec d = emptyFunSpec
@@ -29,18 +35,21 @@ declLinkage d = do
   guard (not (declExported d))
   return Private
 
-lookupFn :: Monad m => String -> Env -> m (Nat,Fn)
+lookupFn :: Monad m => QualName -> Env -> m (Nat,Fn)
 lookupFn n env =
   case envFunDecl n env of
-    Nothing -> fail ("lookupFn: " ++ n)
+    Nothing -> fail ("lookupFn: " ++ pretty n)
     Just f  -> return (funArity f, simpleFun (funSymbol f))
 
 compModule :: [Decl] -> LLVM Interface
 compModule ds = do
-  let step (fns,i) d = do
-        let fn  = Fun (declName d) (declFunSpec d)
-        let sym = FunDecl (funSym fn) (genericLength (declVars d))
-        return (fn:fns, addFunDecl (declName d) sym i)
+  let step (fns,i) d = do -- why is this monadic?
+        let arity = genericLength (declVars d)
+        let name  = mangleName (declName d) arity
+        let fn    = Fun name (declFunSpec d)
+        let sym   = FunDecl (funSym fn) arity
+        let var   = declName d
+        return (fn:fns, addFunDecl var sym i)
   (fns0,i) <- foldM step ([],emptyInterface) ds
   zipWithM_ (compDecl i) (reverse fns0) ds
   return i
@@ -54,8 +63,8 @@ compTerm env t =
   case t of
     Apply c xs  -> compApp env c xs
     Let ds e    -> compLet env ds e
-    Symbol s    -> compSymbol env s
-    Var n       -> compVar env n
+    Symbol qn   -> compSymbol env qn
+    Var qn      -> compVar env qn
     Argument ix -> argument env ix
     Lit l       -> compLit l
     Prim n a as -> compPrim n a =<< mapM (compTerm env) as
@@ -69,21 +78,18 @@ storeValAt args ix v = do
   store v addr
 
 -- allocate enough space for vs, load them, call apply and return its result
-compApp :: Env -> Call -> [Term] -> BB r (Value Val)
+compApp :: Env -> Term -> [Term] -> BB r (Value Val)
 compApp env c xs = do
   vs   <- mapM (compTerm env) xs
   let len = genericLength vs
   args <- allocValBuffer len
   zipWithM_ (storeValAt args) [0..] vs
-  clos <- compCall env c
+  res  <- compTerm env c
+  clos <- call rts_get_cval res
   call rts_apply clos args (toValue len)
 
-compCall :: Env -> Call -> BB r (Value Closure)
-compCall env (CFun n) = symbolClosure env n
-compCall env (CArg i) = argumentClosure env i
-
 -- | Allocate a new closure that uses the given function symbol.
-symbolClosure :: Env -> String -> BB r (Value Closure)
+symbolClosure :: Env -> QualName -> BB r (Value Closure)
 symbolClosure env n = do
   (arity,fn) <- lookupFn n env
   call rts_alloc_closure (toValue arity) (funAddr fn)
@@ -123,19 +129,19 @@ compLetDecl env d = name `fmap` compTerm env (letBody d)
   where
   name x = (letName d, x)
 
-compSymbol :: Env -> String -> BB r (Value Val)
+compVar :: Env -> QualName -> BB r (Value Val)
+compVar env qn =
+  case lookupLocal (qualSymbol qn) env of
+    Just v  -> return v
+    Nothing -> compSymbol env qn
+
+compSymbol :: Env -> QualName -> BB r (Value Val)
 compSymbol env s = do
   (n,fn) <- lookupFn s env
   clos   <- call rts_alloc_closure (toValue n) (funAddr fn)
   cval   <- call rts_alloc_value valClosure
   call_ rts_set_cval cval clos
   return cval
-
-compVar :: Env -> String -> BB r (Value Val)
-compVar env n =
-  case lookupLocal n env of
-    Nothing -> fail ("Unknown local variable: " ++ n)
-    Just v  -> return v
 
 compLit :: AST.Literal -> BB r (Value Val)
 compLit (AST.LInt i) = do

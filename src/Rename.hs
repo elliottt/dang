@@ -9,6 +9,7 @@ module Rename (
   , renameDecls
   ) where
 
+import QualName
 import Syntax.AST
 
 import Control.Applicative (Applicative(..),(<$>))
@@ -19,10 +20,10 @@ import qualified Data.Map as Map
 -- Renaming Monad --------------------------------------------------------------
 
 data RO = RO
-  { roSubst :: Map.Map Var Var
-  }
+  { roSubst :: Map.Map Var QualName
+  } deriving Show
 
-addSubst :: Var -> Var -> RO -> RO
+addSubst :: Var -> QualName -> RO -> RO
 addSubst a b ro = ro { roSubst = Map.insert a b (roSubst ro) }
 
 captures :: RO -> Var -> Bool
@@ -35,7 +36,7 @@ newtype Rename m a = Rename
 runRename :: Monad m => [Var] -> Rename m a -> m a
 runRename bound (Rename m) = do
   let ro = RO
-        { roSubst = Map.fromList [ (x,x) | x <- bound ]
+        { roSubst = Map.fromList [ (x,simpleName x) | x <- bound ]
         }
   (a,_) <- runReaderT ro (runStateT 0 m)
   return a
@@ -50,12 +51,24 @@ instance Monad m => ReaderM (Rename m) RO where
 instance Monad m => RunReaderM (Rename m) RO where
   local ro = Rename . local ro . unRename
 
-subst :: Monad m => Var -> Rename m Var
-subst v = do
+
+subst' :: Monad m => Var -> Rename m QualName
+subst' v = do
   ro <- ask
   case Map.lookup v (roSubst ro) of
-    Nothing -> return v
+    Nothing -> return (simpleName v)
     Just x  -> return x
+
+subst :: Monad m => Var -> Rename m Var
+subst v = do
+  x <- subst' v
+  return (qualSymbol x)
+
+-- | Substitute over qualified names, only substituting simple names.
+substQual :: Monad m => QualName -> Rename m QualName
+substQual qn
+  | not (isSimpleName qn) = return qn
+  | otherwise             = subst' (qualSymbol qn)
 
 -- | Introduce a fresh name into a renaming context.
 intro :: Monad m => (Var -> Rename m a) -> Rename m a
@@ -82,19 +95,30 @@ findFresh  = loop []
   loop rs ro i []      = (ro, i,reverse rs)
   loop rs ro i (v:vs)
     | ro `captures` v' = loop     rs                 ro  i' (v:vs)
-    | otherwise        = loop (v':rs) (addSubst v v' ro) i'    vs
+    | otherwise        = loop (v':rs) (addSubst v qn ro) i'    vs
     where
     i' = i + 1
     v' = "_" ++ v ++ show i
+    qn = simpleName v'
+
+-- | Introduce term variable mappings between unqualified and qualified versions
+-- of the same name.
+fullyQualify :: Monad m => Namespace -> [Name] -> Rename m a -> Rename m a
+fullyQualify ps ns m = do
+  ro <- ask
+  let step i n = addSubst n (qualName ps n) i
+  local (foldl step ro ns) m
 
 
 
 -- Term Renaming ---------------------------------------------------------------
 
 renameModule :: Monad m => Module -> Rename m Module
-renameModule m = do
+renameModule m = fullyQualify (modNamespace m) names $ do
   ds' <- renameDecls (modDecls m)
   return m { modDecls = ds' }
+  where
+  names = map declName (modDecls m)
 
 -- | Rename declarations, assuming that names are already present in the
 -- environment.
@@ -119,7 +143,7 @@ renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
   case t of
     App f xs -> apply <$> renameTerm f <*> mapM renameTerm xs
-    Var v    -> Var   <$> subst v
+    Var v    -> Var   <$> substQual v
     Lit l    -> Lit   <$> renameLiteral l
     Prim _   -> return t
     Let ds e ->
@@ -127,7 +151,7 @@ renameTerm t =
     Abs vs b -> intro $ \name -> fresh vs $ do
       vs' <- mapM subst vs
       b'  <- renameTerm b
-      return (Let [Decl name vs' False b'] (Var name))
+      return (Let [Decl name vs' b'] (Var (simpleName name)))
 
 
 -- | Rename literals.  For the time being, this doesn't do anything.

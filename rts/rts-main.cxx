@@ -5,13 +5,13 @@
 #include "rts.h"
 #include "types.h"
 
-EXPORT struct value * _cvmain (struct env *);
+EXPORT struct value * _cvMain_main0 (struct env *);
 
 int main() {
     struct value *res = NULL;
 
     // main is a zero-argument function
-    res = _cvmain(NULL);
+    res = _cvMain_main0(NULL);
 
     if(!res) {
         printf("res = NULL?\n");

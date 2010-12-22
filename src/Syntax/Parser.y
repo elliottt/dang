@@ -67,7 +67,7 @@ qual_name_prefix :: { [Name] }
   | CONIDENT                      { [$1] }
 
 fun_bind :: { Decl }
-  : IDENT arg_list '=' exp { Decl $1 (reverse $2) True $4 }
+  : IDENT arg_list '=' exp { Decl $1 (reverse $2) $4 }
 
 arg_list :: { [String] }
   : arg_list IDENT { $2 : $1 }
@@ -98,7 +98,7 @@ aexp_list :: { [Term] }
 
 aexp :: { Term }
   : '(' exp ')' { $2 }
-  | IDENT       { Var $1 }
+  | IDENT       { Var (simpleName $1) }
   | INT         { Lit (LInt $1) }
 
 {

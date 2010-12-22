@@ -13,7 +13,7 @@ import qualified Data.Set as Set
 
 
 class FreeVars a where
-  freeVars :: a -> Set.Set Var
+  freeVars :: a -> Set.Set QualName
 
 instance FreeVars a => FreeVars (Maybe a) where
   freeVars = maybe Set.empty freeVars
@@ -21,24 +21,35 @@ instance FreeVars a => FreeVars (Maybe a) where
 instance FreeVars a => FreeVars [a] where
   freeVars = Set.unions . map freeVars
 
+ignoreVars :: [Var] -> Set.Set QualName -> Set.Set QualName
+ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)
+
 
 data Module = Module
   { modName  :: QualName
   , modDecls :: [Decl]
   } deriving (Show)
 
+instance Pretty Module where
+  pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
+       <+> braces (ppList 0 (modDecls m))
+
+modNamespace :: Module -> [Name]
+modNamespace m = qualPrefix n ++ [qualSymbol n]
+  where
+  n = modName m
+
 
 type Var = String
 
 data Decl = Decl
-  { declName     :: Var
-  , declVars     :: [Var]
-  , declExported :: Bool
-  , declBody     :: Term
+  { declName :: Name
+  , declVars :: [Var]
+  , declBody :: Term
   } deriving (Eq,Show)
 
 instance FreeVars Decl where
-  freeVars d = freeVars (declBody d) Set.\\ Set.fromList (declBinds d)
+  freeVars d = ignoreVars (declBinds d) (freeVars (declBody d))
 
 instance Pretty Decl where
   pp _ d = text (declName d) <+> hsep (map text (declVars d)) <+>
@@ -47,9 +58,6 @@ instance Pretty Decl where
 
 declNames :: [Decl] -> [Var]
 declNames  = map declName
-
-notExported :: Decl -> Decl
-notExported d = d { declExported = False }
 
 hasArguments :: Decl -> Bool
 hasArguments  = not . null . declVars
@@ -60,28 +68,31 @@ declBinds d = declName d : declVars d
 
 deriving instance Show a => Show (SCC a)
 
-sccDecls :: [Decl] -> [SCC Decl]
-sccDecls  = stronglyConnComp . declsFvGraph
+sccModule :: Module -> [SCC Decl]
+sccModule m = sccDecls (modNamespace m) (modDecls m)
 
-declsFvGraph :: [Decl] -> [(Decl,String,[String])]
-declsFvGraph ds = graph
+sccDecls :: [Name] -> [Decl] -> [SCC Decl]
+sccDecls ns = stronglyConnComp . declsFvGraph ns
+
+declsFvGraph :: [Name] -> [Decl] -> [(Decl,QualName,[QualName])]
+declsFvGraph ns ds = graph
   where
-  graph = [ (d, declName d, Set.toList (freeVars d)) | d <- ds ]
+  graph = [ (d, qualName ns (declName d), Set.toList (freeVars d)) | d <- ds ]
 
 
 data Term
   = Abs [Var] Term
   | Let [Decl] Term
   | App Term [Term]
-  | Var Var
+  | Var QualName
   | Lit Literal
   | Prim Var
     deriving (Eq,Show)
 
 instance FreeVars Term where
-  freeVars (Abs vs t) = freeVars t Set.\\ Set.fromList vs
-  freeVars (Let ds t) = (freeVars ds `Set.union` freeVars t) Set.\\
-                        Set.fromList (concatMap declBinds ds)
+  freeVars (Abs vs t) = ignoreVars vs (freeVars t)
+  freeVars (Let ds t) = ignoreVars (concatMap declBinds ds)
+                      $ freeVars ds `Set.union` freeVars t
   freeVars (App f xs) = Set.union (freeVars f) (freeVars xs)
   freeVars (Lit l)    = freeVars l
   freeVars (Var x)    = Set.singleton x
@@ -96,7 +107,7 @@ instance Pretty Term where
                 $ text "let" <+> braces (semis (map (pp 0) ds)) <+>
                   text "in"  <+> pp 0 e
       App f xs -> optParens (p > 0) (pp 0 f <+> ppList 1 xs)
-      Var v    -> text v
+      Var v    -> pp 0 v
       Lit l    -> pp 0 l
       Prim n   -> char '#' <> text n
 
@@ -117,9 +128,7 @@ splitAbs t = loop t id
 
 -- | Collapse an application into its arguments, and the function to be called.
 splitApp :: Term -> (Term,[Term])
-splitApp (App f xs) = (f', xs' ++ xs)
-  where
-  (f',xs') = splitApp f
+splitApp (App f xs) = (f,xs)
 splitApp t          = (t,[])
 
 lambda :: [Var] -> Term -> Term

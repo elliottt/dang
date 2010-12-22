@@ -19,7 +19,9 @@ main :: IO ()
 main  = runDang $ do
   [file] <- inBase getArgs
   decls  <- loadModule file
-  inBase . print . compile =<< lambdaLift (rename decls)
+  decls' <- lambdaLift (rename decls)
+  inBase $ putStrLn $ pretty decls'
+  inBase $ print $ compile decls'
 
 loadModule :: FilePath -> Dang AST.Module
 loadModule path = parseSource path =<< onFileNotFound (loadFile path) handler
@@ -38,8 +40,8 @@ rename :: AST.Module -> AST.Module
 rename  = runLift . runRename [] . renameModule
 
 lambdaLift :: AST.Module -> Dang [Decl]
-lambdaLift ds = do
-  (as,bs) <- runLL (llDecls (AST.modDecls ds))
+lambdaLift m = do
+  (as,bs) <- runLL (llModule m)
   return (as ++ bs)
 
 compile :: [Decl] -> Doc

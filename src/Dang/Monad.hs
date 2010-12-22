@@ -58,7 +58,7 @@ runDang :: Dang a -> IO ()
 runDang (Dang m) = (m >> return ()) `E.catch` handler
   where
   handler :: SomeException -> IO ()
-  handler _ = return ()
+  handler e = print e
 
 -- | Raise an exception.
 raiseE :: (ExceptionM m SomeException, Exception e) => e -> m a

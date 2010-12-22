@@ -136,41 +136,62 @@ struct closure * get_cval(struct value *v) {
 }
 
 struct value * apply(struct closure *c, struct value **vs, nat len) {
-    nat arity    = c->arity;
-    nat cur_size = env_size(c->env);
-    nat new_size = cur_size + len;
+    nat arity    = 0;
+    nat cur_size = 0;
+    nat new_size = 0;
+    nat copy     = 0;
 
     struct closure *c2  = NULL;
     struct value   *res = NULL;
 
-    // make sure there is enough space left for the new arguments
-    if(new_size > arity) {
-        fprintf(stderr, "Over application!\n");
-        exit(1);
-    }
 
-    // when the environment is empty, this closure is fresh, and doesn't need
-    // to be copied.
-    if(c->env == NULL) {
-        struct env *env = alloc_env();
-        env->len        = len;
-        env->env        = (struct value **)allocate("apply",
-                len * sizeof(struct value *));
-        memcpy(env->env, vs, len*sizeof(struct value *));
+    while(len > 0) {
 
-        c2      = c;
-        c2->env = env;
-    } else {
-        c2 = copy_closure(c);
-        env_extend(c2->env, vs, len);
-    }
+        arity    = c->arity;
+        cur_size = env_size(c->env);
+        new_size = cur_size + len;
+        copy     = len;
 
-    // if the new size is equal to the arity, jump to the code pointer
-    if(new_size == arity) {
-        res = c2->code(c2->env);
-    } else {
-        res         = alloc_value(TYPE_CLOSURE);
-        res->v.cval = c2;
+        // use as many arguments as possible
+        if(new_size > arity) {
+            copy     = arity - cur_size;
+            new_size = arity;
+            len      = len - (arity - cur_size);
+        }
+
+        // when the environment is empty, this closure is fresh, and doesn't
+        // need to be copied.
+        if(c->env == NULL) {
+            struct env *env = alloc_env();
+            env->len = len;
+            env->env = (struct value **)allocate("apply",
+                    copy * sizeof(struct value *));
+            memcpy(env->env, vs, copy*sizeof(struct value *));
+
+            c2      = c;
+            c2->env = env;
+        } else {
+            c2 = copy_closure(c);
+            env_extend(c2->env, vs, len);
+        }
+
+        // if the new size is equal to the arity, jump to the code pointer
+        if(new_size == arity) {
+            res = c2->code(c2->env);
+        } else {
+            res         = alloc_value(TYPE_CLOSURE);
+            res->v.cval = c2;
+        }
+
+        // make the assumption that the result is a closure, if there are still
+        // arguments left.
+        if(len == 0) {
+            break;
+        } else {
+            c   = res->v.cval;
+            res = NULL;
+        }
+
     }
 
     return res;
