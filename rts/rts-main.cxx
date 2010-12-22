@@ -5,7 +5,7 @@
 #include "rts.h"
 #include "types.h"
 
-EXPORT struct value * _cvMain_main0 (struct env *);
+IMPORT struct value * _cvMain_main0 (struct env *);
 
 int main() {
     struct value *res = NULL;

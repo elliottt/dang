@@ -2,6 +2,7 @@
 #define __RTS_TYPES_H
 
 #define EXPORT extern "C"
+#define IMPORT extern "C"
 
 typedef unsigned long nat;
 typedef long s32;
