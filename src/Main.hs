@@ -20,7 +20,7 @@ main  = runDang $ do
   [file] <- inBase getArgs
   decls  <- loadModule file
   decls' <- lambdaLift (rename decls)
-  inBase $ putStrLn $ pretty decls'
+  inBase $ putStrLn $ unlines $ map (render . (char ';' <>) . ppr) decls'
   inBase $ print $ compile decls'
 
 loadModule :: FilePath -> Dang AST.Module
