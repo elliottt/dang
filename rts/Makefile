@@ -15,9 +15,6 @@ OBJECTS	:= $(SOURCES:.cxx=.o)
 librts.a: $(OBJECTS)
 	$(call cmd,ar)
 
-%.o: %.cxx
-	$(call cmd,cxx_o_cxx)
-
 -include $(CURDIR)/.depend
 
 $(CURDIR)/.depend: $(SOURCES) $(HEADERS)

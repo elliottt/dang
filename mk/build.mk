@@ -53,9 +53,15 @@ CFLAGS           = -Wall
 cmd_cc_o_c       = clang -emit-llvm $(CFLAGS) -o $@ -c $<
 quiet_cmd_cc_o_c = CC      $@
 
+%.o: %.c
+	$(call cmd,cc_o_c)
+
 CXXFLAGS            = -Wall
 cmd_cxx_o_cxx       = clang -emit-llvm $(CXXFLAGS) -o $@ -c $<
 quiet_cmd_cxx_o_cxx = CXX     $@
+
+%.o: %.cxx
+	$(call cmd,cxx_o_cxx)
 
 
 # AR
