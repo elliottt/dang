@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Dang.Tool where
 
+import Dang.IO
 import Dang.Monad
 
 import Data.Typeable (Typeable)
@@ -24,19 +26,19 @@ data Tool = Tool
 toolProcess :: Tool -> [String] -> CreateProcess
 toolProcess t extra = proc (toolProg t) (toolArgs t ++ extra)
 
-logTool :: Tool -> [String] -> IO ()
-logTool t extra = putStrLn $ unwords $
-    [ " $", toolProg t ] ++ toolArgs t ++ extra
+logTool :: BaseM m Dang => Tool -> [String] -> m ()
+logTool t extra = logInfo $ unwords $ toolProg t : toolArgs t ++ extra
 
 -- | Run a tool with optional extra arguments, waiting for it to exit.
-sync :: Tool -> [String] -> Dang ()
-sync t extra = inBase $ do
+sync :: BaseM m Dang => Tool -> [String] -> m ()
+sync t extra = do
   logTool t extra
-  (_,_,_,ph) <- createProcess (toolProcess t extra)
-  exit       <- waitForProcess ph
-  case exit of
-    ExitSuccess   -> return ()
-    ExitFailure _ -> raiseE (ToolError t)
+  io $ do
+    (_,_,_,ph) <- createProcess (toolProcess t extra)
+    exit       <- waitForProcess ph
+    case exit of
+      ExitSuccess   -> return ()
+      ExitFailure _ -> raiseE (ToolError t)
 
 -- LLVM Tools ------------------------------------------------------------------
 

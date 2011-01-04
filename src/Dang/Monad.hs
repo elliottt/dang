@@ -8,10 +8,14 @@ module Dang.Monad (
   , runDang
 
   , Options(..)
+  , getOptions
+  , Verbosity
 
   , raiseE
   , catchE
   , catchJustE
+
+  , io
 
   , Exception(..)
   , SomeException()
@@ -40,13 +44,19 @@ instance Exception DangError
 data Options = Options
   { optKeepTempFiles :: Bool
   , optSourceFiles   :: [FilePath]
+  , optVerbosity     :: Verbosity
+  , optCompileOnly   :: Bool
   } deriving Show
 
 defaultOptions :: Options
 defaultOptions  = Options
   { optKeepTempFiles = False
   , optSourceFiles   = []
+  , optVerbosity     = 0
+  , optCompileOnly   = False
   }
+
+type Verbosity = Int
 
 type Option = Options -> IO Options
 
@@ -75,6 +85,10 @@ options  =
     "Display this message"
   , Option [] ["keep-temp-files"] (NoArg setKeepTempFiles)
     "Don't remove temp files created during compilation"
+  , Option "v" ["verbosity"] (ReqArg setVerbosity "LEVEL")
+    "Set the logging verbosity"
+  , Option "c" [] (NoArg setCompileOnly)
+    "Compile only"
   ]
 
 handleHelp :: Option
@@ -83,7 +97,16 @@ handleHelp _ = do
   exitSuccess
 
 setKeepTempFiles :: Option
-setKeepTempFiles opts = return (opts { optKeepTempFiles = True })
+setKeepTempFiles opts = return opts { optKeepTempFiles = True }
+
+setVerbosity :: String -> Option
+setVerbosity msg opts =
+  case reads msg of
+    [(v,[])] -> return opts { optVerbosity = v }
+    _        -> fail ("Unable to parse verbosity from: " ++ msg)
+
+setCompileOnly :: Option
+setCompileOnly opts = return opts { optCompileOnly = True }
 
 
 -- Monad -----------------------------------------------------------------------
@@ -107,17 +130,24 @@ instance ReaderM Dang Options where
 
 instance ExceptionM Dang SomeException where
   {-# INLINE raise #-}
-  raise = inBase . E.throwIO
+  raise = io . E.throwIO
 
 instance RunExceptionM Dang SomeException where
   {-# INLINE try #-}
   try m = do
     opts <- ask
-    inBase (E.try (runReaderT opts (getDang m)))
+    io (E.try (runReaderT opts (getDang m)))
 
-instance BaseM Dang IO where
-  {-# INLINE inBase #-}
-  inBase = Dang . inBase
+instance BaseM Dang Dang where
+  inBase = id
+
+-- | Do some IO.
+io :: BaseM m Dang => IO a -> m a
+io  = inBase . Dang . inBase
+
+-- | Get the operations, in a derived monad.
+getOptions :: BaseM m Dang => m Options
+getOptions  = inBase ask
 
 -- | Turn a Dang operation into an IO operation, swallowing all exceptions.
 runDang :: Dang a -> IO ()

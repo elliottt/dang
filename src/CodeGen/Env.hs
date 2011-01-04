@@ -3,6 +3,7 @@ module CodeGen.Env where
 import CodeGen.Types
 import Interface
 import QualName
+import ReadWrite
 
 import Text.LLVM (Value)
 import qualified Data.Map as Map
@@ -10,13 +11,13 @@ import qualified Data.Set as Set
 
 
 data Env = Env
-  { envInterface :: Interface
+  { envInterface :: Interface R
   , envClosure   :: Value RtsEnv
   , envArgs      :: Set.Set String
   , envLocal     :: Map.Map String (Value Val)
   }
 
-mkEnv :: Interface -> Value RtsEnv -> [String] -> Env
+mkEnv :: Interface R -> Value RtsEnv -> [String] -> Env
 mkEnv i rtsEnv args = Env
   { envInterface = i
   , envClosure   = rtsEnv

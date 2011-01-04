@@ -23,9 +23,11 @@ module LambdaLift (
   ) where
 
 import Dang.Monad
+import Interface
 import Pretty
 import Prim
 import QualName
+import ReadWrite
 import qualified Syntax.AST as AST
 
 import Control.Applicative (Applicative(..))
@@ -38,34 +40,36 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 
-type Subst = Map.Map QualName Term
+type Subst = Map.Map Name Term
 
 data RO = RO
-  { roVars    :: Set.Set QualName
-  , roContext :: [Name]
-  , roSubst   :: Subst
+  { roVars     :: Set.Set QualName
+  , roContext  :: [Name]
+  , roSubst    :: Subst
+  , roExternal :: Interface R
   }
 
-emptyRO :: RO
-emptyRO  = RO
-  { roVars    = Set.empty
-  , roContext = []
-  , roSubst   = Map.empty
+emptyRO :: Interface R -> RO
+emptyRO iface = RO
+  { roVars     = Set.empty
+  , roContext  = []
+  , roSubst    = Map.empty
+  , roExternal = iface
   }
 
--- | The Lambda-lifting monad transformer.
+-- | The Lambda-lifting monad.
 -- It is a reader for bound variables, state for a name substitution, and a
 -- writer for lifted declarations.
 newtype LL a = LL
   { unLL :: ReaderT RO (WriterT [Decl] Dang) a
   } deriving (Functor,Applicative,Monad)
 
-runLL :: LL a -> Dang (a,[Decl])
-runLL (LL m) = do
-  (a,ds) <- runWriterT (runReaderT emptyRO m)
+runLL :: Interface R -> LL a -> Dang (a,[Decl])
+runLL iface (LL m) = do
+  (a,ds) <- runWriterT (runReaderT (emptyRO iface) m)
   return (a,ds)
 
-instance BaseM LL IO where
+instance BaseM LL Dang where
   inBase = LL . inBase
 
 instance ReaderM LL RO where
@@ -96,20 +100,21 @@ raiseLL  = LL . raiseE . LLError
 emits :: [Decl] -> LL ()
 emits  = put . map notExported
 
-extend :: [(QualName,Term)] -> LL a -> LL a
+extend :: [(Name,Term)] -> LL a -> LL a
 extend ns m = do
   ro <- ask
   local (ro { roSubst = Map.union (Map.fromList ns) (roSubst ro) }) m
 
-subst :: [AST.Var] -> QualName -> LL Term
-subst args qn = do
+subst :: [AST.Var] -> Name -> LL Term
+subst args n = do
   ro <- ask
-  case Map.lookup qn (roSubst ro) of
+  let lookupLocal    = Map.lookup n (roSubst ro)
+      lookupArgument = do
+        idx <- elemIndex n args
+        return (Argument (fromIntegral idx))
+  case msum [lookupLocal, lookupArgument] of
     Just t  -> return t
-    Nothing ->
-      case guard (isSimpleName qn) >> elemIndex (qualSymbol qn) args of
-        Just idx -> return (Argument (fromIntegral idx))
-        Nothing  -> raiseLL ("Unbound variable: " ++ pretty qn)
+    Nothing -> raiseLL ("Unbound variable: " ++ n)
 
 extendVars :: [AST.Var] -> AST.Decl -> AST.Decl
 extendVars vs d = d { AST.declVars = vs ++ AST.declVars d }
@@ -166,7 +171,7 @@ data Term
   = Apply Term [Term]
   | Let [LetDecl] Term
   | Symbol QualName
-  | Var QualName
+  | Var Name
   | Argument Int32
   | Lit AST.Literal
   | Prim String Int [Term]
@@ -179,7 +184,7 @@ instance Pretty Term where
                      $ text "let" <+> braces (ppList 0 ds) <+> text "in"
                    <+> pp 0 t
   pp _ (Symbol qn)   = pp 0 qn
-  pp _ (Var qn)      = pp 0 qn
+  pp _ (Var n)       = pp 0 n
   pp _ (Argument i)  = char '$' <> ppr i
   pp _ (Lit l)       = pp 0 l
   pp p (Prim n a as) = optParens (p > 0)
@@ -204,9 +209,9 @@ llModule m = namespace (AST.modNamespace m)
 introSymbols :: Bool -> [AST.Decl] -> LL a -> LL a
 introSymbols ex ds m = do
   ro <- ask
-  let name d | ex        = qualName (roContext ro) (AST.declName d)
-             | otherwise = simpleName (AST.declName d)
-      qs' = Map.fromList [ (n,Symbol n) | d <- ds, let n = name d ]
+  let term d | ex        = Symbol (qualName (roContext ro) (AST.declName d))
+             | otherwise = Var (AST.declName d)
+      qs' = Map.fromList [ (AST.declName d, term d) | d <- ds ]
   local (ro { roSubst = Map.union qs' (roSubst ro) }) m
 
 -- | Lambda-lift a group of declarations, checking recursive declarations in a
@@ -240,10 +245,9 @@ createClosure ex ds = do
 rewriteFreeVars :: Bool -> [AST.Var] -> [AST.Decl] -> LL a -> LL a
 rewriteFreeVars ex fvs ds m = do
   ps <- prefix
-  let name d | ex        = qualName ps (AST.declName d)
-             | otherwise = simpleName (AST.declName d)
-  extend [ (name d, apply (Var n) args)
-         | d <- ds, let n = name d ] m
+  let term d | ex        = Symbol (qualName ps (AST.declName d))
+             | otherwise = Var (AST.declName d)
+  extend [ (AST.declName d, apply t args) | d <- ds, let t = term d ] m
   where
   args = zipWith (const . Argument) [0 ..] fvs
 
@@ -290,7 +294,8 @@ llTerm args t =
     AST.Abs{}    -> raiseLL "llTerm: unexpected Abs"
     AST.Prim n   -> llPrim args n []
     AST.App f xs -> llApp args f xs
-    AST.Var qn   -> subst args qn
+    AST.Local n  -> subst args n
+    AST.Global n -> return (Symbol n)
     AST.Lit l    -> return (Lit l)
     AST.Let ds e -> llLetDecls ds $ \ls -> do
       e' <- llTerm args e

@@ -5,8 +5,12 @@ import Dang.IO
 import Dang.FileName
 import Dang.Monad
 import Dang.Tool
+import Interface
 import LambdaLift
+import ModuleSystem
 import Pretty
+import QualName
+import ReadWrite
 import Rename
 import Syntax.Parser
 import Syntax.ParserCore
@@ -24,38 +28,51 @@ main :: IO ()
 main  = runDang $ do
   opts   <- ask
   let [file] = optSourceFiles opts
-  decls  <- loadModule file
-  decls' <- lambdaLift (rename decls)
-  withOpenTempFile $ \ asm h -> do
-    inBase $ do
-      hPrint h (compile decls')
+  m         <- loadModule file
+  logDebug "Parsed module"
+  logDebug (show m)
+  (iface,_) <- scopeCheck m
+  let m' = rename m
+  logDebug "Renaming output"
+  logDebug (show m')
+  decls     <- lambdaLift iface m'
+  logDebug "Lambda-lifting output"
+  logDebug (show decls)
+  logDebug (unlines ["Lambda-lifted decls:", pretty decls])
+  withOpenTempFile $ \ tmp h -> do
+    asm <- compile (AST.modName m) iface decls
+    io $ do
+      hPrint h asm
       hFlush h
-    sync llvm_as ["-o", ofile file, asm ]
-    sync llvm_ld ["-o", "prog", ofile file, rtsPath ]
+    sync llvm_as ["-o", ofile file, tmp ]
+    unless (optCompileOnly opts)
+      (sync llvm_ld ["-o", "prog", ofile file, rtsPath ])
 
 
 loadModule :: FilePath -> Dang AST.Module
 loadModule path = parseSource path =<< onFileNotFound (loadFile path) handler
   where
   handler x p = do
-    inBase (putStrLn ("Unable to open file: " ++ p))
+    io (putStrLn ("Unable to open file: " ++ p))
     raiseE x
 
 parseSource :: FilePath -> UTF8.ByteString -> Dang AST.Module
 parseSource path source =
   case runParser path source parseModule of
-    Left err -> inBase (putStrLn (show err)) >> fail "Parse error"
+    Left err -> io (putStrLn (show err)) >> fail "Parse error"
     Right m  -> return m
 
 rename :: AST.Module -> AST.Module
 rename  = runLift . runRename [] . renameModule
 
-lambdaLift :: AST.Module -> Dang [Decl]
-lambdaLift m = do
-  (as,bs) <- runLL (llModule m)
+lambdaLift :: Interface R -> AST.Module -> Dang [Decl]
+lambdaLift iface m = do
+  (as,bs) <- runLL iface (llModule m)
   return (as ++ bs)
 
-compile :: [Decl] -> Doc
-compile ds = snd $ runLLVM $ do
-  rtsImports
-  compModule ds
+compile :: QualName -> Interface R -> [Decl] -> Dang Doc
+compile qn env ds = do
+  writeInterface qn $! iface
+  return doc
+  where
+  (iface,doc) = runLLVM (rtsImports >> compModule env ds)

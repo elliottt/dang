@@ -47,6 +47,7 @@ $white+         ;
 
 "module"        { reserved }
 "where"         { reserved }
+"open"          { reserved }
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }

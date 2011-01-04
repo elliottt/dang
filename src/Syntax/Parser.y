@@ -34,6 +34,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 -- reserved names
   'module' { Lexeme $$ (TReserved "module") }
   'where'  { Lexeme $$ (TReserved "where")  }
+  'open'   { Lexeme $$ (TReserved "open")   }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -44,7 +45,6 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 %monad { Parser } { (>>=) } { return }
 %name parseModule top_module
 %name parseFunBind fun_bind
-%name parseFunBinds fun_binds
 %tokentype { Lexeme }
 
 %lexer { lexer } { Lexeme initPosition TEof }
@@ -52,7 +52,15 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 %%
 
 top_module :: { Module }
-  : 'module' mod_name 'where' '{' fun_binds '}' { Module $2 $5 }
+  : 'module' mod_name 'where' '{' top_decls '}' {% mkModule $2 $5 }
+
+top_decl :: { PTopDecl }
+  : fun_bind { PDecl $1 }
+  | open     { POpen $1 }
+
+top_decls :: { [PTopDecl] }
+  : top_decls ';' top_decl { $3:$1 }
+  | top_decl               { [$1] }
 
 mod_name :: { QualName }
   : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
@@ -69,13 +77,12 @@ qual_name_prefix :: { [Name] }
 fun_bind :: { Decl }
   : IDENT arg_list '=' exp { Decl $1 (reverse $2) $4 }
 
+open :: { Open }
+  : 'open' mod_name { Open $2 }
+
 arg_list :: { [String] }
   : arg_list IDENT { $2 : $1 }
   | {- empty -}    { [] }
-
-fun_binds :: { [Decl] }
-  : fun_binds ';' fun_bind { $3 : $1 }
-  | fun_bind               { [$1]    }
 
 exp :: { Term }
   : '\\' abs_args '->' lexp { Abs (reverse $2) $4 }
@@ -86,8 +93,12 @@ abs_args :: { [String] }
   | IDENT          { [$1] }
 
 lexp :: { Term }
-  : 'let' '{' fun_binds '}' 'in' fexp { Let (reverse $3) $6 }
+  : 'let' '{' let_binds '}' 'in' fexp { Let (reverse $3) $6 }
   | fexp                              { $1 }
+
+let_binds :: { [Decl] }
+  : let_binds ';' fun_bind { $3:$1 }
+  | fun_bind               { [$1] }
 
 fexp :: { Term }
   : aexp aexp_list { apply $1 (reverse $2) }
@@ -98,7 +109,7 @@ aexp_list :: { [Term] }
 
 aexp :: { Term }
   : '(' exp ')' { $2 }
-  | IDENT       { Var (simpleName $1) }
+  | qual_name   { Global $1 }
   | INT         { Lit (LInt $1) }
 
 {

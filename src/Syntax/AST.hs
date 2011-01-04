@@ -27,6 +27,7 @@ ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)
 
 data Module = Module
   { modName  :: QualName
+  , modOpens :: [Open]
   , modDecls :: [Decl]
   } deriving (Show)
 
@@ -34,10 +35,18 @@ instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
        <+> braces (ppList 0 (modDecls m))
 
+instance Names Module where
+  identifiers m = identifiers (modDecls m)
+
 modNamespace :: Module -> [Name]
 modNamespace m = qualPrefix n ++ [qualSymbol n]
   where
   n = modName m
+
+
+data Open = Open
+  { openMod :: QualName
+  } deriving Show
 
 
 type Var = String
@@ -50,6 +59,9 @@ data Decl = Decl
 
 instance FreeVars Decl where
   freeVars d = ignoreVars (declBinds d) (freeVars (declBody d))
+
+instance Names Decl where
+  identifiers d = identifiers (declBody d)
 
 instance Pretty Decl where
   pp _ d = text (declName d) <+> hsep (map text (declVars d)) <+>
@@ -84,7 +96,8 @@ data Term
   = Abs [Var] Term
   | Let [Decl] Term
   | App Term [Term]
-  | Var QualName
+  | Local Name
+  | Global QualName
   | Lit Literal
   | Prim Var
     deriving (Eq,Show)
@@ -93,10 +106,20 @@ instance FreeVars Term where
   freeVars (Abs vs t) = ignoreVars vs (freeVars t)
   freeVars (Let ds t) = ignoreVars (concatMap declBinds ds)
                       $ freeVars ds `Set.union` freeVars t
-  freeVars (App f xs) = Set.union (freeVars f) (freeVars xs)
+  freeVars (App f xs) = freeVars f `Set.union` freeVars xs
   freeVars (Lit l)    = freeVars l
-  freeVars (Var x)    = Set.singleton x
+  freeVars (Local x)  = Set.singleton (simpleName x)
+  freeVars (Global _) = Set.empty
   freeVars (Prim _)   = Set.empty
+
+instance Names Term where
+  identifiers (Abs _  t) = identifiers t
+  identifiers (Let ds t) = identifiers ds `Set.union` identifiers t
+  identifiers (App f xs) = identifiers f `Set.union` identifiers xs
+  identifiers (Local n)  = Set.singleton (simpleName n)
+  identifiers (Global n) = Set.singleton n
+  identifiers (Lit _)    = Set.empty
+  identifiers (Prim n)   = Set.singleton (primName n)
 
 instance Pretty Term where
   pp p t =
@@ -107,7 +130,8 @@ instance Pretty Term where
                 $ text "let" <+> braces (semis (map (pp 0) ds)) <+>
                   text "in"  <+> pp 0 e
       App f xs -> optParens (p > 0) (pp 0 f <+> ppList 1 xs)
-      Var v    -> pp 0 v
+      Local n  -> pp 0 n
+      Global n -> pp 0 n
       Lit l    -> pp 0 l
       Prim n   -> char '#' <> text n
 

@@ -64,12 +64,6 @@ subst v = do
   x <- subst' v
   return (qualSymbol x)
 
--- | Substitute over qualified names, only substituting simple names.
-substQual :: Monad m => QualName -> Rename m QualName
-substQual qn
-  | not (isSimpleName qn) = return qn
-  | otherwise             = subst' (qualSymbol qn)
-
 -- | Introduce a fresh name into a renaming context.
 intro :: Monad m => (Var -> Rename m a) -> Rename m a
 intro k = do
@@ -142,16 +136,27 @@ renameDecl d = do
 renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
   case t of
-    App f xs -> apply <$> renameTerm f <*> mapM renameTerm xs
-    Var v    -> Var   <$> substQual v
-    Lit l    -> Lit   <$> renameLiteral l
+    App f xs -> apply  <$> renameTerm f <*> mapM renameTerm xs
+    Local v  -> Local  <$> subst v
+    Lit l    -> Lit    <$> renameLiteral l
+    Global n -> renameGlobal n
     Prim _   -> return t
     Let ds e ->
       fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
     Abs vs b -> intro $ \name -> fresh vs $ do
       vs' <- mapM subst vs
       b'  <- renameTerm b
-      return (Let [Decl name vs' b'] (Var (simpleName name)))
+      return (Let [Decl name vs' b'] (Local name))
+
+
+renameGlobal :: Monad m => QualName -> Rename m Term
+renameGlobal qn
+  | not (isSimpleName qn) = return (Global qn)
+  | otherwise             = do
+     qn' <- subst' (qualSymbol qn)
+     if isSimpleName qn'
+        then return (Local (qualSymbol qn'))
+        else return (Global qn')
 
 
 -- | Rename literals.  For the time being, this doesn't do anything.

@@ -3,6 +3,9 @@
 
 module Syntax.ParserCore where
 
+import QualName
+import Syntax.AST
+
 import Control.Applicative (Applicative)
 import Data.Int (Int64)
 import MonadLib
@@ -103,3 +106,27 @@ runParser path bs (Parser m) =
   case runM m (initParserState path bs) of
     Right (a,_) -> Right a
     Left err    -> Left err
+
+
+-- Parsed Syntax ---------------------------------------------------------------
+
+data PTopDecl
+  = PDecl Decl
+  | POpen Open
+    deriving Show
+
+mkModule :: QualName -> [PTopDecl] -> Parser Module
+mkModule qn tds = do
+  let (os,ds) = partitionTopDecls tds
+  return Module
+    { modName  = qn
+    , modOpens = os
+    , modDecls = ds
+    }
+
+partitionTopDecls :: [PTopDecl] -> ([Open],[Decl])
+partitionTopDecls  = loop [] []
+  where
+  loop os ds (POpen o:tds) = loop (o:os) ds tds
+  loop os ds (PDecl d:tds) = loop os (d:ds) tds
+  loop os ds []            = (os,ds)

@@ -11,7 +11,9 @@ import Interface
 import LambdaLift
 import Pretty
 import QualName
+import ReadWrite
 import qualified Syntax.AST as AST
+import qualified QualNameMap as QN
 
 import Data.Int (Int32)
 import Data.List (genericLength,intercalate)
@@ -41,8 +43,20 @@ lookupFn n env =
     Nothing -> fail ("lookupFn: " ++ pretty n)
     Just f  -> return (funArity f, simpleFun (funSymbol f))
 
-compModule :: [Decl] -> LLVM Interface
-compModule ds = do
+externFn :: FunDecl -> Fn
+externFn fd = Fun
+  { funSym  = funSymbol fd
+  , funSpec = emptyFunSpec
+  }
+
+externDecls :: Interface R -> LLVM ()
+externDecls i = mapM_ step (QN.toList (intFunDecls i))
+  where
+  step (_,fn) = declare (externFn fn)
+
+compModule :: Interface R -> [Decl] -> LLVM (Interface RW)
+compModule i0 ds = do
+  externDecls i0
   let step (fns,i) d = do -- why is this monadic?
         let arity = genericLength (declVars d)
         let name  = mangleName (declName d) arity
@@ -51,10 +65,11 @@ compModule ds = do
         let var   = declName d
         return (fn:fns, addFunDecl var sym i)
   (fns0,i) <- foldM step ([],emptyInterface) ds
-  zipWithM_ (compDecl i) (reverse fns0) ds
+  let i' = mergeInterfaces i i0
+  zipWithM_ (compDecl i') (reverse fns0) ds
   return i
 
-compDecl :: Interface -> Fn -> Decl -> LLVM ()
+compDecl :: Interface R -> Fn -> Decl -> LLVM ()
 compDecl i fn d = define fn $ \ rtsEnv ->
    ret =<< compTerm (mkEnv i rtsEnv (declVars d)) (declBody d)
 
@@ -64,7 +79,7 @@ compTerm env t =
     Apply c xs  -> compApp env c xs
     Let ds e    -> compLet env ds e
     Symbol qn   -> compSymbol env qn
-    Var qn      -> compVar env qn
+    Var n       -> compVar env n
     Argument ix -> argument env ix
     Lit l       -> compLit l
     Prim n a as -> compPrim n a =<< mapM (compTerm env) as
@@ -129,11 +144,11 @@ compLetDecl env d = name `fmap` compTerm env (letBody d)
   where
   name x = (letName d, x)
 
-compVar :: Env -> QualName -> BB r (Value Val)
-compVar env qn =
-  case lookupLocal (qualSymbol qn) env of
+compVar :: Env -> Name -> BB r (Value Val)
+compVar env n =
+  case lookupLocal n env of
     Just v  -> return v
-    Nothing -> compSymbol env qn
+    Nothing -> compSymbol env (simpleName n)
 
 compSymbol :: Env -> QualName -> BB r (Value Val)
 compSymbol env s = do

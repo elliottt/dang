@@ -10,7 +10,7 @@ include mk/build.mk
 include mk/clean.mk
 
 LIBS := base monadLib llvm-pretty pretty containers GraphSCC bytestring \
-	utf8-string
+	utf8-string cereal
 
 HAPPY_MODS := $(subst src/,,$(basename $(shell find src -name '*.y')))
 ALEX_MODS  := $(subst src/,,$(basename $(shell find src -name '*.x')))
