@@ -31,11 +31,13 @@ main  = runDang $ do
   m         <- loadModule file
   logDebug "Parsed module"
   logDebug (show m)
-  (iface,_) <- scopeCheck m
-  let m' = rename m
-  logDebug "Renaming output"
+  (iface,m') <- scopeCheck m
+  logDebug "Module system output"
   logDebug (show m')
-  decls     <- lambdaLift iface m'
+  let m'' = rename m'
+  logDebug "Renaming output"
+  logDebug (show m'')
+  decls     <- lambdaLift iface m''
   logDebug "Lambda-lifting output"
   logDebug (show decls)
   logDebug (unlines ["Lambda-lifted decls:", pretty decls])

@@ -65,6 +65,15 @@ findUnqual n = concatMap (loop [])
     | otherwise = []
   loop ps (Prefix p ts) = concatMap (loop (ps ++ [p])) ts
 
+findPrefix :: Namespace -> QualNameMap a -> [(QualName,a)]
+findPrefix ns = concatMap (findPrefix' ns [])
+
+findPrefix' :: Namespace -> [Name] -> QualNameNode a -> [(QualName,a)]
+findPrefix' (p:ps) ns (Prefix p' ts)
+  | p == p'   = concatMap (findPrefix' ps (ns ++ [p])) ts
+findPrefix' [] ns (Node n a) = [(qualName ns n, a)]
+findPrefix' _ _  _           = []
+
 toList :: QualNameMap a -> [(QualName,a)]
 toList  = concatMap (loop [])
   where

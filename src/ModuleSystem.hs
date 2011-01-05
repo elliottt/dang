@@ -15,16 +15,17 @@ import Data.Maybe (mapMaybe)
 import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 data RO = RO
-  { roBound     :: Set.Set Var
-  , roInterface :: Interface R
+  { roBound :: Set.Set Var
+  , roNames :: Map.Map QualName QualName
   }
 
 emptyRO :: RO
 emptyRO  = RO
-  { roBound     = Set.empty
-  , roInterface = freezeInterface emptyInterface
+  { roBound = Set.empty
+  , roNames = Map.empty
   }
 
 newtype Scope a = Scope
@@ -88,32 +89,42 @@ identModules m =
 openModules :: Module -> Set.Set Use
 openModules m = Set.fromList (map (OpenModule . openMod) (modOpens m))
 
-getInterface :: Scope (Interface R)
-getInterface  = roInterface `fmap` ask
-
-withInterfaces :: Module -> Scope a -> Scope a
-withInterfaces m k = do
-  let mods = usedModules m
+-- | Run a scope checking operation with the environment created by a module.
+withEnv :: Module -> Scope a -> Scope (Interface R, a)
+withEnv m k = do
+  let uses = usedModules m
   logDebug "Used modules"
-  logDebug (show mods)
-  iface <- loadInterfaces (Set.toList (uniqueModules mods))
-  ro    <- ask
-  local (ro { roInterface = iface }) k
+  logDebug (show uses)
+  iface <- loadInterfaces (Set.toList (uniqueModules uses))
+  let env0   = buildEnv iface (Set.toList uses)
+      ns     = modNamespace m
+      locals = Map.fromList [ (simpleName n, qualName ns n)
+                            | d <- modDecls m, let n = declName d ]
+  ro  <- ask
+  res <- local (ro { roNames = locals `Map.union` env0 }) k
+  return (iface,res)
 
 loadInterfaces :: [QualName] -> Scope (Interface R)
 loadInterfaces  = foldM step (freezeInterface emptyInterface)
   where
   step i qn = mergeInterfaces i `fmap` inBase (openInterface qn)
 
+buildEnv :: Interface R -> [Use] -> Map.Map QualName QualName
+buildEnv iface = foldr step Map.empty
+  where
+  step (OpenModule m)  = Map.union (Map.fromList syms)
+    where
+    syms = [ (simpleName (qualSymbol qn),qn) | (qn,_) <- modContents m iface ]
+  step (QualIdent m n) = Map.insert name name
+    where
+    name = qualName (qualPrefix m ++ [qualSymbol m]) n
+
 -- | Fully qualify all of the symbols inside of a module.  This does IO, as it
 -- may end up needing to read other interface files to make a decision.
 scopeCheck :: Module -> Dang (Interface R, Module)
 scopeCheck m = runScope $ do
   logInfo "Running module system"
-  withInterfaces m $ do
-    m'    <- scopeCheckModule m
-    iface <- getInterface
-    return (iface, m')
+  withEnv m (scopeCheckModule m)
 
 scopeCheckModule :: Module -> Scope Module
 scopeCheckModule m = do
@@ -150,17 +161,8 @@ scopeCheckQualName :: QualName -> Scope Term
 scopeCheckQualName qn = do
   ro <- ask
   let n = qualSymbol qn
-  let checkSimple
-        | Set.member n (roBound ro) = return (Local n)
-        | otherwise                 =
-          case findUnqualFunDecl n (roInterface ro) of
-            []        -> notFound qn
-            [(qn',_)] -> return (Global qn')
-            _         -> fail ("Too many bindings for: " ++ n)
-  let checkGlobal =
-        case findFunDecl qn (roInterface ro) of
-          Nothing -> notFound qn
-          Just _  -> return (Global qn)
-  if isSimpleName qn
-     then checkSimple
-     else checkGlobal
+  if isSimpleName qn && Set.member n (roBound ro)
+     then return (Local n)
+     else case Map.lookup qn (roNames ro) of
+            Nothing  -> notFound qn
+            Just qn' -> return (Global qn')

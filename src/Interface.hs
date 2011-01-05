@@ -6,13 +6,14 @@ import Dang.IO
 import Dang.Monad
 import QualName
 import ReadWrite
-import qualified QualNameMap as Map
+import qualified QualNameMap as QM
 
 import Control.Monad (ap)
 import Data.Int (Int32)
 import Data.Serialize (runGet,runPut,Get,Putter,Serialize(get,put))
 import System.FilePath (joinPath,(<.>),(</>))
 import qualified Data.ByteString as S
+import qualified Data.Map as Map
 
 
 data FunDecl = FunDecl
@@ -25,12 +26,12 @@ instance Serialize FunDecl where
   put fd = put (funSymbol fd) >> put (funArity fd)
 
 data Interface s = Interface
-  { intFunDecls :: Map.QualNameMap FunDecl
+  { intFunDecls :: QM.QualNameMap FunDecl
   }
 
 emptyInterface :: Interface RW
 emptyInterface  = Interface
-  { intFunDecls = Map.empty
+  { intFunDecls = QM.empty
   }
 
 freezeInterface :: Interface i -> Interface R
@@ -41,21 +42,25 @@ freezeInterface i = Interface
 -- | Merging creates an interface that can only be read.
 mergeInterfaces :: Interface i -> Interface j -> Interface R
 mergeInterfaces i1 i2 = Interface
-  { intFunDecls = Map.union (intFunDecls i1) (intFunDecls i2)
+  { intFunDecls = QM.union (intFunDecls i1) (intFunDecls i2)
   }
 
 -- | Functions can be added to an interface in a read/write state.
 addFunDecl :: QualName -> FunDecl -> Interface RW -> Interface RW
 addFunDecl n s i = i
-  { intFunDecls = Map.insert n s (intFunDecls i)
+  { intFunDecls = QM.insert n s (intFunDecls i)
   }
 
 -- | Functions can be looked up in an interface in any state.
 findFunDecl :: QualName -> Interface i -> Maybe FunDecl
-findFunDecl n = Map.lookup n . intFunDecls
+findFunDecl n = QM.lookup n . intFunDecls
 
+-- | Locate an unqualified name in the interface.
 findUnqualFunDecl :: Name -> Interface i -> [(QualName,FunDecl)]
-findUnqualFunDecl n = Map.findUnqual n . intFunDecls
+findUnqualFunDecl n = QM.findUnqual n . intFunDecls
+
+modContents :: QualName -> Interface i -> [(QualName,FunDecl)]
+modContents qn = QM.findPrefix (qualPrefix qn ++ [qualSymbol qn]) . intFunDecls
 
 ifaceFile :: QualName -> FilePath
 ifaceFile qn = joinPath (qualPrefix qn) </> qualSymbol qn <.> "di"
