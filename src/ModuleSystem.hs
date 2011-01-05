@@ -7,6 +7,7 @@ module ModuleSystem where
 import Dang.IO
 import Dang.Monad
 import Interface
+import Pretty
 import QualName
 import ReadWrite
 import Syntax.AST
@@ -17,15 +18,64 @@ import MonadLib
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
+data Resolved
+  = Resolved QualName
+  | Bound Name
+  | Clash Name [QualName]
+    deriving Show
+
+resolvedNames :: Resolved -> [QualName]
+resolvedNames (Resolved qn) = [qn]
+resolvedNames (Bound n)     = [simpleName n]
+resolvedNames (Clash _ ns)  = ns
+
+-- | Merge resolved names, favoring new bound variables for shadowing.
+mergeResolved :: Resolved -> Resolved -> Resolved
+mergeResolved a@Bound{} _ = a
+mergeResolved a         b = clash a b
+
+-- | Merge two resolved names into a name clash.
+clash :: Resolved -> Resolved -> Resolved
+clash a@(Clash n _)   b = Clash n (resolvedNames a ++ resolvedNames b)
+clash   (Bound n)     b = Clash n (simpleName n : resolvedNames b)
+clash   (Resolved qn) b = Clash (qualSymbol qn) (qn : resolvedNames b)
+
+-- | The term that this entry represents (global/local).
+resolvedTerm :: Resolved -> Scope Term
+resolvedTerm (Resolved qn) = return (Global qn)
+resolvedTerm (Bound n)     = return (Local n)
+resolvedTerm (Clash n ns)  =
+  fail (n ++ " defined in multiple places:" ++ unlines (map pretty ns))
+
+type ResolvedNames = Map.Map QualName Resolved
+
+addResolvedName :: QualName -> QualName -> ResolvedNames -> ResolvedNames
+addResolvedName n rn = Map.insertWith mergeResolved n (Resolved rn)
+
+mergeResolvedNames :: ResolvedNames -> ResolvedNames -> ResolvedNames
+mergeResolvedNames  = Map.unionWith mergeResolved
+
+-- | Add the unqualified names to the resolved names map.
+interfaceResolvedNames :: QualName -> Interface R -> ResolvedNames
+interfaceResolvedNames m i =
+  Map.fromListWith mergeResolved (map step (modContents m i))
+  where
+  step (qn,_) = (simpleName (qualSymbol qn), Resolved qn)
+
+resolve :: QualName -> Scope Term
+resolve qn = do
+  ro <- ask
+  case Map.lookup qn (roNames ro) of
+    Nothing -> fail ("Symbol `" ++ pretty qn ++ "' not defined")
+    Just r  -> resolvedTerm r
+
 data RO = RO
-  { roBound :: Set.Set Var
-  , roNames :: Map.Map QualName QualName
+  { roNames :: ResolvedNames
   }
 
 emptyRO :: RO
 emptyRO  = RO
-  { roBound = Set.empty
-  , roNames = Map.empty
+  { roNames = Map.empty
   }
 
 newtype Scope a = Scope
@@ -98,10 +148,10 @@ withEnv m k = do
   iface <- loadInterfaces (Set.toList (uniqueModules uses))
   let env0   = buildEnv iface (Set.toList uses)
       ns     = modNamespace m
-      locals = Map.fromList [ (simpleName n, qualName ns n)
+      locals = Map.fromList [ (simpleName n, Resolved (qualName ns n))
                             | d <- modDecls m, let n = declName d ]
   ro  <- ask
-  res <- local (ro { roNames = locals `Map.union` env0 }) k
+  res <- local (ro { roNames = mergeResolvedNames locals env0 }) k
   return (iface,res)
 
 loadInterfaces :: [QualName] -> Scope (Interface R)
@@ -109,13 +159,11 @@ loadInterfaces  = foldM step (freezeInterface emptyInterface)
   where
   step i qn = mergeInterfaces i `fmap` inBase (openInterface qn)
 
-buildEnv :: Interface R -> [Use] -> Map.Map QualName QualName
+buildEnv :: Interface R -> [Use] -> ResolvedNames
 buildEnv iface = foldr step Map.empty
   where
-  step (OpenModule m)  = Map.union (Map.fromList syms)
-    where
-    syms = [ (simpleName (qualSymbol qn),qn) | (qn,_) <- modContents m iface ]
-  step (QualIdent m n) = Map.insert name name
+  step (OpenModule m)  = mergeResolvedNames (interfaceResolvedNames m iface)
+  step (QualIdent m n) = addResolvedName name name
     where
     name = qualName (qualPrefix m ++ [qualSymbol m]) n
 
@@ -136,7 +184,8 @@ scopeCheckModule m = do
 bindVars :: [Var] -> Scope a -> Scope a
 bindVars vs m = do
   ro <- ask
-  local (ro { roBound = Set.fromList vs `Set.union` roBound ro }) m
+  let locals = Map.fromList [ (simpleName v, Bound v) | v <- vs ]
+  local (ro { roNames = mergeResolvedNames locals (roNames ro) }) m
 
 scopeCheckDecl :: Decl -> Scope Decl
 scopeCheckDecl d = bindVars (declVars d) $ do
@@ -154,15 +203,5 @@ scopeCheckTerm t =
     Let ds b -> bindVars (map declName ds)
          (Let `fmap` mapM scopeCheckDecl ds `ap` scopeCheckTerm b)
     App f xs -> App `fmap` scopeCheckTerm f `ap` mapM scopeCheckTerm xs
-    Global n -> scopeCheckQualName n
-    Local n  -> scopeCheckQualName (simpleName n)
-
-scopeCheckQualName :: QualName -> Scope Term
-scopeCheckQualName qn = do
-  ro <- ask
-  let n = qualSymbol qn
-  if isSimpleName qn && Set.member n (roBound ro)
-     then return (Local n)
-     else case Map.lookup qn (roNames ro) of
-            Nothing  -> notFound qn
-            Just qn' -> return (Global qn')
+    Global n -> resolve n
+    Local n  -> resolve (simpleName n) -- the parser doesn't parse these
