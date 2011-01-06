@@ -2,7 +2,7 @@ module CodeGen.Rts where
 
 import CodeGen.Types
 
-import Data.Int (Int32,Int64)
+import Data.Int (Int8,Int32,Int64)
 import Text.LLVM (Fun,Res,declare,simpleFun,PtrTo,LLVM)
 
 
@@ -38,6 +38,9 @@ rts_value_type  = simpleFun "value_type"
 rts_barf :: Fun (Res ())
 rts_barf  = simpleFun "barf"
 
+llvm_gcroot :: Fun (PtrTo (PtrTo Int8) -> PtrTo Int8 -> Res ())
+llvm_gcroot  = simpleFun "llvm.gcroot"
+
 rtsImports :: LLVM ()
 rtsImports  = do
   declare rts_argument
@@ -50,5 +53,4 @@ rtsImports  = do
   declare rts_get_cval
   declare rts_value_type
   declare rts_barf
-
-
+  declare llvm_gcroot

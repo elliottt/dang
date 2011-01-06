@@ -19,20 +19,10 @@ instance IsType RtsEnv where
 instance HasValues RtsEnv
 
 
-newtype Closure = Closure (PtrTo Int32)
-
-instance IsType Closure where
-  getType (Closure ptr)= getType ptr
-
-instance HasValues Closure
+type Closure = PtrTo Int32
 
 
-newtype Val = Val (PtrTo Int32)
-
-instance IsType Val where
-  getType (Val ptr) = getType ptr
-
-instance HasValues Val
+type Val = PtrTo Int32
 
 
 type ValType = Int32

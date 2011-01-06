@@ -37,6 +37,7 @@ mangleName (QualName ps n) a =
 declFunSpec :: Decl -> FunSpec
 declFunSpec d = emptyFunSpec
   { specLinkage = declLinkage d
+  , specGC      = Just (GC "test")
   }
 
 declLinkage :: Decl -> Maybe Linkage
@@ -110,11 +111,20 @@ compApp env c xs = do
   clos <- call rts_get_cval res
   call rts_apply clos args (toValue len)
 
+markGC :: IsType a => Value (PtrTo a) -> BB r ()
+markGC ptr = do
+  i8       <- bitcast ptr
+  stackVar <- alloca (toValue 1) Nothing
+  store i8 stackVar
+  call_ llvm_gcroot stackVar nullPtr
+
 -- | Allocate a new closure that uses the given function symbol.
 symbolClosure :: Env -> QualName -> BB r (Value Closure)
 symbolClosure env n = do
   (arity,fn) <- lookupFn n env
-  call rts_alloc_closure (toValue arity) (funAddr fn)
+  clos       <- call rts_alloc_closure (toValue arity) (funAddr fn)
+  markGC clos
+  return clos
 
 -- | Interestingly, if this is the only entry point to argument, no dynamically
 -- generated argument indexes can ever be used.
@@ -162,12 +172,15 @@ compSymbol env s = do
   (n,fn) <- lookupFn s env
   clos   <- call rts_alloc_closure (toValue n) (funAddr fn)
   cval   <- call rts_alloc_value valClosure
+  markGC clos
+  markGC cval
   call_ rts_set_cval cval clos
   return cval
 
 compLit :: AST.Literal -> BB r (Value Val)
 compLit (AST.LInt i) = do
   ival <- call rts_alloc_value valInt
+  markGC ival
   call_ rts_set_ival ival (toValue i)
   return ival
 
