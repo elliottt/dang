@@ -13,7 +13,6 @@ import Data.Int (Int32)
 import Data.Serialize (runGet,runPut,Get,Putter,Serialize(get,put))
 import System.FilePath (joinPath,(<.>),(</>))
 import qualified Data.ByteString as S
-import qualified Data.Map as Map
 
 
 data FunDecl = FunDecl
