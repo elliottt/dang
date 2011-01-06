@@ -13,6 +13,7 @@ void *allocate(const char * type, nat size) {
     res = malloc(size);
     if(!res) {
         fprintf(stderr, "Failed to allocate a %s\n", type);
+        getc(stdin);
         exit(1);
     }
 
