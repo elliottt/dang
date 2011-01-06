@@ -165,7 +165,7 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
                     copy * sizeof(struct value *));
             memcpy(env->env, vs, copy*sizeof(struct value *));
 
-            c2      = c;
+            c2      = copy_closure(c);
             c2->env = env;
         } else {
             c2 = copy_closure(c);
