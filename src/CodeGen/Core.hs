@@ -23,9 +23,16 @@ import Text.LLVM
 
 -- Compilation Monad -----------------------------------------------------------
 
+sanitize :: String -> String
+sanitize  = concatMap escape
+  where
+  escape '_' = "__"
+  escape c   = [c]
+
 mangleName :: QualName -> Nat -> Name
 mangleName (PrimName n)    _ = n
-mangleName (QualName ps n) a = "_cv" ++ intercalate "_" (ps ++ [n]) ++ show a
+mangleName (QualName ps n) a =
+  "_cv" ++ intercalate "_" (map sanitize ps ++ [sanitize n]) ++ show a
 
 declFunSpec :: Decl -> FunSpec
 declFunSpec d = emptyFunSpec
