@@ -37,7 +37,7 @@ mangleName (QualName ps n) a =
 declFunSpec :: Decl -> FunSpec
 declFunSpec d = emptyFunSpec
   { specLinkage = declLinkage d
-  , specGC      = Just (GC "test")
+  --, specGC      = Just (GC "test")
   }
 
 declLinkage :: Decl -> Maybe Linkage
@@ -112,6 +112,7 @@ compApp env c xs = do
   call rts_apply clos args (toValue len)
 
 markGC :: IsType a => Value (PtrTo a) -> BB r ()
+markGC _   = return ()
 markGC ptr = do
   i8       <- bitcast ptr
   stackVar <- alloca (toValue 1) Nothing
