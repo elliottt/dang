@@ -6,3 +6,5 @@ ghc
 .depend
 *.info
 dang
+*.ll
+*.di

@@ -18,4 +18,6 @@ Main.o: Fix.o
 	$(DANG) -c $<
 
 clean:
-	$(RM) *.o *.di test test.bc
+	$(RM) *.o *.di *.ll
+	$(RM) test test.bc
+	$(RM) test-debug test-debug.bc test-debug.s
