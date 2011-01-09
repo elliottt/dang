@@ -8,14 +8,13 @@
 IMPORT struct value * _cvMain_main0 (struct env *);
 
 int main() {
+    struct env   *env = NULL;
     struct value *res = NULL;
 
     // main is a zero-argument function
-    res = _cvMain_main0(NULL);
-
-    if(!res) {
-        printf("res = NULL?\n");
-    }
+    env = alloc_env(0);
+    res = _cvMain_main0(env);
+    free_env(env);
 
     switch(res->type) {
         case TYPE_INT:

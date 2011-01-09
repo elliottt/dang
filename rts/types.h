@@ -24,7 +24,6 @@ struct value {
 struct env {
     struct value **env;
     nat len;
-    struct env *next;
 };
 
 typedef struct value *(*code_ptr)(struct env *);

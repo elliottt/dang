@@ -7,73 +7,63 @@
 #include "rts.h"
 #include "gc.h"
 
-static struct env * alloc_env() {
-    return (struct env *)allocate("environment", sizeof(struct env));
-}
+struct env * alloc_env(nat len) {
+    struct env *env = NULL;
 
-// duplicate the spine of an environment.
-struct env * copy_env(struct env *env) {
-    struct env *root = NULL;
-    struct env *cur  = NULL;
-    struct env *prev = NULL;
+    env      = (struct env *)allocate("alloc_env", sizeof(struct env));
+    env->len = len;
 
-    while(env) {
-        cur      = (struct env *)allocate("environment", sizeof(struct env));
-        cur->len = env->len;
-        cur->env = env->env;
-
-        // either set the root, or fixup the next pointer
-        if(prev) {
-            prev->next = cur;
-        } else if(!root) {
-            root = cur;
-        }
-
-        env = env->next;
+    if(len > 0) {
+        env->env = (struct value **)allocate("alloc_env(env)",
+                len * sizeof(struct value *));
     }
 
-    return root;
+    return env;
 }
 
-static nat env_size(struct env *env) {
-    nat total = 0;
-
-    while(env) {
-        total += env->len;
-        env    = env->next;
-    }
-
-    return total;
+void free_env(struct env *env) {
+    free(env->env);
+    free(env);
 }
 
-static void env_extend(struct env *head, struct value **vals, nat len) {
-    struct env *tail = alloc_env();
+// duplicate an environment, with some amount of extra space
+struct env * copy_env(struct env *env, struct value **vs, nat extra) {
+    struct env *c = NULL;
+    nat base;
 
-    tail->env = (struct value **)allocate("env", len * sizeof(struct value *));
-    tail->len = len;
-
-    while(head->next) {
-        head = head->next;
+    if(env) {
+        base = env->len;
+    } else {
+        base = 0;
     }
 
-    head->next = tail;
-    memcpy(tail->env, vals, len);
+    c = alloc_env(base + extra);
+
+    if(env) {
+        memcpy(c->env, env->env, env->len*sizeof(struct value *));
+    }
+
+    memcpy(c->env+base, vs, extra*sizeof(struct value *));
+
+    return c;
+}
+
+static inline nat env_size(struct env *env) {
+    if(env) {
+        return env->len;
+    } else {
+        return 0;
+    }
 }
 
 struct value * argument(struct env *env, nat i) {
-    while(env) {
-        // i is too big, so decrement by the current env size, and look
-        // at the next cell
-        if(i >= env->len) {
-            i  -= env->len;
-            env = env->next;
-        } else {
-            return env->env[i];
-        }
+    if(i >= env->len) {
+        fprintf(stderr, "argument: %ld out of scope\n", i);
+        barf();
+        return NULL;
     }
 
-    barf();
-    return NULL;
+    return env->env[i];
 }
 
 struct closure * alloc_closure(nat arity, code_ptr code) {
@@ -86,26 +76,26 @@ struct closure * alloc_closure(nat arity, code_ptr code) {
     return c;
 }
 
-static struct closure * copy_closure(struct closure *c) {
+// copy a new closure, allocating extra space on the end of its environment.
+struct closure * copy_closure(struct closure *c, struct value **vs, nat extra) {
     struct closure *c2 = NULL;
 
-    c2        = (struct closure *)allocate("closure", sizeof(struct closure));
-    c2->env   = copy_env(c->env);
-    c2->arity = c->arity;
-    c2->code  = c->code;
+    // duplicate the closure
+    c2      = alloc_closure(c->arity, c->code);
+    c2->env = copy_env(c->env, vs, extra);
 
     return c2;
 }
 
 void free_closure(struct closure *c) {
-    free(c->env);
+    free_env(c->env);
     free(c);
 }
 
 struct value * alloc_value(value_t type) {
     struct value *v = NULL;
 
-    v = (struct value *)allocate("value", sizeof(struct value));
+    v = (struct value *)allocate("alloc_value", sizeof(struct value));
     v->type = type;
 
     return v;
@@ -135,6 +125,10 @@ struct closure * get_cval(struct value *v) {
     return v->v.cval;
 }
 
+nat get_arity(struct closure *c) {
+    return c->arity;
+}
+
 struct value * apply(struct closure *c, struct value **vs, nat len) {
     nat arity    = 0;
     nat cur_size = 0;
@@ -144,7 +138,7 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
     struct closure *c2  = NULL;
     struct value   *res = NULL;
 
-    while(len > 0) {
+    while(1) {
         arity    = c->arity;
         cur_size = env_size(c->env);
         new_size = cur_size + len;
@@ -156,21 +150,7 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
             new_size = arity;
         }
 
-        // when the environment is empty, this closure is fresh, and doesn't
-        // need to be copied.
-        if(c->env == NULL) {
-            struct env *env = alloc_env();
-            env->len = len;
-            env->env = (struct value **)allocate("apply",
-                    copy * sizeof(struct value *));
-            memcpy(env->env, vs, copy*sizeof(struct value *));
-
-            c2      = copy_closure(c);
-            c2->env = env;
-        } else {
-            c2 = copy_closure(c);
-            env_extend(c2->env, vs, copy);
-        }
+        c2 = copy_closure(c, vs, copy);
 
         // if the new size is equal to the arity, jump to the code pointer
         if(new_size == arity) {
@@ -189,6 +169,8 @@ struct value * apply(struct closure *c, struct value **vs, nat len) {
         if(len > 0) {
             c   = res->v.cval;
             res = NULL;
+        } else {
+            break;
         }
     }
 
