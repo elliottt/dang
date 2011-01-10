@@ -7,6 +7,7 @@
 typedef unsigned long nat;
 typedef long s32;
 typedef long long s64;
+typedef unsigned char byte;
 
 typedef enum
   { TYPE_INT        = 0x0
@@ -21,17 +22,15 @@ struct value {
     } v;
 };
 
-struct env {
-    struct value **env;
-    nat len;
-};
+struct closure;
 
-typedef struct value *(*code_ptr)(struct env *);
+typedef struct value *(*code_ptr)(struct closure *);
 
 struct closure {
     code_ptr code;
     nat arity;
-    struct env *env;
+    struct value **env;
+    nat len;
 };
 
 #endif

@@ -8,7 +8,7 @@ import Text.LLVM (Fun,Res,declare,simpleFun,PtrTo,LLVM)
 
 -- RTS Primitives --------------------------------------------------------------
 
-rts_argument :: Fun (RtsEnv -> Nat -> Res Val)
+rts_argument :: Fun (Closure -> Nat -> Res Val)
 rts_argument  = simpleFun  "argument"
 
 rts_apply :: Fun (Closure -> PtrTo Val -> Nat -> Res Val)

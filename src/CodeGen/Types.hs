@@ -1,29 +1,18 @@
 module CodeGen.Types where
 
 import Data.Int (Int32)
-import Text.LLVM (IsType(getType),HasValues,toValue,PtrTo,Value,Fun,Res)
+import Text.LLVM (toValue,PtrTo,Value,Fun,Res)
 
 
 -- RTS Types -------------------------------------------------------------------
 
 type Nat = Int32
 
-type Fn = Fun (RtsEnv -> Res Val)
-
-
-newtype RtsEnv = RtsEnv (PtrTo Int32)
-
-instance IsType RtsEnv where
-  getType (RtsEnv ptr) = getType ptr
-
-instance HasValues RtsEnv
-
+type Fn = Fun (Closure -> Res Val)
 
 type Closure = PtrTo Int32
 
-
 type Val = PtrTo Int32
-
 
 type ValType = Int32
 

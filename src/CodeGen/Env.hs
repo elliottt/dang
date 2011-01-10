@@ -12,12 +12,12 @@ import qualified Data.Set as Set
 
 data Env = Env
   { envInterface :: Interface R
-  , envClosure   :: Value RtsEnv
+  , envClosure   :: Value Closure
   , envArgs      :: Set.Set String
   , envLocal     :: Map.Map String (Value Val)
   }
 
-mkEnv :: Interface R -> Value RtsEnv -> [String] -> Env
+mkEnv :: Interface R -> Value Closure -> [String] -> Env
 mkEnv i rtsEnv args = Env
   { envInterface = i
   , envClosure   = rtsEnv
