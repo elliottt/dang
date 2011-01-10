@@ -49,15 +49,17 @@ endef
 
 # Clang
 
+CC               = clang -emit-llvm
 CFLAGS           = -Wall
-cmd_cc_o_c       = clang -emit-llvm $(CFLAGS) -o $@ -c $<
+cmd_cc_o_c       = $(CC) $(CFLAGS) -o $@ -c $<
 quiet_cmd_cc_o_c = CC      $@
 
 %.o: %.c
 	$(call cmd,cc_o_c)
 
+CXX                 = clang -emit-llvm
 CXXFLAGS            = -Wall
-cmd_cxx_o_cxx       = clang -emit-llvm $(CXXFLAGS) -o $@ -c $<
+cmd_cxx_o_cxx       = $(CXX) $(CXXFLAGS) -o $@ -c $<
 quiet_cmd_cxx_o_cxx = CXX     $@
 
 %.o: %.cxx
