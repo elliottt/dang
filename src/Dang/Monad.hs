@@ -10,6 +10,7 @@ module Dang.Monad (
   , Options(..)
   , getOptions
   , Verbosity
+  , displayHelp
 
   , raiseE
   , catchE
@@ -62,7 +63,7 @@ type Option = Options -> IO Options
 
 parseOptions :: [String] -> IO Options
 parseOptions args =
-  case getOpt RequireOrder options args of
+  case getOpt Permute options args of
     (os,fs,[]) -> buildOptions os fs
     (_,_,errs) -> do
       displayHelp errs

@@ -18,6 +18,7 @@ import qualified Syntax.AST as AST
 
 import MonadLib
 import Text.LLVM
+import System.Exit (exitFailure)
 import System.IO (hPrint,hFlush)
 import qualified Data.ByteString.UTF8 as UTF8
 
@@ -27,8 +28,8 @@ rtsPath  = "rts/librts.a"
 main :: IO ()
 main  = runDang $ do
   opts   <- ask
-  let [file] = optSourceFiles opts
-  m         <- loadModule file
+  file   <- oneSourceFile
+  m      <- loadModule file
   logDebug "Parsed module"
   logDebug (show m)
   (iface,m') <- scopeCheck m
@@ -49,6 +50,13 @@ main  = runDang $ do
     sync llvm_as ["-o", ofile file, tmp ]
     unless (optCompileOnly opts)
       (sync llvm_ld ["-o", "prog", ofile file, rtsPath ])
+
+oneSourceFile :: Dang FilePath
+oneSourceFile  = do
+  opts <- ask
+  case optSourceFiles opts of
+    [file] -> return file
+    _      -> io (displayHelp [] >> exitFailure)
 
 
 loadModule :: FilePath -> Dang AST.Module
