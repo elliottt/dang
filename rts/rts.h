@@ -8,7 +8,7 @@ EXPORT struct value * argument(struct closure *, nat);
 
 // closures
 EXPORT struct closure * alloc_closure(nat arity, code_ptr);
-EXPORT struct closure * copy_closure(struct closure *, nat);
+EXPORT struct closure * copy_closure(struct closure *, struct value **, nat);
 
 // values
 EXPORT struct value * alloc_value(value_t);

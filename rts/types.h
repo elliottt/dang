@@ -1,9 +1,10 @@
 #ifndef __RTS_TYPES_H
 #define __RTS_TYPES_H
 
-#define EXPORT extern "C"
-#define IMPORT extern "C"
+#define EXPORT
+#define IMPORT
 
+typedef unsigned char bool;
 typedef unsigned long nat;
 typedef long s32;
 typedef long long s64;

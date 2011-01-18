@@ -1,7 +1,7 @@
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "types.h"
 #include "gc.h"
@@ -67,8 +67,12 @@ void init_gc() {
     heap_end = heap_ptr + 4096;
 }
 
+void perform_gc() {
+    fprintf(stderr, "Totally not performing gc.\n");
+}
+
 void *allocate(const char * type, nat size) {
-    bool retry = false;
+    bool retry = 0;
     void *res;
 
     // require some free space
@@ -84,7 +88,7 @@ void *allocate(const char * type, nat size) {
         if(free_space < size) {
             fprintf(stderr, "No free space, attempting a GC\n");
             perform_gc();
-            retry = true;
+            retry = 1;
         }
 
     } while(retry);
@@ -97,8 +101,4 @@ void *allocate(const char * type, nat size) {
     bzero(res, size);
 
     return res;
-}
-
-void perform_gc() {
-    fprintf(stderr, "Totally not performing gc.\n");
 }

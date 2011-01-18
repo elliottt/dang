@@ -57,18 +57,12 @@ quiet_cmd_cc_o_c = CC      $@
 %.o: %.c
 	$(call cmd,cc_o_c)
 
-CXX                 = clang -emit-llvm
-CXXFLAGS            = -Wall
-cmd_cxx_o_cxx       = $(CXX) $(CXXFLAGS) -o $@ -c $<
-quiet_cmd_cxx_o_cxx = CXX     $@
-
-%.o: %.cxx
-	$(call cmd,cxx_o_cxx)
-
 
 # AR
 
-cmd_ar       = llvm-ar rcu $@ $^
+AR           = llvm-ar
+RANLIB       = llvm-ranlib
+cmd_ar       = $(AR) rcu $@ $^; $(RANLIB) $@
 quiet_cmd_ar = AR      $@
 
 

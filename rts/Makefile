@@ -8,9 +8,9 @@ include $(TOPDIR)/mk/verbose.mk
 include $(TOPDIR)/mk/build.mk
 include $(TOPDIR)/mk/clean.mk
 
-SOURCES	:= $(shell find . -name '*.cxx')
+SOURCES	:= $(shell find . -name '*.c')
 HEADERS	:= $(shell find . -name '*.h')
-OBJECTS	:= $(SOURCES:.cxx=.o)
+OBJECTS	:= $(SOURCES:.c=.o)
 
 librts.a: $(OBJECTS)
 	$(call cmd,ar)

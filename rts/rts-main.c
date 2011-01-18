@@ -1,6 +1,6 @@
 
-#include <cstdlib>
-#include <cstdio>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "rts.h"
 #include "types.h"
