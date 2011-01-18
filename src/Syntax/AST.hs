@@ -45,8 +45,15 @@ modNamespace m = qualPrefix n ++ [qualSymbol n]
 
 
 data Open = Open
-  { openMod :: QualName
+  { openMod  :: QualName
+  , openSpec :: Maybe OpenSpec
   } deriving Show
+
+data OpenSpec
+  = OpenAs QualName
+  | OpenOnly [Name]
+  | OpenHiding [Name]
+    deriving Show
 
 
 type Var = String

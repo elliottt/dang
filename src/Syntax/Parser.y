@@ -29,12 +29,15 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   '{'  { Lexeme $$ (TReserved "{")  }
   '}'  { Lexeme $$ (TReserved "}")  }
   ';'  { Lexeme $$ (TReserved ";")  }
+  ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
 
 -- reserved names
   'module' { Lexeme $$ (TReserved "module") }
   'where'  { Lexeme $$ (TReserved "where")  }
   'open'   { Lexeme $$ (TReserved "open")   }
+  'as'     { Lexeme $$ (TReserved "as")     }
+  'hiding' { Lexeme $$ (TReserved "hiding") }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -78,7 +81,17 @@ fun_bind :: { Decl }
   : IDENT arg_list '=' exp { Decl $1 (reverse $2) $4 }
 
 open :: { Open }
-  : 'open' mod_name { Open $2 }
+  : 'open' mod_name open_spec { Open $2 $3 }
+
+open_spec :: { Maybe OpenSpec }
+  : {- empty -}                { Nothing }
+  | 'as' mod_name              { Just (OpenAs $2) }
+  | '(' mod_names ')'          { Just (OpenOnly (reverse $2)) }
+  | 'hiding' '(' mod_names ')' { Just (OpenHiding (reverse $3)) }
+
+mod_names :: { [Name] }
+  : IDENT               { [$1] }
+  | mod_names ',' IDENT { $3:$1 }
 
 arg_list :: { [String] }
   : arg_list IDENT { $2 : $1 }

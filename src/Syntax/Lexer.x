@@ -43,11 +43,14 @@ $white+         ;
 "{"             { reserved }
 "}"             { reserved }
 ";"             { reserved }
+","             { reserved }
 "."             { reserved }
 
 "module"        { reserved }
 "where"         { reserved }
 "open"          { reserved }
+"as"            { reserved }
+"hiding"        { reserved }
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }
