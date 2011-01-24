@@ -102,8 +102,6 @@ struct value * alloc_value(value_t type) {
     v = (struct value *)allocate("alloc_value", sizeof(struct value));
     v->type = type;
 
-    register_gc_root(v);
-
     return v;
 }
 

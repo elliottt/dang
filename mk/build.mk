@@ -49,13 +49,40 @@ endef
 
 # Clang
 
-CC               = clang -emit-llvm
+CC               = clang
 CFLAGS           = -Wall
 cmd_cc_o_c       = $(CC) $(CFLAGS) -o $@ -c $<
 quiet_cmd_cc_o_c = CC      $@
 
+
 %.o: %.c
 	$(call cmd,cc_o_c)
+
+cmd_cc_o_bc       = $(CC) $(CFLAGS) -emit-llvm -o $@ -c $<
+quiet_cmd_cc_o_bc = CC[BC]  $@
+
+%.bc: %.c
+	$(call cmd,cc_o_bc)
+
+
+# LLVM Assembler
+LLVM_AS           = llvm-as
+LLVM_ASFLAGS      =
+cmd_ll_o_bc       = $(LLVM_AS) $(LLVM_ASFLAGS) -o $@ $<
+quiet_cmd_ll_o_bc = AS      $@
+
+%.bc: %.ll
+	$(call cmd,ll_o_bc)
+
+
+LLC              = llc
+LLCFLAGS         =
+cmd_bc_o_s       = $(LLC) $(LLCFLAGS) -o $@ $<
+quiet_cmd_bc_o_s = LLC     $@
+
+%.s: %.ll
+	$(call cmd,ll_o_bc)
+	$(call cmd,bc_o_s)
 
 
 # AR

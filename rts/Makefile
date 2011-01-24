@@ -8,17 +8,18 @@ include $(TOPDIR)/mk/verbose.mk
 include $(TOPDIR)/mk/build.mk
 include $(TOPDIR)/mk/clean.mk
 
-SOURCES	:= $(shell find . -name '*.c')
-HEADERS	:= $(shell find . -name '*.h')
-OBJECTS	:= $(SOURCES:.c=.o)
+CSOURCES := $(shell find . -name '*.c')
+CHEADERS := $(shell find . -name '*.h')
+SOURCES  := $(CSOURCES) gc-prim.ll
+OBJECTS  := $(patsubst %.ll,%.bc,$(patsubst %.c,%.bc,$(SOURCES)))
 
 librts.a: $(OBJECTS)
 	$(call cmd,ar)
 
 -include $(CURDIR)/.depend
 
-$(CURDIR)/.depend: $(SOURCES) $(HEADERS)
-	$(Q) $(CXX) -M $^ > $@
+$(CURDIR)/.depend: $(CSOURCES) $(CHEADERS)
+	$(Q) $(CC) -M $^ > $@
 
 clean:
 	$(call cmd,clean) $(RM) -f librts.a $(OBJECTS)

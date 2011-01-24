@@ -10,48 +10,20 @@
 /* Stack Roots                                                                */
 /* -------------------------------------------------------------------------- */
 
-struct gc_node {
-    struct value *value;
-    struct gc_node *next;
-    struct gc_node *prev;
+struct frame_map {
+    int num_roots;
+    int num_metas;
+    void **metas;
 };
 
-struct gc_node *root = NULL;
+struct stack_entry {
+    struct stack_entry *next;
+    struct farme_map *frame;
+    void **roots;
+};
 
-static struct gc_node *alloc_gc_node() {
-    struct gc_node *res;
+extern struct stack_entry* llvm_gc_root_chain;
 
-    res = (struct gc_node *)malloc(sizeof(struct gc_node));
-    if(!res) {
-        fprintf(stderr, "Failed to allocate a gc_node\n");
-        exit(1);
-        return NULL;
-    }
-
-    return res;
-}
-
-static void free_gc_node(struct gc_node *n) {
-}
-
-
-void register_gc_root(struct value *v) {
-    struct gc_node *cur;
-
-    if(!root) {
-        root       = alloc_gc_node();
-        root->prev = NULL;
-        cur        = root;
-    } else {
-        cur        = alloc_gc_node();
-        cur->prev  = NULL;
-        cur->next  = root;
-        root->prev = cur;
-        root       = cur;
-    }
-
-    cur->value = v;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Allocation                                                                 */
