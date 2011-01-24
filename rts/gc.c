@@ -40,7 +40,7 @@ void init_gc() {
 }
 
 void perform_gc() {
-    fprintf(stderr, "Totally not performing gc.\n");
+    fprintf(stderr, "Totally not performing gc. (%p)\n", llvm_gc_root_chain);
 }
 
 void *allocate(const char * type, nat size) {

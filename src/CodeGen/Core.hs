@@ -20,6 +20,8 @@ import Data.List (genericLength,intercalate)
 import MonadLib
 import Text.LLVM
 
+enableGC :: Bool
+enableGC  = True
 
 -- Compilation Monad -----------------------------------------------------------
 
@@ -37,7 +39,7 @@ mangleName (QualName ps n) a =
 declFunSpec :: Decl -> FunSpec
 declFunSpec d = emptyFunSpec
   { specLinkage = declLinkage d
-  --, specGC      = Just (GC "test")
+  , specGC      = guard enableGC >> Just (GC "shadow-stack")
   }
 
 declLinkage :: Decl -> Maybe Linkage
@@ -112,12 +114,13 @@ compApp env c xs = do
   call rts_apply clos args (toValue len)
 
 markGC :: IsType a => Value (PtrTo a) -> BB r ()
-markGC _   = return ()
-markGC ptr = do
-  i8       <- bitcast ptr
-  stackVar <- alloca (toValue 1) Nothing
-  store i8 stackVar
-  call_ llvm_gcroot stackVar nullPtr
+markGC ptr
+  | not enableGC = return ()
+  | otherwise    = do
+    i8       <- bitcast ptr
+    stackVar <- alloca (toValue 1) Nothing
+    store i8 stackVar
+    call_ llvm_gcroot stackVar nullPtr
 
 -- | Allocate a new closure that uses the given function symbol.
 symbolClosure :: Env -> QualName -> BB r (Value Closure)

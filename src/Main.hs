@@ -18,7 +18,9 @@ import qualified Syntax.AST as AST
 
 import MonadLib
 import Text.LLVM
+import System.Directory (removeFile)
 import System.Exit (exitFailure)
+import System.FilePath (dropExtension,(<.>))
 import System.IO (hPrint,hFlush)
 import qualified Data.ByteString.UTF8 as UTF8
 
@@ -47,9 +49,8 @@ main  = runDang $ do
     io $ do
       hPrint h asm
       hFlush h
-    sync llvm_as ["-o", ofile file, tmp ]
-    unless (optCompileOnly opts)
-      (sync llvm_ld ["-o", "prog", ofile file, rtsPath ])
+    sync llvm_as ["-o", bcfile file, tmp ]
+    unless (optCompileOnly opts) (link [bcfile file] (dropExtension file))
 
 oneSourceFile :: Dang FilePath
 oneSourceFile  = do
@@ -86,3 +87,15 @@ compile qn env ds = do
   return doc
   where
   (iface,doc) = runLLVM (rtsImports >> compModule env ds)
+
+link :: [FilePath] -> FilePath -> Dang ()
+link ofiles out =
+  withClosedTempFile $ \ res ->
+  withClosedTempFile $ \ asm ->
+  withClosedTempFile $ \ obj -> do
+    sync llvm_ld ("-o" : res : rtsPath : ofiles)
+    sync llc ["-o", asm, res <.> "bc"]
+    sync assembler ["-o", obj, asm]
+    opts <- ask
+    unless (optKeepTempFiles opts) (io (removeFile (res <.> "bc")))
+    sync gcc ["-o", out, obj]

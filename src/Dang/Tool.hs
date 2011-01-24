@@ -55,3 +55,24 @@ llvm_ld  = Tool
   , toolProg = "llvm-ld"
   , toolArgs = []
   }
+
+assembler :: Tool
+assembler  = Tool
+  { toolName = "Assembler"
+  , toolProg = "as"
+  , toolArgs = []
+  }
+
+gcc :: Tool
+gcc  = Tool
+  { toolName = "GCC"
+  , toolProg = "gcc"
+  , toolArgs = []
+  }
+
+llc :: Tool
+llc  = Tool
+  { toolName = "LLVM Code Generator"
+  , toolProg = "llc"
+  , toolArgs = []
+  }
