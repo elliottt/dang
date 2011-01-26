@@ -8,3 +8,4 @@ ghc
 dang
 *.di
 *.bc
+*.s
