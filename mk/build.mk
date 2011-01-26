@@ -47,8 +47,8 @@ $(GHC_DIR)/$1.hs: src/$1.y
 	$$(call cmd,happy_hs_y)
 endef
 
-# Clang
 
+# Clang
 CC               = clang
 CFLAGS           = -Wall
 cmd_cc_o_c       = $(CC) $(CFLAGS) -o $@ -c $<
@@ -61,15 +61,27 @@ quiet_cmd_cc_o_c = CC      $@
 cmd_cc_o_bc       = $(CC) $(CFLAGS) -emit-llvm -o $@ -c $<
 quiet_cmd_cc_o_bc = CC[BC]  $@
 
+.PRECIOUS: %.bc
 %.bc: %.c
 	$(call cmd,cc_o_bc)
+
+
+# Assembler
+AS               = as
+ASFLAGS          =
+cmd_as_o_s       = $(AS) $(ASFLAGS) -o $@ $<
+quiet_cmd_as_o_s = AS      $@
+
+.PRECIOUS: %.s
+%.o: %.s
+	$(call cmd,as_o_s)
 
 
 # LLVM Assembler
 LLVM_AS           = llvm-as
 LLVM_ASFLAGS      =
 cmd_ll_o_bc       = $(LLVM_AS) $(LLVM_ASFLAGS) -o $@ $<
-quiet_cmd_ll_o_bc = AS      $@
+quiet_cmd_ll_o_bc = LLVM-AS $@
 
 %.bc: %.ll
 	$(call cmd,ll_o_bc)
@@ -78,10 +90,9 @@ quiet_cmd_ll_o_bc = AS      $@
 LLC              = llc
 LLCFLAGS         =
 cmd_bc_o_s       = $(LLC) $(LLCFLAGS) -o $@ $<
-quiet_cmd_bc_o_s = LLC     $@
+quiet_cmd_bc_o_s =
 
-%.s: %.ll
-	$(call cmd,ll_o_bc)
+%.s: %.bc
 	$(call cmd,bc_o_s)
 
 
