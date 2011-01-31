@@ -28,6 +28,7 @@ import Pretty
 import Prim
 import QualName
 import ReadWrite
+import Syntax.AST (Export(..))
 import qualified Syntax.AST as AST
 
 import Control.Applicative (Applicative(..))
@@ -141,10 +142,10 @@ prefix  = roContext `fmap` ask
 -- this point, both to describe the arity of the closure, and the names of the
 -- variables used in Argument term nodes.
 data Decl = Decl
-  { declName     :: QualName
-  , declExported :: Bool
-  , declVars     :: [String]
-  , declBody     :: Term
+  { declExport :: Export
+  , declName   :: QualName
+  , declVars   :: [String]
+  , declBody   :: Term
   } deriving Show
 
 instance Pretty Decl where
@@ -153,7 +154,7 @@ instance Pretty Decl where
   ppList _ ds = semis (map (pp 0) ds)
 
 notExported :: Decl -> Decl
-notExported d = d { declExported = False }
+notExported d = d { declExport = Private }
 
 hasArguments :: Decl -> Bool
 hasArguments  = not . null . declVars
@@ -201,22 +202,26 @@ apply f xs = Apply f xs
 -- | Lambda-lift a module into a collection of declarations.
 llModule :: AST.Module -> LL [Decl]
 llModule m = namespace (AST.modNamespace m)
-           $ introSymbols True ds
-           $ llDecls True ds
+           $ introSymbols Public ds
+           $ llDecls Public ds
   where
   ds = AST.modDecls m
 
-introSymbols :: Bool -> [AST.Decl] -> LL a -> LL a
+isPublic :: Export -> Bool
+isPublic Public = True
+isPublic _      = False
+
+introSymbols :: Export -> [AST.Decl] -> LL a -> LL a
 introSymbols ex ds m = do
   ro <- ask
-  let term d | ex        = Symbol (qualName (roContext ro) (AST.declName d))
-             | otherwise = Var (AST.declName d)
+  let term d | isPublic ex = Symbol (qualName (roContext ro) (AST.declName d))
+             | otherwise   = Var (AST.declName d)
       qs' = Map.fromList [ (AST.declName d, term d) | d <- ds ]
   local (ro { roSubst = Map.union qs' (roSubst ro) }) m
 
 -- | Lambda-lift a group of declarations, checking recursive declarations in a
 -- group.
-llDecls :: Bool -> [AST.Decl] -> LL [Decl]
+llDecls :: Export -> [AST.Decl] -> LL [Decl]
 llDecls ex ds = do
   ns <- prefix
   let names               = Set.fromList (map (qualName ns) (AST.declNames ds))
@@ -229,7 +234,7 @@ llDecls ex ds = do
 -- the free variables. Descend, and lambda-lift each declaration individually.
 -- It's OK to extend the arguments here, as top-level functions won't have free
 -- variables.
-createClosure :: Bool -> [AST.Decl] -> LL [Decl]
+createClosure :: Export -> [AST.Decl] -> LL [Decl]
 createClosure ex ds = do
   ro <- LL ask
   let names = roVars ro
@@ -242,29 +247,29 @@ createClosure ex ds = do
 -- that applies the free variables of that symbol.  One key assumption made here
 -- is that free variables are always coming from the scope of the enclosing
 -- function.
-rewriteFreeVars :: Bool -> [AST.Var] -> [AST.Decl] -> LL a -> LL a
+rewriteFreeVars :: Export -> [AST.Var] -> [AST.Decl] -> LL a -> LL a
 rewriteFreeVars ex fvs ds m = do
   ps <- prefix
-  let term d | ex        = Symbol (qualName ps (AST.declName d))
-             | otherwise = Var (AST.declName d)
+  let term d | isPublic ex = Symbol (qualName ps (AST.declName d))
+             | otherwise   = Var (AST.declName d)
   extend [ (AST.declName d, apply t args) | d <- ds, let t = term d ] m
   where
   args = zipWith (const . Argument) [0 ..] fvs
 
 -- | Lambda lift the body of a declaration.  Assume that all modifications to
 -- the free variables have been performed already.
-llDecl :: Bool -> AST.Decl -> LL Decl
+llDecl :: Export -> AST.Decl -> LL Decl
 llDecl ex d = do
   let args = AST.declVars d
   b' <- llTerm args (AST.declBody d)
   ps <- prefix
-  let name | ex        = qualName ps (AST.declName d)
-           | otherwise = simpleName (AST.declName d)
+  let name | isPublic ex = qualName ps (AST.declName d)
+           | otherwise   = simpleName (AST.declName d)
   return Decl
-    { declName     = name
-    , declExported = ex
-    , declVars     = args
-    , declBody     = b'
+    { declExport = ex
+    , declName   = name
+    , declVars   = args
+    , declBody   = b'
     }
 
 -- | Translate from a top-level declaration to a let declaration, which
@@ -280,11 +285,11 @@ llLetDecl d = LetDecl
 
 llLetDecls :: [AST.Decl] -> ([LetDecl] -> LL a) -> LL a
 llLetDecls ds k = do
-  ds' <- llDecls False ds
+  ds' <- llDecls Private ds
   let (as,bs) = partition hasArguments ds'
   emits as
   let ls = map llLetDecl bs
-  introSymbols False ds (k ls)
+  introSymbols Private ds (k ls)
 
 -- | Lambda lift terms.  Abstractions will cause an error here, as the invariant
 -- for lambda-lifting is that they have been named.

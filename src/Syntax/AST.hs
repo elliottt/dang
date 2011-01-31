@@ -56,12 +56,23 @@ data OpenSpec
     deriving Show
 
 
+data Export
+  = Public
+  | Private
+    deriving (Eq,Show)
+
+instance Pretty Export where
+  pp _ Public  = text "public"
+  pp _ Private = text "private"
+
+
 type Var = String
 
 data Decl = Decl
-  { declName :: Name
-  , declVars :: [Var]
-  , declBody :: Term
+  { declExport :: Export
+  , declName   :: Name
+  , declVars   :: [Var]
+  , declBody   :: Term
   } deriving (Eq,Show)
 
 instance FreeVars Decl where
@@ -71,8 +82,9 @@ instance Names Decl where
   identifiers d = identifiers (declBody d)
 
 instance Pretty Decl where
-  pp _ d = text (declName d) <+> hsep (map text (declVars d)) <+>
-           char '='          <+> pp 0 (declBody d)
+  pp _ d = pp 0 (declExport d)          <+> text (declName d) <+>
+           hsep (map text (declVars d)) <+> char '='          <+>
+           pp 0 (declBody d)
   ppList _ ds = semis (map (pp 0) ds)
 
 declNames :: [Decl] -> [Var]

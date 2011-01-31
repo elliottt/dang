@@ -4,7 +4,6 @@ import Compile (compile)
 import Dang.IO
 import Dang.FileName
 import Dang.Monad
-import Dang.Tool
 import Link (link)
 import ModuleSystem
 import Syntax.Parser
@@ -14,7 +13,6 @@ import qualified Syntax.AST as AST
 import MonadLib
 import System.Exit (exitFailure)
 import System.FilePath (dropExtension)
-import System.IO (hPrint,hFlush)
 import qualified Data.ByteString.UTF8 as UTF8
 
 main :: IO ()
@@ -27,13 +25,8 @@ main  = runDang $ do
   (iface,m') <- scopeCheck m
   logDebug "Module system output"
   logDebug (show m')
-  withOpenTempFile $ \ tmp h -> do
-    asm <- compile iface m'
-    io $ do
-      hPrint h asm
-      hFlush h
-    sync llvm_as ["-o", bcfile file, tmp ]
-    unless (optCompileOnly opts) (link [bcfile file] (dropExtension file))
+  compile iface m' (ofile file)
+  unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
 
 oneSourceFile :: Dang FilePath
 oneSourceFile  = do

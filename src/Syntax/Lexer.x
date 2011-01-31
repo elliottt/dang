@@ -51,6 +51,8 @@ $white+         ;
 "open"          { reserved }
 "as"            { reserved }
 "hiding"        { reserved }
+"public"        { reserved }
+"private"       { reserved }
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }

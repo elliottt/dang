@@ -4,7 +4,7 @@ TOPDIR = $(CURDIR)/..
 DANG = $(TOPDIR)/dang
 
 test: Main.o Id.o Fix.o
-	llvm-ld -o $@ $^ $(TOPDIR)/rts/librts.a
+	llvm-ld -disable-opt -o $@ $^ $(TOPDIR)/rts/librts.a
 
 test-debug: Main.o Id.o Fix.o
 	llvm-ld -o $@ $^ $(TOPDIR)/rts/librts.a -disable-opt
@@ -18,6 +18,6 @@ Main.o: Fix.o
 	$(DANG) -c $<
 
 clean:
-	$(RM) *.o *.di *.ll
+	$(RM) *.bc *.o *.di *.ll *.s
 	$(RM) test test.bc
 	$(RM) test-debug test-debug.bc test-debug.s

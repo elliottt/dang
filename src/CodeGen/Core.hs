@@ -44,7 +44,7 @@ declFunSpec d = emptyFunSpec
 
 declLinkage :: Decl -> Maybe Linkage
 declLinkage d = do
-  guard (not (declExported d))
+  guard (declExport d == AST.Private)
   return Private
 
 lookupFn :: Monad m => QualName -> Env -> m (Nat,Fn)

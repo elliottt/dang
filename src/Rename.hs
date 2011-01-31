@@ -95,24 +95,22 @@ findFresh  = loop []
     v' = "_" ++ v ++ show i
     qn = simpleName v'
 
--- | Introduce term variable mappings between unqualified and qualified versions
--- of the same name.
-fullyQualify :: Monad m => Namespace -> [Name] -> Rename m a -> Rename m a
-fullyQualify ps ns m = do
-  ro <- ask
-  let step i n = addSubst n (qualName ps n) i
-  local (foldl step ro ns) m
-
 
 
 -- Term Renaming ---------------------------------------------------------------
 
 renameModule :: Monad m => Module -> Rename m Module
-renameModule m = fullyQualify (modNamespace m) names $ do
+renameModule m = fullyQualify (modNamespace m) (modDecls m) $ do
   ds' <- renameDecls (modDecls m)
   return m { modDecls = ds' }
-  where
-  names = map declName (modDecls m)
+
+-- | Introduce term variable mappings between unqualified and qualified versions
+-- of the same name.
+fullyQualify :: Monad m => Namespace -> [Decl] -> Rename m a -> Rename m a
+fullyQualify ps ds m = do
+  ro <- ask
+  let step i d = addSubst (declName d) (qualName ps (declName d)) i
+  local (foldl step ro ds) m
 
 -- | Rename declarations, assuming that names are already present in the
 -- environment.
@@ -132,6 +130,14 @@ renameDecl d = do
       , declBody = b'
       }
 
+freshBinding :: Name -> [String] -> Term -> Decl
+freshBinding n vs body = Decl
+  { declName   = n
+  , declVars   = vs
+  , declBody   = body
+  , declExport = Private
+  }
+
 -- | Rename variable occurrences and bindings in terms.
 renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
@@ -146,7 +152,7 @@ renameTerm t =
     Abs vs b -> intro $ \name -> fresh vs $ do
       vs' <- mapM subst vs
       b'  <- renameTerm b
-      return (Let [Decl name vs' b'] (Local name))
+      return (Let [freshBinding name vs' b'] (Local name))
 
 
 renameGlobal :: Monad m => QualName -> Rename m Term

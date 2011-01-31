@@ -1,25 +1,12 @@
 module Link where
 
-import Dang.IO
 import Dang.Monad
 import Dang.Tool
-
-import MonadLib
-import System.Directory (removeFile)
-import System.FilePath ((<.>))
 
 
 rtsPath :: FilePath
 rtsPath  = "rts/librts.a"
 
+-- | Link together the given object files, writing the output to out.
 link :: [FilePath] -> FilePath -> Dang ()
-link ofiles out =
-  withClosedTempFile $ \ res ->
-  withClosedTempFile $ \ asm ->
-  withClosedTempFile $ \ obj -> do
-    sync llvm_ld ("-o" : res : rtsPath : ofiles)
-    sync llc ["-o", asm, res <.> "bc"]
-    sync assembler ["-o", obj, asm]
-    opts <- ask
-    unless (optKeepTempFiles opts) (io (removeFile (res <.> "bc")))
-    sync gcc ["-o", out, obj]
+link ofiles out = sync gcc ("-o" : out : rtsPath : ofiles)

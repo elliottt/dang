@@ -33,11 +33,13 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   '.'  { Lexeme $$ (TReserved ".")  }
 
 -- reserved names
-  'module' { Lexeme $$ (TReserved "module") }
-  'where'  { Lexeme $$ (TReserved "where")  }
-  'open'   { Lexeme $$ (TReserved "open")   }
-  'as'     { Lexeme $$ (TReserved "as")     }
-  'hiding' { Lexeme $$ (TReserved "hiding") }
+  'module'  { Lexeme $$ (TReserved "module")  }
+  'where'   { Lexeme $$ (TReserved "where")   }
+  'open'    { Lexeme $$ (TReserved "open")    }
+  'as'      { Lexeme $$ (TReserved "as")      }
+  'hiding'  { Lexeme $$ (TReserved "hiding")  }
+  'public'  { Lexeme $$ (TReserved "public")  }
+  'private' { Lexeme $$ (TReserved "private") }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -58,8 +60,8 @@ top_module :: { Module }
   : 'module' mod_name 'where' '{' top_decls '}' {% mkModule $2 $5 }
 
 top_decl :: { PTopDecl }
-  : fun_bind { PDecl $1 }
-  | open     { POpen $1 }
+  : top_fun_bind { PDecl $1 }
+  | open         { POpen $1 }
 
 top_decls :: { [PTopDecl] }
   : top_decls ';' top_decl { $3:$1 }
@@ -77,8 +79,16 @@ qual_name_prefix :: { [Name] }
   : qual_name_prefix '.' CONIDENT { $3:$1 }
   | CONIDENT                      { [$1] }
 
-fun_bind :: { Decl }
-  : IDENT arg_list '=' exp { Decl $1 (reverse $2) $4 }
+top_fun_bind :: { Decl }
+  : export_type fun_bind { $2 $1 }
+
+fun_bind :: { Export -> Decl }
+  : IDENT arg_list '=' exp { \e -> Decl e $1 (reverse $2) $4 }
+
+export_type :: { Export }
+  : {- empty -} { Public }
+  | 'public'    { Public }
+  | 'private'   { Private }
 
 open :: { Open }
   : 'open' mod_name open_spec { Open $2 $3 }
@@ -110,8 +120,8 @@ lexp :: { Term }
   | fexp                              { $1 }
 
 let_binds :: { [Decl] }
-  : let_binds ';' fun_bind { $3:$1 }
-  | fun_bind               { [$1] }
+  : let_binds ';' fun_bind { $3 Private : $1 }
+  | fun_bind               { [$1 Private] }
 
 fexp :: { Term }
   : aexp aexp_list { apply $1 (reverse $2) }

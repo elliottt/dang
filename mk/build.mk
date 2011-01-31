@@ -98,8 +98,8 @@ quiet_cmd_bc_o_s =
 
 # AR
 
-AR           = llvm-ar
-RANLIB       = llvm-ranlib
+AR           = ar
+RANLIB       = ranlib
 cmd_ar       = $(AR) rcu $@ $^; $(RANLIB) $@
 quiet_cmd_ar = AR      $@
 
