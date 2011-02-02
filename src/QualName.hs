@@ -61,6 +61,14 @@ qualSymbol :: QualName -> Name
 qualSymbol (QualName _ n) = n
 qualSymbol (PrimName n)   = n
 
+qualNamespace :: QualName -> Namespace
+qualNamespace (QualName ps n) = ps ++ [n]
+qualNamespace (PrimName _)    = []
+
+changeNamespace :: Namespace -> QualName -> QualName
+changeNamespace ps (QualName _ n) = QualName ps n
+changeNamespace _  qn@PrimName{}  = qn
+
 class Names a where
   identifiers :: a -> Set.Set QualName
 
