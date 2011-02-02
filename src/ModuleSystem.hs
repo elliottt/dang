@@ -22,7 +22,11 @@ data Resolved
   = Resolved QualName
   | Bound Name
   | Clash Name [QualName]
-    deriving Show
+    deriving (Eq,Show)
+
+isBound :: Resolved -> Bool
+isBound Bound{} = True
+isBound _       = False
 
 resolvedNames :: Resolved -> [QualName]
 resolvedNames (Resolved qn) = [qn]
@@ -31,8 +35,10 @@ resolvedNames (Clash _ ns)  = ns
 
 -- | Merge resolved names, favoring new bound variables for shadowing.
 mergeResolved :: Resolved -> Resolved -> Resolved
-mergeResolved a@Bound{} _ = a
-mergeResolved a         b = clash a b
+mergeResolved a b
+  | isBound a = a
+  | a == b    = a
+  | otherwise = clash a b
 
 -- | Merge two resolved names into a name clash.
 clash :: Resolved -> Resolved -> Resolved
