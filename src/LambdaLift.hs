@@ -201,9 +201,7 @@ apply f xs = Apply f xs
 
 -- | Lambda-lift a module into a collection of declarations.
 llModule :: AST.Module -> LL [Decl]
-llModule m = namespace (AST.modNamespace m)
-           $ introSymbols Public ds
-           $ llDecls Public ds
+llModule m = namespace (AST.modNamespace m) $ introSymbols ds $ llDecls ds
   where
   ds = AST.modDecls m
 
@@ -211,22 +209,21 @@ isPublic :: Export -> Bool
 isPublic Public = True
 isPublic _      = False
 
-introSymbols :: Export -> [AST.Decl] -> LL a -> LL a
-introSymbols ex ds m = do
+introSymbols :: [AST.Decl] -> LL a -> LL a
+introSymbols ds m = do
   ro <- ask
-  let term d | isPublic ex = Symbol (qualName (roContext ro) (AST.declName d))
-             | otherwise   = Var (AST.declName d)
+  let term d = Symbol (qualName (roContext ro) (AST.declName d))
       qs' = Map.fromList [ (AST.declName d, term d) | d <- ds ]
   local (ro { roSubst = Map.union qs' (roSubst ro) }) m
 
 -- | Lambda-lift a group of declarations, checking recursive declarations in a
 -- group.
-llDecls :: Export -> [AST.Decl] -> LL [Decl]
-llDecls ex ds = do
+llDecls :: [AST.Decl] -> LL [Decl]
+llDecls ds = do
   ns <- prefix
   let names               = Set.fromList (map (qualName ns) (AST.declNames ds))
-      step (AcyclicSCC d) = bindVars names (createClosure ex [d])
-      step (CyclicSCC rs) = bindVars names (createClosure ex rs)
+      step (AcyclicSCC d) = bindVars names (createClosure [d])
+      step (CyclicSCC rs) = bindVars names (createClosure rs)
   concat `fmap` mapM step (AST.sccDecls ns ds)
 
 -- | Rewrite references to declared names with applications that fill in its
@@ -234,35 +231,34 @@ llDecls ex ds = do
 -- the free variables. Descend, and lambda-lift each declaration individually.
 -- It's OK to extend the arguments here, as top-level functions won't have free
 -- variables.
-createClosure :: Export -> [AST.Decl] -> LL [Decl]
-createClosure ex ds = do
+createClosure :: [AST.Decl] -> LL [Decl]
+createClosure ds = do
   ro <- LL ask
   let names = roVars ro
   let fvs   = AST.freeVars ds Set.\\ names
   let fvl   = map qualSymbol (Set.toList fvs)
-  rewriteFreeVars ex fvl ds
-    $ bindVars fvs (mapM (llDecl ex . extendVars fvl) ds)
+  rewriteFreeVars fvl ds $ bindVars fvs (mapM (llDecl . extendVars fvl) ds)
 
 -- | Generate a mapping from the old symbol a declaration binds to an expression
 -- that applies the free variables of that symbol.  One key assumption made here
 -- is that free variables are always coming from the scope of the enclosing
 -- function.
-rewriteFreeVars :: Export -> [AST.Var] -> [AST.Decl] -> LL a -> LL a
-rewriteFreeVars ex fvs ds m = do
+rewriteFreeVars :: [AST.Var] -> [AST.Decl] -> LL a -> LL a
+rewriteFreeVars fvs ds m = do
   ps <- prefix
-  let term d | isPublic ex = Symbol (qualName ps (AST.declName d))
-             | otherwise   = Var (AST.declName d)
+  let term d = Symbol (qualName ps (AST.declName d))
   extend [ (AST.declName d, apply t args) | d <- ds, let t = term d ] m
   where
   args = zipWith (const . Argument) [0 ..] fvs
 
 -- | Lambda lift the body of a declaration.  Assume that all modifications to
 -- the free variables have been performed already.
-llDecl :: Export -> AST.Decl -> LL Decl
-llDecl ex d = do
+llDecl :: AST.Decl -> LL Decl
+llDecl d = do
   let args = AST.declVars d
   b' <- llTerm args (AST.declBody d)
   ps <- prefix
+  let ex = AST.declExport d
   let name | isPublic ex = qualName ps (AST.declName d)
            | otherwise   = simpleName (AST.declName d)
   return Decl
@@ -285,11 +281,16 @@ llLetDecl d = LetDecl
 
 llLetDecls :: [AST.Decl] -> ([LetDecl] -> LL a) -> LL a
 llLetDecls ds k = do
-  ds' <- llDecls Private ds
+  ds' <- llDecls ds
   let (as,bs) = partition hasArguments ds'
   emits as
-  let ls = map llLetDecl bs
-  introSymbols Private ds (k ls)
+  ro <- ask
+  let aqs = Map.fromList [ (qualSymbol n, Symbol n)
+                         | d <- as, let n = declName d ]
+      bqs = Map.fromList [ (n, Var n)
+                         | d <- bs, let n = qualSymbol (declName d) ]
+  local (ro { roSubst = Map.unions [aqs,bqs,roSubst ro] })
+    $ k $ map llLetDecl bs
 
 -- | Lambda lift terms.  Abstractions will cause an error here, as the invariant
 -- for lambda-lifting is that they have been named.
