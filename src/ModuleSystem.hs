@@ -16,59 +16,14 @@ import QualName
 import ReadWrite
 import Syntax.AST
 
+import Data.Function (on)
 import Data.Maybe (mapMaybe)
 import MonadLib
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-data Resolved
-  = Resolved QualName
-  | Bound Name
-  | Clash Name [QualName]
-    deriving (Eq,Show)
 
-isBound :: Resolved -> Bool
-isBound Bound{} = True
-isBound _       = False
-
-resolvedNames :: Resolved -> [QualName]
-resolvedNames (Resolved qn) = [qn]
-resolvedNames (Bound n)     = [simpleName n]
-resolvedNames (Clash _ ns)  = ns
-
--- | Merge resolved names, favoring new bound variables for shadowing.  If the
--- boolean parameter is True, the second resolved name is assumed to be weak,
--- and the first resolved name will be preferred.
-mergeResolved :: Resolved -> Resolved -> Resolved
-mergeResolved a b
-  | isBound a = a
-  | a == b    = a
-  | otherwise = clash a b
-
--- | Merge two resolved names into a name clash.
-clash :: Resolved -> Resolved -> Resolved
-clash a@(Clash n _)   b = Clash n (resolvedNames a ++ resolvedNames b)
-clash   (Bound n)     b = Clash n (simpleName n : resolvedNames b)
-clash   (Resolved qn) b = Clash (qualSymbol qn) (qn : resolvedNames b)
-
--- | The term that this entry represents (global/local).
-resolvedTerm :: Resolved -> Scope Term
-resolvedTerm (Resolved qn) = return (Global qn)
-resolvedTerm (Bound n)     = return (Local n)
-resolvedTerm (Clash n ns)  =
-  fail (n ++ " defined in multiple places:" ++ unlines (map pretty ns))
-
-type ResolvedNames = Map.Map QualName Resolved
-
-mergeResolvedNames :: ResolvedNames -> ResolvedNames -> ResolvedNames
-mergeResolvedNames  = Map.unionWith mergeResolved
-
-resolve :: QualName -> Scope Term
-resolve qn = do
-  ro <- ask
-  case Map.lookup qn (roNames ro) of
-    Nothing -> fail ("Symbol `" ++ pretty qn ++ "' not defined")
-    Just r  -> resolvedTerm r
+-- Scope Checking Monad --------------------------------------------------------
 
 data RO = RO
   { roNames :: ResolvedNames
@@ -104,10 +59,70 @@ runScope  = runReaderT emptyRO . getScope
 data Use = OpenModule Open Bool
     deriving (Show,Eq,Ord)
 
-uniqueModules :: Set.Set Use -> Set.Set (QualName,Bool)
-uniqueModules  = Set.map step
+
+-- Resolved Names --------------------------------------------------------------
+
+data Resolved
+  = Resolved QualName
+  | Bound Name
+  | Clash Name [QualName]
+    deriving (Eq,Show)
+
+type ResolvedNames = Map.Map QualName Resolved
+
+-- | True when the Resolved name is a bound variable.
+isBound :: Resolved -> Bool
+isBound Bound{} = True
+isBound _       = False
+
+-- | The set of names that are resolved by a single qualified name.
+resolvedNames :: Resolved -> [QualName]
+resolvedNames (Resolved qn) = [qn]
+resolvedNames (Bound n)     = [simpleName n]
+resolvedNames (Clash _ ns)  = ns
+
+-- | Merge resolved names, favoring new bound variables for shadowing.  If the
+-- boolean parameter is True, the second resolved name is assumed to be weak,
+-- and the first resolved name will be preferred.
+mergeResolved :: Resolved -> Resolved -> Resolved
+mergeResolved a b
+  | isBound a = a
+  | a == b    = a
+  | otherwise = clash a b
+
+-- | Merge two resolved names into a name clash.
+clash :: Resolved -> Resolved -> Resolved
+clash a@(Clash n _)   b = Clash n (resolvedNames a ++ resolvedNames b)
+clash   (Bound n)     b = Clash n (simpleName n : resolvedNames b)
+clash   (Resolved qn) b = Clash (qualSymbol qn) (qn : resolvedNames b)
+
+-- | Merge two resolved name substitutions.
+mergeResolvedNames :: ResolvedNames -> ResolvedNames -> ResolvedNames
+mergeResolvedNames  = Map.unionWith mergeResolved
+
+
+-- Scope Checking --------------------------------------------------------------
+
+-- | Given a qualified name, generate the term that corresponds to its binding.
+resolve :: QualName -> Scope Term
+resolve qn = do
+  ro <- ask
+  case Map.lookup qn (roNames ro) of
+    Nothing -> fail ("Symbol `" ++ pretty qn ++ "' not defined")
+    Just r  -> resolvedTerm r
+
+-- | The term that this entry represents (global/local).
+resolvedTerm :: Resolved -> Scope Term
+resolvedTerm (Resolved qn) = return (Global qn)
+resolvedTerm (Bound n)     = return (Local n)
+resolvedTerm (Clash n ns)  =
+  fail (n ++ " defined in multiple places:" ++ unlines (map pretty ns))
+
+-- | Given a module, return the modules that are opened by it.
+openedModules :: Module -> Set.Set Use
+openedModules m = Set.fromList (map step (modOpens m))
   where
-  step (OpenModule o isWeak) = (openMod o, isWeak)
+  step o = OpenModule o False
 
 -- | Given a module, return the modules that are referenced in its identifiers,
 -- removing fully-qualified references to local identifiers.
@@ -125,11 +140,16 @@ implicitlyOpenedModules m =
   toUse _  = Nothing
   thisModule  = modNamespace m
 
--- | Given a module, return the modules that are opened by it.
-openedModules :: Module -> Set.Set Use
-openedModules m = Set.fromList (map step (modOpens m))
+-- | Register all of the names defined in a module as both their local and fully
+-- qualified versions.
+definedNames :: Module -> ResolvedNames
+definedNames m = Map.fromList (concatMap step (modDecls m))
   where
-  step o = OpenModule o False
+  ns     = modNamespace m
+  step d = [ (qn, Resolved qn), (simpleName n, Resolved qn) ]
+    where
+    n  = declName d
+    qn = qualName ns n
 
 -- | Run a scope checking operation with the environment created by a module.
 withEnv :: Module -> Scope a -> Scope (Interface R, a)
@@ -139,26 +159,46 @@ withEnv m k = do
   logDebug (show opened)
 
   iface <- loadInterfaces (Set.toList (uniqueModules opened))
-  let env0   = buildEnv iface (Set.toList opened)
-      ns     = modNamespace m
-      locals = Map.fromList [ (simpleName n, Resolved (qualName ns n))
-                            | d <- modDecls m, let n = declName d ]
-  ro  <- ask
-  logDebug "Module env:"
+  let env0 = mergeResolvedNames (definedNames m)
+           $ buildEnv iface (Set.toList opened)
+  logDebug "Module environment:"
   logDebug (show env0)
-  res <- local (ro { roNames = mergeResolvedNames locals env0 }) k
+
+  ro  <- ask
+  res <- local (ro { roNames = env0 }) k
   return (iface,res)
 
-loadInterfaces :: [(QualName,Bool)] -> Scope (Interface R)
+data NeedInterface = NeedInterface QualName Bool
+    deriving (Show,Eq)
+
+instance Ord NeedInterface where
+  compare = compare `on` prj
+    where
+    prj (NeedInterface m _) = m
+
+-- | The set of unique modules that are referenced by set of module uses, as
+-- well as a boolean representing whether or not they are considered to be
+-- ``weak''.
+uniqueModules :: Set.Set Use -> Set.Set NeedInterface
+uniqueModules  = Set.map step
+  where
+  step (OpenModule o isWeak) = NeedInterface (openMod o) isWeak
+
+-- | Given all the interface obligations generated by the initial analysis, load
+-- the interfaces from disk.  If an interface obligation was weak, and failed to
+-- find an interface file, no error will be reported.
+loadInterfaces :: [NeedInterface] -> Scope (Interface R)
 loadInterfaces  = foldM step (freezeInterface emptyInterface)
   where
-  step i (qn,isWeak) = do
+  step i (NeedInterface qn isWeak) = do
     e <- try (inBase (openInterface qn))
     case e of
-      Left err | isWeak    -> return i
+      Left err | isWeak    -> logInfo ("Ignoring: " ++ show err) >> return i
                | otherwise -> raise err
       Right i'             -> return (mergeInterfaces i i')
 
+-- | Given an aggregate interface, and a set of module uses, generate the final
+-- mapping from used names to resolved names.
 buildEnv :: Interface R -> [Use] -> ResolvedNames
 buildEnv iface = foldr step Map.empty
   where
@@ -205,6 +245,8 @@ scopeCheck m = runScope $ do
   logInfo "Running module system"
   withEnv m (scopeCheckModule m)
 
+-- | Check all of the identifiers in a module, requiring that they are defined
+-- somewhere.
 scopeCheckModule :: Module -> Scope Module
 scopeCheckModule m = do
   ds' <- mapM scopeCheckDecl (modDecls m)
@@ -212,12 +254,14 @@ scopeCheckModule m = do
     { modDecls = ds'
     }
 
+-- | Register variables as bound for the computation that is passed.
 bindVars :: [Var] -> Scope a -> Scope a
 bindVars vs m = do
   ro <- ask
   let locals = Map.fromList [ (simpleName v, Bound v) | v <- vs ]
   local (ro { roNames = mergeResolvedNames locals (roNames ro) }) m
 
+-- | Check all identifiers used in a declaration.
 scopeCheckDecl :: Decl -> Scope Decl
 scopeCheckDecl d = bindVars (declVars d) $ do
   b' <- scopeCheckTerm (declBody d)
@@ -225,6 +269,7 @@ scopeCheckDecl d = bindVars (declVars d) $ do
     { declBody = b'
     }
 
+-- | Check all identifiers used in a term.
 scopeCheckTerm :: Term -> Scope Term
 scopeCheckTerm t =
   case t of
