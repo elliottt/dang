@@ -39,21 +39,15 @@ instance Names Module where
   identifiers m = identifiers (modDecls m)
 
 modNamespace :: Module -> [Name]
-modNamespace m = qualPrefix n ++ [qualSymbol n]
-  where
-  n = modName m
+modNamespace  = qualNamespace . modName
 
 
 data Open = Open
-  { openMod  :: QualName
-  , openSpec :: Maybe OpenSpec
-  } deriving Show
-
-data OpenSpec
-  = OpenAs QualName
-  | OpenOnly [Name]
-  | OpenHiding [Name]
-    deriving Show
+  { openMod     :: QualName
+  , openAs      :: (Maybe QualName)
+  , openHiding  :: Bool
+  , openSymbols :: [Name]
+  } deriving (Eq,Ord,Show)
 
 
 data Export

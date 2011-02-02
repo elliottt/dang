@@ -103,13 +103,16 @@ export_type :: { Export }
   | 'private'   { Private }
 
 open :: { Open }
-  : 'open' mod_name open_spec { Open $2 $3 }
+  : 'open' mod_name open_body { $3 $2 }
 
-open_spec :: { Maybe OpenSpec }
-  : {- empty -}                { Nothing }
-  | 'as' mod_name              { Just (OpenAs $2) }
-  | '(' mod_names ')'          { Just (OpenOnly (reverse $2)) }
-  | 'hiding' '(' mod_names ')' { Just (OpenHiding (reverse $3)) }
+open_body :: { QualName -> Open }
+  : 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
+  | open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
+
+open_tail :: { (Bool,[Name]) }
+  : {- empty -}                { (True, []) }
+  | '(' mod_names ')'          { (False, $2) }
+  | 'hiding' '(' mod_names ')' { (True, $3) }
 
 mod_names :: { [Name] }
   : IDENT               { [$1] }
