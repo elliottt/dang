@@ -2,7 +2,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module ModuleSystem where
+module ModuleSystem (
+    Scope()
+  , runScope
+  , scopeCheck
+  ) where
 
 import Dang.IO
 import Dang.Monad
@@ -13,7 +17,6 @@ import ReadWrite
 import Syntax.AST
 
 import Data.Maybe (mapMaybe)
-import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -57,9 +60,6 @@ resolvedTerm (Clash n ns)  =
 
 type ResolvedNames = Map.Map QualName Resolved
 
-addResolvedName :: QualName -> QualName -> ResolvedNames -> ResolvedNames
-addResolvedName n rn = Map.insertWith mergeResolved n (Resolved rn)
-
 mergeResolvedNames :: ResolvedNames -> ResolvedNames -> ResolvedNames
 mergeResolvedNames  = Map.unionWith mergeResolved
 
@@ -101,22 +101,8 @@ instance RunExceptionM Scope SomeException where
 runScope :: Scope a -> Dang a
 runScope  = runReaderT emptyRO . getScope
 
-data NotInScope = NotInScope QualName
-    deriving (Show,Typeable)
-
-instance Exception NotInScope
-
-notFound :: QualName -> Scope a
-notFound  = raiseE . NotInScope
-
 data Use = OpenModule Open Bool
     deriving (Show,Eq,Ord)
-
-useModule :: Use -> QualName
-useModule (OpenModule o _) = openMod o
-
-useRename :: Use -> Maybe QualName
-useRename (OpenModule o _) = openAs o
 
 uniqueModules :: Set.Set Use -> Set.Set (QualName,Bool)
 uniqueModules  = Set.map step
