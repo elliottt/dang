@@ -205,9 +205,9 @@ llModule m = namespace (AST.modNamespace m) $ introSymbols ds $ llDecls ds
   where
   ds = AST.modDecls m
 
-isPublic :: Export -> Bool
-isPublic Public = True
-isPublic _      = False
+isPrivate :: Export -> Bool
+isPrivate Private = True
+isPrivate _       = False
 
 introSymbols :: [AST.Decl] -> LL a -> LL a
 introSymbols ds m = do
@@ -259,8 +259,8 @@ llDecl d = do
   b' <- llTerm args (AST.declBody d)
   ps <- prefix
   let ex = AST.declExport d
-  let name | isPublic ex = qualName ps (AST.declName d)
-           | otherwise   = simpleName (AST.declName d)
+  let name | null args && isPrivate ex = simpleName  (AST.declName d)
+           | otherwise                 = qualName ps (AST.declName d)
   return Decl
     { declExport = ex
     , declName   = name
