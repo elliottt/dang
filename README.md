@@ -1,28 +1,28 @@
 
-== Building Dang
+# Building Dang
 
-0.  Make sure you have these tools available:
+ - Make sure you have these tools available:
   * clang
   * llvm tools (llvm-ld, llvm-as)
   * alex
   * happy
   * ghc
-    - base
-    - monadLib
-    - llvm-pretty (http://github.com/elliottt/llvm-pretty)
-    - pretty
-    - containers
-    - GraphSCC
-    - bytestring
-    - utf8-string
-    - cereal
-    - containers
+   - base
+   - monadLib
+   - llvm-pretty (http://github.com/elliottt/llvm-pretty)
+   - pretty
+   - containers
+   - GraphSCC
+   - bytestring
+   - utf8-string
+   - cereal
+   - containers
 
-1.  There is no install target, so just type ``make'' at the top level.  The
-  resulting binary is called ``dang'' and resides in the top-level directory.
+ - There is no install target, so just type ``make'' at the top level.  The
+   resulting binary is called ``dang'' and resides in the top-level directory.
 
 
-== Using Dang
+# Using Dang
 
   You can produce executables with dang in two ways.  The first is to compile
 every module independently, and link everything together, and the second is to
