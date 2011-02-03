@@ -55,9 +55,6 @@ instance RunExceptionM Scope SomeException where
 runScope :: Scope a -> Dang a
 runScope  = runReaderT emptyRO . getScope
 
-data Use = OpenModule Open Bool
-    deriving (Show,Eq,Ord)
-
 
 -- Resolved Names --------------------------------------------------------------
 
@@ -116,6 +113,17 @@ resolvedTerm (Resolved qn) = return (Global qn)
 resolvedTerm (Bound n)     = return (Local n)
 resolvedTerm (Clash n ns)  =
   fail (n ++ " defined in multiple places:" ++ unlines (map pretty ns))
+
+-- | The use of a module, via an open declaration, or qualified use.  When the
+-- use is from a qualified name only, the boolean value is True, and the module
+-- usage is thought of as weak.  The usage is weak in the sense that the
+-- qualified name could be from either a real module or a renamed one.  If
+-- loading the interface from a weak module fails, that error is ignored,
+-- assuming that either the reference will be resolved later through a more
+-- specific import, or the symbol will go unresolved, and raised to the
+-- programmer.
+data Use = OpenModule Open Bool
+    deriving (Show,Eq,Ord)
 
 -- | Given a module, return the modules that are opened by it.
 openedModules :: Module -> Set.Set Use
