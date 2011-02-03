@@ -12,14 +12,15 @@ import Syntax.ParserCore
 import qualified Syntax.AST as AST
 
 import MonadLib
-import System.Exit (exitFailure)
 import System.FilePath (dropExtension)
 import qualified Data.ByteString.UTF8 as UTF8
 
 main :: IO ()
 main  = runDang $ do
   opts   <- ask
-  file   <- oneSourceFile
+  let a      = optAction opts
+  logDebug ("Taking action: " ++ show a)
+  let [file] = actionSources a
   m      <- loadModule file
   logInfo "Parsed module"
   logDebug (show m)
@@ -29,14 +30,6 @@ main  = runDang $ do
   logDebug (show m')
   compile iface m' (ofile file)
   unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
-
-oneSourceFile :: Dang FilePath
-oneSourceFile  = do
-  opts <- ask
-  case optSourceFiles opts of
-    [file] -> return file
-    _      -> io (displayHelp [] >> exitFailure)
-
 
 loadModule :: FilePath -> Dang AST.Module
 loadModule path = parseSource path =<< onFileNotFound (loadFile path) handler

@@ -12,6 +12,9 @@ module Dang.Monad (
   , Verbosity
   , displayHelp
 
+  , Action(..)
+  , actionSources
+
   , raiseE
   , catchE
   , catchJustE
@@ -24,11 +27,13 @@ module Dang.Monad (
 
 import Control.Applicative (Applicative)
 import Control.Exception (Exception(..),SomeException)
+import Data.List (partition)
 import Data.Typeable (Typeable)
 import MonadLib
 import System.Console.GetOpt
 import System.Environment (getArgs, getProgName)
 import System.Exit (exitSuccess,exitFailure)
+import System.FilePath (takeExtension)
 import qualified Control.Exception as E
 
 
@@ -44,7 +49,7 @@ instance Exception DangError
 
 data Options = Options
   { optKeepTempFiles :: Bool
-  , optSourceFiles   :: [FilePath]
+  , optAction        :: Action
   , optVerbosity     :: Verbosity
   , optCompileOnly   :: Bool
   } deriving Show
@@ -52,10 +57,21 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions  = Options
   { optKeepTempFiles = False
-  , optSourceFiles   = []
+  , optAction        = NoAction
   , optVerbosity     = 0
   , optCompileOnly   = False
   }
+
+data Action
+  = Compile [FilePath]
+  | Link [FilePath] [FilePath]
+  | NoAction
+    deriving Show
+
+actionSources :: Action -> [FilePath]
+actionSources (Compile fs) = fs
+actionSources (Link fs _)  = fs
+actionSources NoAction     = []
 
 type Verbosity = Int
 
@@ -72,7 +88,14 @@ parseOptions args =
 buildOptions :: [Option] -> [String] -> IO Options
 buildOptions os fs = do
   opts <- foldM (flip id) defaultOptions os
-  return opts { optSourceFiles = fs }
+  return opts { optAction = inferAction opts fs }
+
+inferAction :: Options -> [String] -> Action
+inferAction opts fs
+  | optCompileOnly opts = Compile sources
+  | otherwise           = Link sources objs
+  where
+  (sources,objs) = partition (\f -> takeExtension f == ".dg") fs
 
 displayHelp :: [String] -> IO ()
 displayHelp errs = do
