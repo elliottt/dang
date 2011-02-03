@@ -9,6 +9,7 @@ import QualName
 import Syntax.AST
 import Syntax.Lexer
 import Syntax.ParserCore
+import TypeChecker.Types
 
 import MonadLib
 import qualified Codec.Binary.UTF8.Generic as UTF8
@@ -49,15 +50,31 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 
 %monad { Parser } { (>>=) } { return }
 %name parseModule top_module
-%name parseFunBind fun_bind
+%name parseType type
 %tokentype { Lexeme }
 
 %lexer { lexer } { Lexeme initPosition TEof }
 
 %%
 
+-- Names -----------------------------------------------------------------------
+
+qual_name :: { QualName }
+  : qual_name_prefix '.' IDENT { QualName (reverse $1) $3 }
+  | IDENT                      { QualName [] $1 }
+
+mod_name :: { QualName }
+  : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
+  | CONIDENT                      { QualName [] $1 }
+
+
+-- Modules ---------------------------------------------------------------------
+
 top_module :: { Module }
   : 'module' mod_name 'where' '{' top_decls '}' {% mkModule $2 $5 }
+
+
+-- Declarations ----------------------------------------------------------------
 
 top_decl :: { PTopDecl }
   : top_fun_bind { PDecl $1 }
@@ -74,14 +91,6 @@ public_decls :: { [PTopDecl] }
 
 private_decls :: { [PTopDecl] }
   : 'private' '{' fun_binds '}' { map (\f -> PDecl (f Private)) $3 }
-
-mod_name :: { QualName }
-  : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
-  | CONIDENT                      { QualName [] $1 }
-
-qual_name :: { QualName }
-  : qual_name_prefix '.' IDENT { QualName (reverse $1) $3 }
-  | IDENT                      { QualName [] $1 }
 
 qual_name_prefix :: { [Name] }
   : qual_name_prefix '.' CONIDENT { $3:$1 }
@@ -122,6 +131,9 @@ arg_list :: { [String] }
   : arg_list IDENT { $2 : $1 }
   | {- empty -}    { [] }
 
+
+-- Terms -----------------------------------------------------------------------
+
 exp :: { Term }
   : '\\' abs_args '->' lexp { Abs (reverse $2) $4 }
   | lexp                    { $1 }
@@ -149,6 +161,23 @@ aexp :: { Term }
   : '(' exp ')' { $2 }
   | qual_name   { Global $1 }
   | INT         { Lit (LInt $1) }
+
+
+-- Types -----------------------------------------------------------------------
+
+type :: { Type }
+  : atype type_tail { $2 $1 }
+
+type_tail :: { Type -> Type }
+  : {- empty -} { id }
+  | '->' atype  { \a -> tarrow a $2 }
+  | atype       { \a -> tapp a $1 }
+
+atype :: { Type }
+  : IDENT        { TVar 0 (TParam $1 setSort) }
+  | CONIDENT     { TCon $1 }
+  | INT          { TNat $1 }
+  | '(' type ')' { $2 }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a

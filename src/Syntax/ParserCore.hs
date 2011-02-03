@@ -10,6 +10,7 @@ import Control.Applicative (Applicative)
 import Data.Int (Int64)
 import MonadLib
 import qualified Data.ByteString as S
+import qualified Data.ByteString.UTF8 as UTF8
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
@@ -106,6 +107,10 @@ runParser path bs (Parser m) =
   case runM m (initParserState path bs) of
     Right (a,_) -> Right a
     Left err    -> Left err
+
+-- | For testing parsers within ghci.
+testParser :: Parser a -> String -> Either Error a
+testParser p str = runParser "<interactive>" (UTF8.fromString str) p
 
 
 -- Parsed Syntax ---------------------------------------------------------------
