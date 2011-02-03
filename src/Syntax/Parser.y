@@ -32,6 +32,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
+  '=>' { Lexeme $$ (TReserved "=>") }
 
 -- reserved names
   'module'  { Lexeme $$ (TReserved "module")  }
@@ -41,6 +42,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   'hiding'  { Lexeme $$ (TReserved "hiding")  }
   'public'  { Lexeme $$ (TReserved "public")  }
   'private' { Lexeme $$ (TReserved "private") }
+  'forall'  { Lexeme $$ (TReserved "forall")  }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -50,7 +52,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
 
 %monad { Parser } { (>>=) } { return }
 %name parseModule top_module
-%name parseType type
+%name parseForall qual_type
 %tokentype { Lexeme }
 
 %lexer { lexer } { Lexeme initPosition TEof }
@@ -178,6 +180,16 @@ atype :: { Type }
   | CONIDENT     { TCon $1 }
   | INT          { TNat $1 }
   | '(' type ')' { $2 }
+
+qual_type :: { Forall Type }
+  : 'forall' tparams '.' type { Forall (reverse $2) $4 }
+
+tparams :: { [TParam] }
+  : tparams tparam { $2 : $1 }
+  | tparam         { [$1] }
+
+tparam :: { TParam }
+  : IDENT { TParam $1 setSort }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
