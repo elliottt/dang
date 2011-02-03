@@ -32,17 +32,19 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
+  '::' { Lexeme $$ (TReserved "::") }
   '=>' { Lexeme $$ (TReserved "=>") }
 
 -- reserved names
-  'module'  { Lexeme $$ (TReserved "module")  }
-  'where'   { Lexeme $$ (TReserved "where")   }
-  'open'    { Lexeme $$ (TReserved "open")    }
-  'as'      { Lexeme $$ (TReserved "as")      }
-  'hiding'  { Lexeme $$ (TReserved "hiding")  }
-  'public'  { Lexeme $$ (TReserved "public")  }
-  'private' { Lexeme $$ (TReserved "private") }
-  'forall'  { Lexeme $$ (TReserved "forall")  }
+  'module'    { Lexeme $$ (TReserved "module")    }
+  'where'     { Lexeme $$ (TReserved "where")     }
+  'open'      { Lexeme $$ (TReserved "open")      }
+  'as'        { Lexeme $$ (TReserved "as")        }
+  'hiding'    { Lexeme $$ (TReserved "hiding")    }
+  'public'    { Lexeme $$ (TReserved "public")    }
+  'private'   { Lexeme $$ (TReserved "private")   }
+  'forall'    { Lexeme $$ (TReserved "forall")    }
+  'primitive' { Lexeme $$ (TReserved "primitive") }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -78,15 +80,19 @@ top_module :: { Module }
 
 -- Declarations ----------------------------------------------------------------
 
-top_decl :: { PTopDecl }
-  : top_fun_bind { PDecl $1 }
-  | open         { POpen $1 }
-
 top_decls :: { [PTopDecl] }
   : top_decls ';' top_decl      { $3:$1 }
   | top_decls ';' public_decls  { $3 ++ $1 }
   | top_decls ';' private_decls { $3 ++ $1 }
   | top_decl                    { [$1] }
+
+top_decl :: { PTopDecl }
+  : top_fun_bind { PDecl $1 }
+  | open         { POpen $1 }
+  | primitive    { PPrim $1 }
+
+primitive :: { Primitive }
+  : 'primitive' IDENT '::' qual_type { Primitive $2 $4 }
 
 public_decls :: { [PTopDecl] }
   : 'public' '{' fun_binds '}' { map (\f -> PDecl (f Public)) $3 }

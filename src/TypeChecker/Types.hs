@@ -60,6 +60,7 @@ setSort = TCon "Set"
 
 -- | Things with quantified variables.
 data Forall a = Forall [TParam] a
+    deriving (Show)
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = text "forall" <+> ppList 0 ps <> char '.' <+> pp 0 a

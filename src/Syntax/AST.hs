@@ -5,6 +5,7 @@ module Syntax.AST where
 
 import Pretty
 import QualName
+import TypeChecker.Types
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
@@ -29,6 +30,7 @@ data Module = Module
   { modName  :: QualName
   , modOpens :: [Open]
   , modDecls :: [Decl]
+  , modPrims :: [Primitive]
   } deriving (Show)
 
 instance Pretty Module where
@@ -185,3 +187,15 @@ instance FreeVars Literal where
 
 instance Pretty Literal where
   pp _ (LInt i) = ppr i
+
+
+-- Primitive Type Declarations -------------------------------------------------
+
+data Primitive = Primitive
+  { primSymbol :: String
+  , primType   :: Forall Type
+  } deriving (Show)
+
+instance Pretty Primitive where
+  pp _ p = text "primitive" <+> text (primSymbol p) <+> text "::"
+       <+> pp 0 (primType p)
