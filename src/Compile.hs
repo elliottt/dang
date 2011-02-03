@@ -18,6 +18,7 @@ import System.IO (hPrint,hFlush)
 
 compile :: Interface R -> AST.Module -> FilePath -> Dang ()
 compile iface m out = do
+  logInfo "Renaming AST"
   let m' = rename m
   logDebug "Renaming output:"
   logDebug (show m')
@@ -43,11 +44,13 @@ rename  = runLift . runRename [] . renameModule
 
 lambdaLift :: Interface R -> AST.Module -> Dang [Decl]
 lambdaLift iface m = do
+  logInfo "Lambda-lifting AST"
   (as,bs) <- runLL iface (llModule m)
   return (as ++ bs)
 
 codeGen :: QualName -> Interface R -> [Decl] -> Dang Doc
 codeGen qn env ds = do
+  logInfo "Generating LLVM assembly"
   writeInterface qn $! iface
   return doc
   where
