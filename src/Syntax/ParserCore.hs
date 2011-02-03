@@ -118,23 +118,26 @@ testParser p str = runParser "<interactive>" (UTF8.fromString str) p
 data PTopDecl
   = PDecl Decl
   | POpen Open
-  | PPrim Primitive
+  | PPrimTerm PrimTerm
+  | PPrimType PrimType
     deriving Show
 
 mkModule :: QualName -> [PTopDecl] -> Parser Module
 mkModule qn tds = do
-  let (os,ds,ps) = partitionTopDecls tds
+  let (os,ds,ps,ts) = partitionTopDecls tds
   return Module
-    { modName  = qn
-    , modOpens = os
-    , modDecls = ds
-    , modPrims = ps
+    { modName      = qn
+    , modOpens     = os
+    , modDecls     = ds
+    , modPrimTerms = ps
+    , modPrimTypes = ts
     }
 
-partitionTopDecls :: [PTopDecl] -> ([Open],[Decl],[Primitive])
-partitionTopDecls  = loop [] [] []
+partitionTopDecls :: [PTopDecl] -> ([Open],[Decl],[PrimTerm],[PrimType])
+partitionTopDecls  = loop [] [] [] []
   where
-  loop os ds ps (POpen o:tds) = loop (o:os) ds ps tds
-  loop os ds ps (PDecl d:tds) = loop os (d:ds) ps tds
-  loop os ds ps (PPrim p:tds) = loop os ds (p:ps) tds
-  loop os ds ps []            = (os,ds,ps)
+  loop os ds ps ts (POpen o:tds)     = loop (o:os) ds ps ts tds
+  loop os ds ps ts (PDecl d:tds)     = loop os (d:ds) ps ts tds
+  loop os ds ps ts (PPrimTerm p:tds) = loop os ds (p:ps) ts tds
+  loop os ds ps ts (PPrimType t:tds) = loop os ds ps (t:ts) tds
+  loop os ds ps ts []                = (os,ds,ps,ts)

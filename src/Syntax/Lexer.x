@@ -47,6 +47,7 @@ $white+         ;
 "."             { reserved }
 "::"            { reserved }
 "=>"            { reserved }
+"*"             { reserved }
 
 "module"        { reserved }
 "where"         { reserved }
@@ -57,6 +58,7 @@ $white+         ;
 "private"       { reserved }
 "forall"        { reserved }
 "primitive"     { reserved }
+"type"          { reserved }
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }

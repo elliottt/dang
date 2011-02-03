@@ -27,15 +27,21 @@ ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)
 
 
 data Module = Module
-  { modName  :: QualName
-  , modOpens :: [Open]
-  , modDecls :: [Decl]
-  , modPrims :: [Primitive]
+  { modName      :: QualName
+  , modOpens     :: [Open]
+  , modDecls     :: [Decl]
+  , modPrimTerms :: [PrimTerm]
+  , modPrimTypes :: [PrimType]
   } deriving (Show)
 
 instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
-       <+> braces (ppList 0 (modDecls m))
+       $+$ declBlock decls
+    where
+    decls = map (pp 0) (modPrimTerms m)
+         ++ map (pp 0) (modPrimTypes m)
+         ++ map (pp 0) (modOpens m)
+         ++ map (pp 0) (modDecls m)
 
 instance Names Module where
   identifiers m = identifiers (modDecls m)
@@ -50,6 +56,15 @@ data Open = Open
   , openHiding  :: Bool
   , openSymbols :: [Name]
   } deriving (Eq,Ord,Show)
+
+instance Pretty Open where
+  pp _ o = text "open" <+> pp 0 (openMod o) <+> qualName <+> hiding
+    where
+    qualName = maybe empty (pp 0) (openAs o)
+    hiding | openHiding o && null (openSymbols o) = empty
+           | openHiding o                         = text "hiding" <+> symList
+           | otherwise                            = symList
+    symList = parens (commas (map (pp 0) (openSymbols o)))
 
 
 data Export
@@ -189,13 +204,25 @@ instance Pretty Literal where
   pp _ (LInt i) = ppr i
 
 
--- Primitive Type Declarations -------------------------------------------------
+-- Primitive Term Declarations -------------------------------------------------
 
-data Primitive = Primitive
-  { primSymbol :: String
-  , primType   :: Forall Type
+data PrimTerm = PrimTerm
+  { primTermName :: String
+  , primTermType :: Forall Type
   } deriving (Show)
 
-instance Pretty Primitive where
-  pp _ p = text "primitive" <+> text (primSymbol p) <+> text "::"
-       <+> pp 0 (primType p)
+instance Pretty PrimTerm where
+  pp _ p = text "primitive" <+> text (primTermName p)
+       <+> text "::" <+> pp 0 (primTermType p)
+
+
+-- Primitive Type Declarations -------------------------------------------------
+
+data PrimType = PrimType
+  { primTypeName :: String
+  , primTypeKind :: Kind
+  } deriving (Show)
+
+instance Pretty PrimType where
+  pp _ p = text "primitive type" <+> text (primTypeName p)
+       <+> text "::" <+> pp 0 (primTypeKind p)

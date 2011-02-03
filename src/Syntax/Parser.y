@@ -34,6 +34,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   '.'  { Lexeme $$ (TReserved ".")  }
   '::' { Lexeme $$ (TReserved "::") }
   '=>' { Lexeme $$ (TReserved "=>") }
+  '*'  { Lexeme $$ (TReserved "*")  }
 
 -- reserved names
   'module'    { Lexeme $$ (TReserved "module")    }
@@ -45,6 +46,7 @@ import qualified Codec.Binary.UTF8.Generic as UTF8
   'private'   { Lexeme $$ (TReserved "private")   }
   'forall'    { Lexeme $$ (TReserved "forall")    }
   'primitive' { Lexeme $$ (TReserved "primitive") }
+  'type'      { Lexeme $$ (TReserved "type")      }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$) }
@@ -89,10 +91,14 @@ top_decls :: { [PTopDecl] }
 top_decl :: { PTopDecl }
   : top_fun_bind { PDecl $1 }
   | open         { POpen $1 }
-  | primitive    { PPrim $1 }
+  | primitive    { $1 }
 
-primitive :: { Primitive }
-  : 'primitive' IDENT '::' qual_type { Primitive $2 $4 }
+primitive :: { PTopDecl }
+  : 'primitive' primitive_body { $2 }
+
+primitive_body :: { PTopDecl }
+  : IDENT           '::' qual_type { PPrimTerm (PrimTerm $1 $3) }
+  | 'type' CONIDENT '::' kind      { PPrimType (PrimType $2 $4) }
 
 public_decls :: { [PTopDecl] }
   : 'public' '{' fun_binds '}' { map (\f -> PDecl (f Public)) $3 }
@@ -178,8 +184,8 @@ type :: { Type }
 
 type_tail :: { Type -> Type }
   : {- empty -} { id }
-  | '->' atype  { \a -> tarrow a $2 }
-  | atype       { \a -> tapp a $1 }
+  | '->' type   { \a -> tarrow a $2 }
+  | type        { \a -> tapp a $1 }
 
 atype :: { Type }
   : IDENT        { TVar 0 (TParam $1 setSort) }
@@ -196,6 +202,20 @@ tparams :: { [TParam] }
 
 tparam :: { TParam }
   : IDENT { TParam $1 setSort }
+
+
+-- Kinds -----------------------------------------------------------------------
+
+kind :: { Kind }
+  : akind kind_body { $2 $1 }
+
+kind_body :: { Kind -> Kind }
+  : {- empty -} { id }
+  | '->' kind   { \a -> karrow a $2 }
+
+akind :: { Kind }
+  : '*'          { kstar }
+  | '(' kind ')' { $2 }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a

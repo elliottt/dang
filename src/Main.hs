@@ -6,6 +6,7 @@ import Dang.FileName
 import Dang.Monad
 import Link (link)
 import ModuleSystem
+import Pretty
 import Syntax.Parser
 import Syntax.ParserCore
 import qualified Syntax.AST as AST
@@ -20,8 +21,9 @@ main  = runDang $ do
   opts   <- ask
   file   <- oneSourceFile
   m      <- loadModule file
-  logDebug "Parsed module"
+  logInfo "Parsed module"
   logDebug (show m)
+  logInfo (pretty m)
   (iface,m') <- scopeCheck m
   logDebug "Module system output"
   logDebug (show m')
