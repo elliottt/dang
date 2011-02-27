@@ -13,6 +13,7 @@ import Rename
 import qualified Syntax.AST as AST
 
 import Text.LLVM
+import Text.LLVM.AST (ppModule)
 import MonadLib
 import System.IO (hPrint,hFlush)
 
@@ -52,6 +53,6 @@ codeGen :: QualName -> Interface R -> [Decl] -> Dang Doc
 codeGen qn env ds = do
   logInfo "Generating LLVM assembly"
   writeInterface qn $! iface
-  return doc
+  return (ppModule doc)
   where
   (iface,doc) = runLLVM (rtsImports >> compModule env ds)

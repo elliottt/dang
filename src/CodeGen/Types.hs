@@ -1,7 +1,7 @@
 module CodeGen.Types where
 
 import Data.Int (Int32)
-import Text.LLVM (toValue,PtrTo,Value,Fun,Res)
+import Text.LLVM (fromLit,PtrTo,Value,Res,Fun)
 
 
 -- RTS Types -------------------------------------------------------------------
@@ -17,7 +17,5 @@ type Val = PtrTo Int32
 type ValType = Int32
 
 valInt, valClosure :: Value ValType
-valInt     = toValue 0x0
-valClosure = toValue 0x1
-
-
+valInt     = fromLit 0x0
+valClosure = fromLit 0x1

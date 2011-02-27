@@ -5,6 +5,7 @@ import CodeGen.Types
 
 import Data.Int (Int64)
 import Text.LLVM
+import Text.LLVM.AST (ICmpOp(..))
 
 -- | Lift an Int64 primitive over Vals.
 intPrimBinop :: (Value Int64 -> Value Int64 -> BB r (Value Int64))
@@ -22,20 +23,20 @@ primAbs :: Value Val -> BB r (Value Val)
 primAbs a = do
   aI <- call rts_get_ival a
 
-  pos <- newLabel
-  neg <- newLabel
-  out <- newLabel
-  b   <- icmp Ilt aI (toValue 0)
-  condBr b neg pos
+  pos <- freshLabel
+  neg <- freshLabel
+  out <- freshLabel
+  b   <- icmp Islt aI (fromLit 0)
+  br b neg pos
 
   posOut <- defineLabel pos $ do
-    br out
+    jump out
     return a
 
   negOut <- defineLabel neg $ do
     val <- call rts_alloc_value valInt
-    call_ rts_set_ival val =<< sub (toValue 0) aI
-    br out
+    call_ rts_set_ival val =<< sub (fromLit 0) aI
+    jump out
     return val
 
-  defineLabel_ out (phi negOut posOut)
+  defineLabel out (phi negOut neg [(posOut,pos)])
