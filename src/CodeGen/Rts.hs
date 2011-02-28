@@ -2,55 +2,71 @@ module CodeGen.Rts where
 
 import CodeGen.Types
 
+import Control.Monad.Fix (mfix)
 import Data.Int (Int8,Int32,Int64)
-import Text.LLVM (Fun,Res,declare,simpleFun,PtrTo,LLVM)
+import Text.LLVM
+import Text.LLVM.AST (ppModule)
 
 
--- RTS Primitives --------------------------------------------------------------
+-- Garbage Collection Primitives -----------------------------------------------
 
-rts_argument :: Fun (Closure -> Nat -> Res Val)
-rts_argument  = simpleFun  "argument"
+type VoidPtr = PtrTo Int8
 
-rts_apply :: Fun (Closure -> PtrTo Val -> Nat -> Res Val)
-rts_apply  = simpleFun "apply"
+-- | Allocate some memory using the garbage collector.
+gc_alloc :: Fun (Int32 -> Res VoidPtr)
+gc_alloc  = simpleFun "allocate"
 
-rts_alloc_closure :: Fun (Nat -> PtrTo Fn -> Res Closure)
-rts_alloc_closure  = simpleFun "alloc_closure"
+-- | Trigger a garbage collection.
+gc_perform :: Fun (Res ())
+gc_perform  = simpleFun "perform_gc"
 
-rts_alloc_value :: Fun (ValType -> Res Val)
-rts_alloc_value  = simpleFun "alloc_value"
+-- | Declare all foreign imports.
+rts_imports :: LLVM ()
+rts_imports  = do
+  declare gc_alloc
+  declare gc_perform
 
-rts_set_ival :: Fun (Val -> Int64 -> Res ())
-rts_set_ival  = simpleFun "set_ival"
 
-rts_set_cval :: Fun (Val -> Closure -> Res ())
-rts_set_cval  = simpleFun "set_cval"
+-- Runtime Primitives ----------------------------------------------------------
 
-rts_get_ival :: Fun (Val -> Res Int64)
-rts_get_ival  = simpleFun "get_ival"
+-- | Get the size of something, given a pointer to use as the base in a size
+-- calculation.
+sizeOf :: HasValues a => Value (PtrTo a) -> BB r (Value Nat)
+sizeOf ptr1 = do
+  ptr2 <- getelementptr ptr1 (fromLit 1) []
+  val1 <- ptrtoint ptr1
+  val2 <- ptrtoint (ptr2 `asTypeOf` ptr1)
+  sub val2 val1
 
-rts_get_cval :: Fun (Val -> Res Closure)
-rts_get_cval  = simpleFun "get_cval"
+-- | Generic allocation using the garbage collector.
+allocate :: HasValues a => Value (PtrTo a) -> BB r (Value (PtrTo a))
+allocate base = do
+  size <- sizeOf base
+  ptr  <- call gc_alloc size
+  bitcast ptr
 
-rts_value_type :: Fun (Val -> Res Int32)
-rts_value_type  = simpleFun "value_type"
+-- | Create a new value, with the given type.
+newVal :: Value ValType -> BB r (Value Val)
+newVal ty = do
+  val <- allocate nullPtr
+  setValType val ty
+  return val
 
-rts_barf :: Fun (Res ())
-rts_barf  = simpleFun "barf"
+-- | Allocate a closure, and fill out its values.
+allocClosure :: Value CodePtr -> Value Nat -> Value Args -> BB r (Value Closure)
+allocClosure code arity env = do
+  clos <- allocate nullPtr
+  store code  =<< closureCodePtr clos
+  store arity =<< closureArity clos
+  store env   =<< closureArgs clos
+  return clos
 
-llvm_gcroot :: Fun (PtrTo (PtrTo Int8) -> PtrTo Int8 -> Res ())
-llvm_gcroot  = simpleFun "llvm.gcroot"
-
-rtsImports :: LLVM ()
-rtsImports  = do
-  declare rts_argument
-  declare rts_apply
-  declare rts_alloc_closure
-  declare rts_alloc_value
-  declare rts_set_ival
-  declare rts_get_ival
-  declare rts_set_cval
-  declare rts_get_cval
-  declare rts_value_type
-  declare rts_barf
-  declare llvm_gcroot
+-- | Allocate an Args.
+allocArgs :: Value Nat -> BB r (Value Args)
+allocArgs len = do
+  args    <- allocate nullPtr
+  valSize <- sizeOf (nullPtr :: Value Val)
+  env     <- bitcast =<< call gc_alloc =<< mul valSize len
+  store env =<< argsPtr args
+  store len =<< argsLen args
+  return args

@@ -32,8 +32,14 @@ valUnion :: Value Val -> BB r (Value (PtrTo ValUnion))
 valUnion val = getelementptr val (fromLit 0) [fromLit 1]
 
 -- | Get a pointer to the type field.
-valType :: Value Val -> BB r (Value (PtrTo Int32))
-valType val = getelementptr val (fromLit 0) [fromLit 0]
+getValType :: Value Val -> BB r (Value (PtrTo ValType))
+getValType val = getelementptr val (fromLit 0) [fromLit 0]
+
+-- | Set the value type.
+setValType :: Value Val -> Value ValType -> BB r ()
+setValType val ty = do
+  ptr <- getValType val
+  store ty ptr
 
 -- | Cast the union field of a value to an Int64.
 ivalPtr :: Value (PtrTo ValUnion) -> BB r (Value (PtrTo Int64))
@@ -62,7 +68,7 @@ getCval  = load <=< cvalPtr <=< valUnion
 
 -- Closures --------------------------------------------------------------------
 
-type Code = Fun (PtrTo Args -> Res (PtrTo Val))
+type Code = Fun (Args -> Res Val)
 
 type CodePtr = PtrTo Code
 
@@ -70,24 +76,42 @@ type ClosureStruct = Struct (CodePtr :> Nat :> Args :> ())
 
 type Closure = PtrTo ClosureStruct
 
+-- | The environment of a closure
+closureCodePtr :: Value Closure -> BB r (Value (PtrTo CodePtr))
+closureCodePtr clos = getelementptr clos (fromLit 0) [fromLit 0]
+
+-- | The arity of a closure.
+closureArity :: Value Closure -> BB r (Value (PtrTo Nat))
+closureArity clos = getelementptr clos (fromLit 0) [fromLit 1]
+
+-- | The arguments pointer inside a closure.
+closureArgs :: Value Closure -> BB r (Value (PtrTo Args))
+closureArgs clos = getelementptr clos (fromLit 0) [fromLit 2]
+
+-- | Call the code pointer inside of a closure.
+closureEval :: Value Closure -> Value Args -> BB r (Value Val)
+closureEval clos args = do
+  code <- load =<< closureCodePtr clos
+  call code args
+
 
 -- Arguments -------------------------------------------------------------------
 
-type ArgsStruct = Struct (PtrTo (PtrTo Val) :> Nat :> ())
+type ArgsStruct = Struct (PtrTo Val :> Nat :> ())
 
 type Args = PtrTo ArgsStruct
 
--- | Get the length of the arguments out of the args struct.
-argsLen :: Value (PtrTo Args) -> BB r (Value Nat)
-argsLen args = load =<< getelementptr args (fromLit 0) [fromLit 1]
-
 -- | Get the value array out of the args struct.
-argsPtr :: Value (PtrTo Args) -> BB r (Value (PtrTo (PtrTo Val)))
-argsPtr args = load =<< getelementptr args (fromLit 0) [fromLit 0]
+argsPtr :: Value Args -> BB r (Value (PtrTo (PtrTo Val)))
+argsPtr args = getelementptr args (fromLit 0) [fromLit 0]
+
+-- | Get the length of the arguments out of the args struct.
+argsLen :: Value Args -> BB r (Value (PtrTo Nat))
+argsLen args = getelementptr args (fromLit 0) [fromLit 1]
 
 -- | Unchecked argument lookup.
-argsAt :: Value (PtrTo Args) -> Value Nat -> BB r (Value (PtrTo Val))
+argsAt :: Value Args -> Value Nat -> BB r (Value (PtrTo Val))
 argsAt args ix = do
-  arr <- argsPtr args
+  arr <- load =<< argsPtr args
   ptr <- getelementptr arr ix []
   load ptr
