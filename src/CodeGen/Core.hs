@@ -97,7 +97,7 @@ allocValBuffer len = alloca (fromLit len)
 
 storeValAt :: Value (PtrTo Val) -> Int32 -> Value Val -> BB r ()
 storeValAt args ix v = do
-  addr <- getelementptr args ix []
+  addr <- getelementptr args (fromLit ix) []
   store v addr
 
 -- allocate enough space for vs, load them, call apply and return its result
