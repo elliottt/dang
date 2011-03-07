@@ -2,10 +2,10 @@ module CodeGen.Rts where
 
 import CodeGen.Types
 
-import Control.Monad.Fix (mfix)
-import Data.Int (Int8,Int32,Int64)
+import Control.Monad (zipWithM_)
+import Data.Int (Int8,Int32)
+import Data.List (genericLength)
 import Text.LLVM
-import Text.LLVM.AST (ppModule)
 
 
 -- Garbage Collection Primitives -----------------------------------------------
@@ -20,11 +20,27 @@ gc_alloc  = simpleFun "allocate"
 gc_perform :: Fun (Res ())
 gc_perform  = simpleFun "perform_gc"
 
+-- | Cause the RTS to exit.
+rts_barf :: Fun (Res ())
+rts_barf  = simpleFun "barf"
+
+-- | The memcpy intrinsic.
+llvm_memcpy :: Fun (PtrTo Int8 -> PtrTo Int8 -> Int32 -> Int32 -> Bool
+                    -> Res ())
+llvm_memcpy  = simpleFun "llvm.memcpy.p0i8.p0i8.i32"
+
+-- | The llvm.gcroot intrinsic
+llvm_gcroot :: Fun (PtrTo (PtrTo Int8) -> PtrTo Int8 -> Res ())
+llvm_gcroot  = simpleFun "llvm.gcroot"
+
 -- | Declare all foreign imports.
 rts_imports :: LLVM ()
 rts_imports  = do
   declare gc_alloc
   declare gc_perform
+  declare rts_barf
+  declare llvm_memcpy
+  declare llvm_gcroot
 
 
 -- Runtime Primitives ----------------------------------------------------------
@@ -33,6 +49,7 @@ rts_imports  = do
 -- calculation.
 sizeOf :: HasValues a => Value (PtrTo a) -> BB r (Value Nat)
 sizeOf ptr1 = do
+  comment "sizeOf"
   ptr2 <- getelementptr ptr1 (fromLit 1) []
   val1 <- ptrtoint ptr1
   val2 <- ptrtoint (ptr2 `asTypeOf` ptr1)
@@ -41,13 +58,27 @@ sizeOf ptr1 = do
 -- | Generic allocation using the garbage collector.
 allocate :: HasValues a => Value (PtrTo a) -> BB r (Value (PtrTo a))
 allocate base = do
+  comment "allocate"
   size <- sizeOf base
   ptr  <- call gc_alloc size
   bitcast ptr
 
+-- | Copy some memory around.
+memcpy :: HasValues a
+       => Value (PtrTo a) -> Value (PtrTo a) -> Value Nat -> BB r ()
+memcpy dst src len = do
+  dstP <- bitcast dst
+  srcP <- bitcast src
+  call_ llvm_memcpy dstP srcP len (fromLit 8) (fromLit False)
+
+-- | Pointer addition.
+plusPtr :: HasValues a => Value (PtrTo a) -> Value Nat -> BB r (Value (PtrTo a))
+plusPtr ptr i = inttoptr =<< add i =<< ptrtoint ptr
+
 -- | Create a new value, with the given type.
-newVal :: Value ValType -> BB r (Value Val)
-newVal ty = do
+allocVal :: Value ValType -> BB r (Value Val)
+allocVal ty = do
+  comment "allocVal"
   val <- allocate nullPtr
   setValType val ty
   return val
@@ -55,18 +86,79 @@ newVal ty = do
 -- | Allocate a closure, and fill out its values.
 allocClosure :: Value CodePtr -> Value Nat -> Value Args -> BB r (Value Closure)
 allocClosure code arity env = do
+  comment "allocClosure"
   clos <- allocate nullPtr
   store code  =<< closureCodePtr clos
   store arity =<< closureArity clos
   store env   =<< closureArgs clos
   return clos
 
+-- | Copy the closure, filling out some additional arguments.
+copyClosure :: Value Closure -> Value (PtrTo Val) -> Value Nat
+            -> BB r (Value Closure)
+copyClosure c vs extra = do
+  comment "copyClosure"
+  arity <- load =<< closureArity c
+  code  <- load =<< closureCodePtr c
+  env   <- load =<< closureArgs c
+  allocClosure code arity =<< extendArgs env vs extra
+
 -- | Allocate an Args.
 allocArgs :: Value Nat -> BB r (Value Args)
 allocArgs len = do
+  comment "allocArgs"
   args    <- allocate nullPtr
   valSize <- sizeOf (nullPtr :: Value Val)
   env     <- bitcast =<< call gc_alloc =<< mul valSize len
   store env =<< argsPtr args
   store len =<< argsLen args
   return args
+
+-- | Extend an Args, by allocating a fresh one with the additional arguments
+-- filled out.
+extendArgs :: Value Args -> Value (PtrTo Val) -> Value Nat -> BB r (Value Args)
+extendArgs args0 vs extra = do
+  comment "extendArgs"
+  len0 <- load =<< argsLen args0
+  vs0  <- load =<< argsPtr args0
+  args <- allocArgs =<< add len0 extra
+  env  <- load =<< argsPtr args
+  memcpy env vs0 len0
+  env' <- plusPtr env len0
+  memcpy env' vs extra
+  return args
+
+
+-- Application -----------------------------------------------------------------
+
+type Apply a = Value a -> [Value Val] -> BB Val (Value Val)
+
+valueIxs :: [Value Int32]
+valueIxs  = map fromLit [0 ..]
+
+storeValueAt :: Value (PtrTo Val) -> Value Int32 -> Value Val -> BB r ()
+storeValueAt arr ix v = store v =<< getelementptr arr ix []
+
+extendClosure :: Value Closure -> [Value Val] -> BB r (Value Closure)
+extendClosure clos args = do
+  let len = fromLit (genericLength args)
+  ptr <- alloca len
+  zipWithM_ (storeValueAt ptr) valueIxs args
+  copyClosure clos ptr len
+
+apply :: Apply Closure
+apply  = undefined
+
+applyVal :: Apply Val
+applyVal  = undefined
+
+fullApplyVal :: Apply Val
+fullApplyVal val args = do
+  comment "fullApplyVal"
+  clos <- getCval val
+  fullApply clos args
+
+fullApply :: Apply Closure
+fullApply clos args = do
+  comment "fullApply"
+  closureEval =<< extendClosure clos args

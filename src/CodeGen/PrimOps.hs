@@ -9,19 +9,20 @@ import Text.LLVM.AST (ICmpOp(..))
 
 -- | Lift an Int64 primitive over Vals.
 intPrimBinop :: (Value Int64 -> Value Int64 -> BB r (Value Int64))
-             -> Value Val -> Value Val -> BB r (Value Val)
+             -> Value Val -> Value Val
+             -> BB r (Value Val)
 intPrimBinop k a b = do
-  aI  <- call rts_get_ival a
-  bI  <- call rts_get_ival b
+  aI  <- getIval a
+  bI  <- getIval b
   res <- k aI bI
-  val <- call rts_alloc_value valInt
-  call_ rts_set_ival val res
+  val <- allocVal valInt
+  setIval val res
   return val
 
 -- | Absolute value over Vals.
 primAbs :: Value Val -> BB r (Value Val)
 primAbs a = do
-  aI <- call rts_get_ival a
+  aI <- getIval a
 
   pos <- freshLabel
   neg <- freshLabel
@@ -34,8 +35,8 @@ primAbs a = do
     return a
 
   negOut <- defineLabel neg $ do
-    val <- call rts_alloc_value valInt
-    call_ rts_set_ival val =<< sub (fromLit 0) aI
+    val <- allocVal valInt
+    setIval val =<< sub (fromLit 0) aI
     jump out
     return val
 

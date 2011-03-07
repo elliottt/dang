@@ -55,4 +55,4 @@ codeGen qn env ds = do
   writeInterface qn $! iface
   return (ppModule doc)
   where
-  (iface,doc) = runLLVM (rtsImports >> compModule env ds)
+  (iface,doc) = runLLVM (rts_imports >> compModule env ds)

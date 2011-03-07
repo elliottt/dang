@@ -3,9 +3,8 @@
 module CodeGen.Types where
 
 import Control.Monad ((<=<))
-import Data.Int (Int8,Int32,Int64)
+import Data.Int (Int32,Int64)
 import Text.LLVM
-import Text.LLVM.AST (ppModule)
 
 
 -- RTS Types -------------------------------------------------------------------
@@ -89,9 +88,10 @@ closureArgs :: Value Closure -> BB r (Value (PtrTo Args))
 closureArgs clos = getelementptr clos (fromLit 0) [fromLit 2]
 
 -- | Call the code pointer inside of a closure.
-closureEval :: Value Closure -> Value Args -> BB r (Value Val)
-closureEval clos args = do
+closureEval :: Value Closure -> BB r (Value Val)
+closureEval clos = do
   code <- load =<< closureCodePtr clos
+  args <- load =<< closureArgs clos
   call code args
 
 
@@ -110,7 +110,7 @@ argsLen :: Value Args -> BB r (Value (PtrTo Nat))
 argsLen args = getelementptr args (fromLit 0) [fromLit 1]
 
 -- | Unchecked argument lookup.
-argsAt :: Value Args -> Value Nat -> BB r (Value (PtrTo Val))
+argsAt :: Value Args -> Value Nat -> BB r (Value Val)
 argsAt args ix = do
   arr <- load =<< argsPtr args
   ptr <- getelementptr arr ix []

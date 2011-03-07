@@ -48,19 +48,19 @@ declLinkage d = do
   guard (declExport d == AST.Private)
   return Private
 
-lookupFn :: Monad m => QualName -> Env -> m (Nat,Fn)
-lookupFn n env =
+lookupCode :: Monad m => QualName -> Env -> m (Nat,Code)
+lookupCode n env =
   case envFunDecl n env of
-    Nothing -> fail ("lookupFn: " ++ pretty n)
+    Nothing -> fail ("lookupCode: " ++ pretty n)
     Just f  -> return (funArity f, simpleFun (funSymbol f))
 
-externFn :: FunDecl -> Fn
-externFn fd = simpleFun (funSymbol fd)
+externCode :: FunDecl -> Code
+externCode fd = simpleFun (funSymbol fd)
 
 externDecls :: Interface R -> LLVM ()
 externDecls i = mapM_ step (QN.toList (intFunDecls i))
   where
-  step (_,fn) = declare (externFn fn)
+  step (_,fn) = declare (externCode fn)
 
 compModule :: Interface R -> [Decl] -> LLVM (Interface RW)
 compModule i0 ds = do
@@ -77,11 +77,11 @@ compModule i0 ds = do
   zipWithM_ (compDecl i') (reverse fns0) ds
   return i
 
-compDecl :: Interface R -> Fn -> Decl -> LLVM ()
+compDecl :: Interface R -> Code -> Decl -> LLVM ()
 compDecl i fn d = define fn $ \ rtsEnv ->
    ret =<< compTerm (mkEnv i rtsEnv (declVars d)) (declBody d)
 
-compTerm :: Env -> Term -> BB r (Value Val)
+compTerm :: Env -> Term -> BB Val (Value Val)
 compTerm env t =
   case t of
     Apply c xs  -> compApp env c xs
@@ -92,26 +92,25 @@ compTerm env t =
     Lit l       -> compLit l
     Prim n a as -> compPrim n a =<< mapM (compTerm env) as
 
-allocValBuffer :: Int32 -> BB r (Value (PtrTo Val))
+compAppLhs :: Env -> Term -> BB Val (Either (Value Val) (Value Closure))
+compAppLhs env t =
+  case t of
+    Symbol qn -> Right `fmap` symbolClosure env qn
+    _         -> Left  `fmap` compTerm env t
+
+allocValBuffer :: Int32 -> BB Val (Value Val)
 allocValBuffer len = alloca (fromLit len)
 
-storeValAt :: Value (PtrTo Val) -> Int32 -> Value Val -> BB r ()
-storeValAt args ix v = do
-  addr <- getelementptr args (fromLit ix) []
-  store v addr
-
 -- allocate enough space for vs, load them, call apply and return its result
-compApp :: Env -> Term -> [Term] -> BB r (Value Val)
+compApp :: Env -> Term -> [Term] -> BB Val (Value Val)
 compApp env c xs = do
-  vs   <- mapM (compTerm env) xs
-  let len = genericLength vs
-  args <- allocValBuffer len
-  zipWithM_ (storeValAt args) [0..] vs
-  res  <- compTerm env c
-  clos <- call rts_get_cval res
-  call rts_apply clos args (fromLit len)
+  vs  <- mapM (compTerm env) xs
+  fun <- compAppLhs env c
+  case fun of
+    Right clos -> apply    clos vs
+    Left val   -> applyVal val  vs
 
-markGC :: HasType a => Value (PtrTo a) -> BB r ()
+markGC :: HasType a => Value (PtrTo a) -> BB Val ()
 markGC ptr
   | not enableGC = return ()
   | otherwise    = do
@@ -121,36 +120,36 @@ markGC ptr
     call_ llvm_gcroot stackVar nullPtr
 
 -- | Allocate a new closure that uses the given function symbol.
-symbolClosure :: Env -> QualName -> BB r (Value Closure)
+symbolClosure :: Env -> QualName -> BB Val (Value Closure)
 symbolClosure env n = do
-  (arity,fn) <- lookupFn n env
-  clos       <- call rts_alloc_closure (fromLit arity) (funAddr fn)
+  (arity,fn) <- lookupCode n env
+  clos       <- allocClosure (funAddr fn) (fromLit arity) nullPtr
   markGC clos
   return clos
 
 -- | Interestingly, if this is the only entry point to argument, no dynamically
 -- generated argument indexes can ever be used.
-argument :: Env -> Nat -> BB r (Value Val)
-argument env = call rts_argument (envClosure env) . fromLit
+argument :: Env -> Nat -> BB Val (Value Val)
+argument env = argsAt (envClosure env) . fromLit
 
 -- | Pull a closure out of the environment, calling rts_barf if the value isn't
 -- actually a closure.
-argumentClosure :: Env -> Nat -> BB r (Value Closure)
+argumentClosure :: Env -> Nat -> BB Val (Value Closure)
 argumentClosure env i = do
   val <- argument env i
-  ty  <- call rts_value_type val
+  ty  <- load =<< getValType val
   cmp <- icmp Ieq ty valClosure
 
   exit <- freshLabel
   barf <- freshLabel
   br cmp exit barf
   _    <- defineLabel barf (call_ rts_barf >> unreachable)
-  clos <- defineLabel exit (call rts_get_cval val)
+  clos <- defineLabel exit (getCval val)
 
   return clos
 
 -- | Compile non-recursive let-declarations.
-compLet :: Env -> [LetDecl] -> Term -> BB r (Value Val)
+compLet :: Env -> [LetDecl] -> Term -> BB Val (Value Val)
 compLet env0 ds body = flip compTerm body =<< foldM stepDecl env0 ds
   where
   stepDecl env d = do
@@ -158,35 +157,33 @@ compLet env0 ds body = flip compTerm body =<< foldM stepDecl env0 ds
     return (addLocal n v env)
 
 -- | Compile a let-declaration.
-compLetDecl :: Env -> LetDecl -> BB r (String,Value Val)
+compLetDecl :: Env -> LetDecl -> BB Val (String,Value Val)
 compLetDecl env d = name `fmap` compTerm env (letBody d)
   where
   name x = (letName d, x)
 
-compVar :: Env -> Name -> BB r (Value Val)
+compVar :: Env -> Name -> BB Val (Value Val)
 compVar env n =
   case lookupLocal n env of
     Just v  -> return v
     Nothing -> compSymbol env (simpleName n)
 
-compSymbol :: Env -> QualName -> BB r (Value Val)
-compSymbol env s = do
-  (n,fn) <- lookupFn s env
-  clos   <- call rts_alloc_closure (fromLit n) (funAddr fn)
-  cval   <- call rts_alloc_value valClosure
-  markGC clos
+compSymbol :: Env -> QualName -> BB Val (Value Val)
+compSymbol env qn = do
+  clos <- symbolClosure env qn
+  cval <- allocVal valClosure
   markGC cval
-  call_ rts_set_cval cval clos
+  setCval cval clos
   return cval
 
-compLit :: AST.Literal -> BB r (Value Val)
+compLit :: AST.Literal -> BB Val (Value Val)
 compLit (AST.LInt i) = do
-  ival <- call rts_alloc_value valInt
+  ival <- allocVal valInt
   markGC ival
-  call_ rts_set_ival ival (fromLit i)
+  setIval ival (fromLit i)
   return ival
 
-compPrim :: String -> Int -> [Value Val] -> BB r (Value Val)
+compPrim :: String -> Int -> [Value Val] -> BB Val (Value Val)
 compPrim n arity ts =
   case arity of
     1 -> do
