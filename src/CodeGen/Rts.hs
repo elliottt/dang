@@ -1,10 +1,12 @@
+{-# LANGUAGE DoRec #-}
+
 module CodeGen.Rts where
 
 import CodeGen.Types
 
 import Control.Monad (zipWithM_)
 import Data.Int (Int8,Int32)
-import Data.List (genericLength)
+import Data.List (genericLength,genericSplitAt)
 import Text.LLVM
 
 
@@ -131,8 +133,7 @@ extendArgs args0 vs extra = do
 
 -- Application -----------------------------------------------------------------
 
-type Apply a = Value a -> [Value Val] -> BB Val (Value Val)
-
+-- | Int32 indexes for values in an array.
 valueIxs :: [Value Int32]
 valueIxs  = map fromLit [0 ..]
 
@@ -146,19 +147,125 @@ extendClosure clos args = do
   zipWithM_ (storeValueAt ptr) valueIxs args
   copyClosure clos ptr len
 
-apply :: Apply Closure
-apply  = undefined
+type Apply a = Value Closure -> [Value Val] -> BB Val a
 
-applyVal :: Apply Val
-applyVal  = undefined
-
-fullApplyVal :: Apply Val
-fullApplyVal val args = do
-  comment "fullApplyVal"
-  clos <- getCval val
-  fullApply clos args
-
-fullApply :: Apply Closure
+-- | Application where the number of arguments matches the arity.
+fullApply :: Apply (Value Val)
 fullApply clos args = do
   comment "fullApply"
-  closureEval =<< extendClosure clos args
+  c' <- extendClosure clos args
+  closureEval c'
+
+-- | Under-application.
+underApply :: Apply (Value Val)
+underApply clos args = do
+  comment "underApply"
+  c2  <- extendClosure clos args
+  res <- allocVal valClosure
+  setCval res c2
+  return res
+
+-- | Over-application.
+knownOverApply :: Nat -> Apply (Value Val)
+knownOverApply arity clos args = do
+  comment "overApply"
+  let (as,bs) = genericSplitAt arity args
+  val <- fullApply clos as
+  applyVal val bs
+
+-- | Application, when the arity is statically known.
+knownApply :: Nat -> Apply (Value Val)
+knownApply arity clos args = do
+  case compare (genericLength args) arity of
+    LT -> underApply clos args
+    EQ -> fullApply clos args
+    GT -> knownOverApply arity clos args
+
+-- | Application, when the function is a value.
+applyVal :: Value Val -> [Value Val] -> BB Val (Value Val)
+applyVal val vs = do
+  clos <- getCval val
+  unknownApply clos vs
+
+-- | Application, when the arity isn't statically known.
+unknownApply :: Apply (Value Val)
+unknownApply clos0 args = do
+  comment "unknownApply"
+  defineFreshLabel $ \ entry -> do
+
+    -- seed argument length
+    rec len <- return (fromLit (genericLength args))
+
+        -- seed argument vector, and index into it
+        argp0 <- alloca len
+        zipWithM_ (storeValueAt argp0) valueIxs args
+
+        check        <- freshLabel
+        exactOrUnder <- freshLabel
+        over         <- freshLabel
+        under        <- freshLabel
+        exact        <- freshLabel
+        done         <- freshLabel
+
+        -- figure out what sort of application to do
+        -- clos - the current closure
+        -- left - the number of arguments available
+        -- arity- the arity of the current closure
+        -- ix   - the pointer into the argument array
+        (clos,left,arity,ix) <- defineLabel check $ do
+          closC  <- phi clos0 entry [(closO,over)]
+          leftC  <- phi len   entry [(leftO,over)]
+          ixC    <- phi argp0 entry [(argpO,over)]
+          arityC <- load =<< closureArity clos
+
+          b <- icmp Iult arityC leftC
+          br b over exactOrUnder
+
+          return (closC,leftC,arityC,ixC)
+
+        -- duplicate the closure, extending with as many arguments as it can
+        -- take.
+        -- evaluate the closure, and pull out a resulting closure.
+        -- calculate the new number of arguments left
+        -- increment the argument index
+        -- jump back to the check label for another loop iteration
+        comment "over-application"
+        (closO,leftO,argpO) <- defineLabel over $ do
+          c'    <- copyClosure clos ix arity
+          res   <- closureEval c'
+          clos' <- getCval res
+          left' <- sub left arity
+          ix'   <- plusPtr ix arity
+
+          jump check
+
+          return (clos', left', ix')
+
+        -- duplicate the closure, extending with the available arguments.
+        -- jump to either the application label, or the allocation label.
+        closEU <- defineLabel exactOrUnder $ do
+          c' <- copyClosure clos ix left
+          b  <- icmp Ieq arity left
+          br b exact under
+          return c'
+
+    -- duplicate the closure, extending with the arguments.
+    -- jump to the code pointer.
+    -- jump to the done label.
+    comment "exact-application"
+    exactVal <- defineLabel exact $ do
+      res <- closureEval closEU
+      jump done
+      return res
+
+    -- duplicate the closure, extending with the 
+    comment "under-application"
+    underVal <- defineLabel under $ do
+      res <- allocVal valClosure
+      setCval res closEU
+      jump done
+      return res
+
+    -- phi together the results of either a full application, or an under
+    -- application.
+    defineLabel done (phi exactVal exact [(underVal,under)])

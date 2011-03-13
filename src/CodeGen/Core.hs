@@ -19,7 +19,7 @@ import Data.Int (Int32)
 import Data.List (genericLength,intercalate)
 import MonadLib
 import Text.LLVM
-import Text.LLVM.AST (Linkage(..),GC(..),ICmpOp(..))
+import Text.LLVM.AST (Linkage(..),GC(..))
 
 enableGC :: Bool
 enableGC  = True
@@ -92,7 +92,7 @@ compTerm env t =
     Lit l       -> compLit l
     Prim n a as -> compPrim n a =<< mapM (compTerm env) as
 
-compAppLhs :: Env -> Term -> BB Val (Either (Value Val) (Value Closure))
+compAppLhs :: Env -> Term -> BB Val (Either (Value Val) (Nat,Value Closure))
 compAppLhs env t =
   case t of
     Symbol qn -> Right `fmap` symbolClosure env qn
@@ -107,8 +107,8 @@ compApp env c xs = do
   vs  <- mapM (compTerm env) xs
   fun <- compAppLhs env c
   case fun of
-    Right clos -> apply    clos vs
-    Left val   -> applyVal val  vs
+    Right (arity,clos) -> knownApply arity clos vs
+    Left val           -> applyVal val  vs
 
 markGC :: HasType a => Value (PtrTo a) -> BB Val ()
 markGC ptr
@@ -120,12 +120,12 @@ markGC ptr
     call_ llvm_gcroot stackVar nullPtr
 
 -- | Allocate a new closure that uses the given function symbol.
-symbolClosure :: Env -> QualName -> BB Val (Value Closure)
+symbolClosure :: Env -> QualName -> BB Val (Nat,Value Closure)
 symbolClosure env n = do
   (arity,fn) <- lookupCode n env
   clos       <- allocClosure (funAddr fn) (fromLit arity) nullPtr
   markGC clos
-  return clos
+  return (arity,clos)
 
 -- | Interestingly, if this is the only entry point to argument, no dynamically
 -- generated argument indexes can ever be used.
@@ -170,8 +170,8 @@ compVar env n =
 
 compSymbol :: Env -> QualName -> BB Val (Value Val)
 compSymbol env qn = do
-  clos <- symbolClosure env qn
-  cval <- allocVal valClosure
+  (_,clos) <- symbolClosure env qn
+  cval     <- allocVal valClosure
   markGC cval
   setCval cval clos
   return cval
