@@ -35,7 +35,7 @@ infoTable t = Struct (natT:t)
 
 -- | Cast a specific info table to a generic one.
 toInfoTable :: Typed Value -> BB (Typed Value)
-toInfoTable ptr = bitcast ptr infoT
+toInfoTable ptr = bitcast ptr (ptrT infoT)
 
 -- | The closure type of functions.
 closureFun :: Typed Value

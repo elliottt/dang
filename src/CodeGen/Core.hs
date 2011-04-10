@@ -145,7 +145,11 @@ cgLiteral :: AST.Literal -> BB (Typed Value)
 cgLiteral (AST.LInt i) = cgBoxInt i
 
 cgBoxInt :: Int64 -> BB (Typed Value)
-cgBoxInt i = error "boxInt"
+cgBoxInt i = do
+  obj     <- allocData (ptrT dataT -: Symbol "Int_info")
+  payload <- heapObjPayloadPtr obj
+  store i =<< bitcast obj (ptrT (iT 64))
+  return obj
 
 cgPrim :: CGEnv -> String -> Int -> [LL.Term] -> BB (Typed Value)
 cgPrim env n arity args = error "cgPrim"

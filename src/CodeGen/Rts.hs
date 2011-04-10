@@ -56,7 +56,10 @@ definePrims  = do
   declare voidT llvm_memcpy [ ptrT (iT 8), ptrT (iT 8), iT 32, iT 32, iT 1 ]
 
   -- XXX remove this once integers are able to be defined in the language
-  -- global ...
+  global (Symbol "Int_info") $ struct False
+    [ natT -: closureData
+    , natT -: int 8
+    ]
 
 -- | Convenient interface to the memcpy intrinsic.
 memcpy :: Typed Value -> Typed Value -> Typed Value -> BB ()
@@ -118,38 +121,42 @@ defineUnpack arity sym = do
       ret =<< call (ptrT heapObjT) sym =<< mapM (extractArg clos) [0 .. arity-1]
   return (codeT -: u)
 
+-- | The size of a function payload.
+funTableSizePtr :: Offset
+funTableSizePtr  = offset natT 1
+
 -- | The arity pointer from a function info table.
 funTableArityPtr :: Offset
-funTableArityPtr  = offset (ptrT funT) 1
+funTableArityPtr  = offset natT 2
 
 -- | The code pointer from a function info table.
 funTableCodePtr :: Offset
-funTableCodePtr  = offset (ptrT funT) 2
-
--- | Calculate the size needed for a function closure.
---
--- XXX After introducing unboxed values, we start needing descriptions of the
--- closure, to accurately calculate the size necessary for the closure.  For
--- example, Ints and Doubles might fit in the same space as a pointer, on
--- x86_64, but they certainly won't on x86.
---
--- This value could be calculated statically, once the types are known, but in
--- an untyped world the arity will have to do.
-funClosureSize :: Typed Value -> BB (Typed Value)
-funClosureSize itFun = do
-  arity  <- load =<< funTableArityPtr itFun
-  ptr_sz <- sizeof (ptrT heapObjT)
-  mul arity ptr_sz
+funTableCodePtr  = offset codeT 3
 
 -- | Allocate space for a function closure, given its info table.
 allocFun :: Symbol           -- ^ Function Name
          -> BB (Typed Value) -- ^ Heap Object
-allocFun sym = do
+allocFun sym = "allocFun" `note` do
   let itFun = funT -: funInfoTable sym
-  obj <- heapAlloc =<< funClosureSize itFun
+  obj <- heapAlloc =<< load =<< funTableSizePtr itFun
   it  <- toInfoTable itFun
   store it =<< heapObjInfoTablePtr obj
   return obj
+
+
+-- Data Closures ---------------------------------------------------------------
+
+-- | Allocate a 
+allocData :: Typed Value      -- ^ Data Type Info Table
+          -> BB (Typed Value) -- ^ Heap Object
+allocData itData = "allocData" `note` do
+  obj <- heapAlloc =<< load =<< dataTableSizePtr itData
+  it  <- toInfoTable itData
+  store it =<< heapObjInfoTablePtr obj
+  return obj
+
+dataTableSizePtr :: Offset
+dataTableSizePtr  = offset natT 1
 
 
 -- Application -----------------------------------------------------------------
