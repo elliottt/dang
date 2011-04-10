@@ -53,6 +53,9 @@ codeGen :: QualName -> Interface R -> [Decl] -> Dang Doc
 codeGen qn env ds = do
   logInfo "Generating LLVM assembly"
   writeInterface qn $! iface
-  return (ppModule doc)
+  return (ppModule m)
   where
-  (iface,doc) = runLLVM (rts_imports >> compModule env ds)
+  (iface,m) = runLLVM $ do
+    defineTypes
+    definePrims
+    cgDecls env ds

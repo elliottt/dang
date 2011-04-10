@@ -1,204 +1,132 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module CodeGen.Core where
 
 import CodeGen.Env
-import CodeGen.PrimOps
 import CodeGen.Rts
 import CodeGen.Types
 import Interface
-import LambdaLift
 import Pretty
 import QualName
 import ReadWrite
-import qualified Syntax.AST as AST
-import qualified QualNameMap as QN
+import qualified LambdaLift  as LL
+import qualified Syntax.AST  as AST
 
-import Data.Int (Int32)
-import Data.List (genericLength,intercalate)
-import MonadLib
+import Control.Monad (foldM)
 import Text.LLVM
-import Text.LLVM.AST (Linkage(..),GC(..))
+import Text.LLVM.AST
 
-enableGC :: Bool
-enableGC  = True
 
--- Compilation Monad -----------------------------------------------------------
+-- Declarations ----------------------------------------------------------------
 
-sanitize :: String -> String
-sanitize  = concatMap escape
+-- | Generate code for a block of declarations, and return their interface as an
+-- effect.
+cgDecls :: Interface R -> [LL.Decl] -> LLVM (Interface RW)
+cgDecls iface ds = do
+  let this = declsInterface ds
+      env  = iface `mergeInterfaces` this
+  mapM_ (cgDecl env) ds
+  return this
+
+-- | Generate the interface that represents a group of declarations.
+declsInterface :: [LL.Decl] -> Interface RW
+declsInterface  = foldl step emptyInterface
   where
-  escape '_' = "__"
-  escape c   = [c]
+  step iface d = addFunDecl (LL.declName d) (declToFunDecl d) iface
 
-mangleName :: QualName -> Nat -> Name
-mangleName (PrimName n)    _ = n
-mangleName (QualName ps n) a =
-  "_cv" ++ intercalate "_" (map sanitize ps ++ [sanitize n]) ++ show a
-
-declFunAttrs :: Decl -> FunAttrs
-declFunAttrs d = emptyFunAttrs
-  { funLinkage = declLinkage d
-  , funGC      = guard enableGC >> Just (GC "shadow-stack")
+-- | Produce a @FunDecl@ from a declaration.
+declToFunDecl :: LL.Decl -> FunDecl
+declToFunDecl d = FunDecl
+  { funArity  = length (LL.declVars d)
+  , funSymbol = mangle (LL.declName d)
   }
 
-declLinkage :: Decl -> Maybe Linkage
-declLinkage d = do
-  guard (declExport d == AST.Private)
-  return Private
+-- | Generate code for a declaration.
+--
+-- NOTE: The declaration passed in must be present in the interface that is
+-- given.  The assumption is that the given interface is a merged one, that also
+-- includes all dependencies for this module.
+cgDecl :: Interface R -> LL.Decl -> LLVM ()
+cgDecl iface decl = do
+  let qn   = LL.declName decl
+      sym  = Symbol (funSymbol fd)
+      args = replicate (funArity fd) (ptrT heapObjT)
+      fd   = case findFunDecl qn iface of
+        Nothing -> error ("cgDecl: ``" ++ pretty qn ++ "'' not defined")
+        Just x  -> x
+  defineUnpack (funArity fd) sym
+  _ <- define emptyFunAttrs (ptrT heapObjT) sym args $ \ clos -> do
+    label (Ident "Entry")
+    res <- cgTerm (emptyCGEnv iface clos) (LL.declBody decl)
+    ret res
 
-lookupCode :: Monad m => QualName -> Env -> m (Nat,Code)
-lookupCode n env =
-  case envFunDecl n env of
-    Nothing -> fail ("lookupCode: " ++ pretty n)
-    Just f  -> return (funArity f, simpleFun (funSymbol f))
+  return ()
 
-externCode :: FunDecl -> Code
-externCode fd = simpleFun (funSymbol fd)
 
-externDecls :: Interface R -> LLVM ()
-externDecls i = mapM_ step (QN.toList (intFunDecls i))
-  where
-  step (_,fn) = declare (externCode fn)
+-- Terms -----------------------------------------------------------------------
 
-compModule :: Interface R -> [Decl] -> LLVM (Interface RW)
-compModule i0 ds = do
-  externDecls i0
-  let step (fns,i) d = do -- why is this monadic?
-        let arity = genericLength (declVars d)
-        let name  = mangleName (declName d) arity
-        let fn    = funWithAttrs name (declFunAttrs d)
-        let sym   = FunDecl name arity
-        let var   = declName d
-        return (fn:fns, addFunDecl var sym i)
-  (fns0,i) <- foldM step ([],emptyInterface) ds
-  let i' = mergeInterfaces i i0
-  zipWithM_ (compDecl i') (reverse fns0) ds
-  return i
+-- | Generate code, recursively, for a @Term@.
+cgTerm :: CGEnv -> LL.Term -> BB (Typed Value)
+cgTerm env tm = case tm of
+  LL.Apply f xs  -> cgApply env f xs
+  LL.Let ds b    -> cgLet env ds b
+  LL.Symbol qn   -> cgSymbol env qn
+  LL.Var n       -> cgVar env n
+  LL.Argument i  -> cgArgument env i
+  LL.Lit l       -> cgLiteral l
+  LL.Prim n a ts -> cgPrim env n a ts
 
-compDecl :: Interface R -> Code -> Decl -> LLVM ()
-compDecl i fn d = define fn $ \ rtsEnv ->
-   ret =<< compTerm (mkEnv i rtsEnv (declVars d)) (declBody d)
+cgApply :: CGEnv -> LL.Term -> [LL.Term] -> BB (Typed Value)
+cgApply env (LL.Symbol f) xs = cgApplySym env f xs
+cgApply env f             xs = cgApplyGen env f xs
 
-compTerm :: Env -> Term -> BB Val (Value Val)
-compTerm env t =
-  case t of
-    Apply c xs  -> compApp env c xs
-    Let ds e    -> compLet env ds e
-    Symbol qn   -> compSymbol env qn
-    Var n       -> compVar env n
-    Argument ix -> argument env ix
-    Lit l       -> compLit l
-    Prim n a as -> compPrim n a =<< mapM (compTerm env) as
+cgApplySym :: CGEnv -> QualName -> [LL.Term] -> BB (Typed Value)
+cgApplySym env qn xs = case lookupFunDecl qn env of
+  Nothing -> error ("cgApplySym: ``" ++ pretty qn ++ "'' not defined")
+  Just fd ->
+    let sym   = Symbol (funSymbol fd)
+        arity = funArity fd
+     in symbolApply arity (ptrT heapObjT) sym =<< mapM (cgTerm env) xs
 
-compAppLhs :: Env -> Term -> BB Val (Either (Value Val) (Nat,Value Closure))
-compAppLhs env t =
-  case t of
-    Symbol qn -> Right `fmap` symbolClosure env qn
-    _         -> Left  `fmap` compTerm env t
+cgApplyGen :: CGEnv -> LL.Term -> [LL.Term] -> BB (Typed Value)
+cgApplyGen env f xs = do
+  xs' <- mapM (cgTerm env) xs
+  f'  <- cgTerm env f
+  closApply f' xs'
 
-allocValBuffer :: Int32 -> BB Val (Value Val)
-allocValBuffer len = alloca (fromLit len)
+-- | Generate code for the bindings, extend the environment with the new names,
+-- and generate code for the body.
+cgLet :: CGEnv -> [LL.LetDecl] -> LL.Term -> BB (Typed Value)
+cgLet env ds b = do
+  env' <- foldM cgLetDecl env ds
+  cgTerm env' b
 
--- allocate enough space for vs, load them, call apply and return its result
-compApp :: Env -> Term -> [Term] -> BB Val (Value Val)
-compApp env c xs = do
-  vs  <- mapM (compTerm env) xs
-  fun <- compAppLhs env c
-  case fun of
-    Right (arity,clos) -> knownApply arity clos vs
-    Left val           -> applyVal val  vs
+-- | Generate code for a name bound inside of a let, returning the extended
+-- environment.
+cgLetDecl :: CGEnv -> LL.LetDecl -> BB CGEnv
+cgLetDecl env d = do
+  res <- cgTerm env (LL.letBody d)
+  return (addVar (LL.letName d) res env)
 
-markGC :: HasType a => Value (PtrTo a) -> BB Val ()
-markGC ptr
-  | not enableGC = return ()
-  | otherwise    = do
-    i8       <- bitcast ptr
-    stackVar <- alloca
-    store i8 stackVar
-    call_ llvm_gcroot stackVar nullPtr
+-- | Lookup the global name of a @QualName@.
+cgSymbol :: CGEnv -> QualName -> BB (Typed Value)
+cgSymbol env qn = case lookupSymbol qn env of
+  Nothing -> error ("cgSymbol: ``" ++ pretty qn ++ "'' not defined.")
+  Just tv -> return tv
 
--- | Allocate a new closure that uses the given function symbol.
-symbolClosure :: Env -> QualName -> BB Val (Nat,Value Closure)
-symbolClosure env n = do
-  (arity,fn) <- lookupCode n env
-  clos       <- allocClosure (funAddr fn) (fromLit arity) nullPtr
-  markGC clos
-  return (arity,clos)
+-- | Lookup a locally-defined variable in the current environment.
+cgVar :: CGEnv -> Name -> BB (Typed Value)
+cgVar env n = case lookupVar n env of
+  Nothing -> error ("cgVar: ``" ++ n ++ "'' is not defined")
+  Just tv -> return tv
 
--- | Interestingly, if this is the only entry point to argument, no dynamically
--- generated argument indexes can ever be used.
-argument :: Env -> Nat -> BB Val (Value Val)
-argument env = argsAt (envClosure env) . fromLit
+-- | Lookup a function argument in the current environment.
+cgArgument :: CGEnv -> Int -> BB (Typed Value)
+cgArgument env i = case lookupArgument i env of
+  Nothing -> error ("cgArgument: no argument ``" ++ show i ++ "''")
+  Just tv -> return tv
 
--- | Pull a closure out of the environment, calling rts_barf if the value isn't
--- actually a closure.
-argumentClosure :: Env -> Nat -> BB Val (Value Closure)
-argumentClosure env i = do
-  val <- argument env i
-  ty  <- load =<< getValType val
-  cmp <- icmp Ieq ty valClosure
+-- | Literals.
+cgLiteral :: AST.Literal -> BB (Typed Value)
+cgLiteral (AST.LInt i) = return (iT 64 -: i)
 
-  exit <- freshLabel
-  barf <- freshLabel
-  br cmp exit barf
-  _    <- defineLabel barf (call_ rts_barf >> unreachable)
-  clos <- defineLabel exit (getCval val)
-
-  return clos
-
--- | Compile non-recursive let-declarations.
-compLet :: Env -> [LetDecl] -> Term -> BB Val (Value Val)
-compLet env0 ds body = flip compTerm body =<< foldM stepDecl env0 ds
-  where
-  stepDecl env d = do
-    (n,v) <- compLetDecl env0 d
-    return (addLocal n v env)
-
--- | Compile a let-declaration.
-compLetDecl :: Env -> LetDecl -> BB Val (String,Value Val)
-compLetDecl env d = name `fmap` compTerm env (letBody d)
-  where
-  name x = (letName d, x)
-
-compVar :: Env -> Name -> BB Val (Value Val)
-compVar env n =
-  case lookupLocal n env of
-    Just v  -> return v
-    Nothing -> compSymbol env (simpleName n)
-
-compSymbol :: Env -> QualName -> BB Val (Value Val)
-compSymbol env qn = do
-  (_,clos) <- symbolClosure env qn
-  cval     <- allocVal valClosure
-  markGC cval
-  setCval cval clos
-  return cval
-
-compLit :: AST.Literal -> BB Val (Value Val)
-compLit (AST.LInt i) = do
-  ival <- allocVal valInt
-  markGC ival
-  setIval ival (fromLit i)
-  return ival
-
-compPrim :: String -> Int -> [Value Val] -> BB Val (Value Val)
-compPrim n arity ts =
-  case arity of
-    1 -> do
-      let [a] = ts
-      case n of
-        "prim_abs_i"    -> primAbs a
-        "prim_signum_i" -> error "prim_signum_i"
-        _            -> fail ("unknown primitive: " ++ n)
-
-    2 -> do
-      let [a,b] = ts
-      case n of
-        "prim_add_i" -> intPrimBinop add a b
-        "prim_sub_i" -> intPrimBinop sub a b
-        "prim_mul_i" -> intPrimBinop mul a b
-        _            -> fail ("unknown primitive: " ++ n)
-
-    _ -> fail ("unknown primitive: " ++ n)
+cgPrim :: CGEnv -> String -> Int -> [LL.Term] -> BB (Typed Value)
+cgPrim env n arity args = error "cgPrim"

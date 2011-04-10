@@ -5,6 +5,7 @@ module QualName where
 import Pretty
 
 import Control.Monad (ap)
+import Data.Char (isSpace)
 import Data.Serialize (Serialize(get,put),getWord8,putWord8)
 import Data.Typeable (Typeable)
 import Numeric (showHex)
@@ -60,6 +61,18 @@ qualPrefix (PrimName _)    = []
 qualSymbol :: QualName -> Name
 qualSymbol (QualName _ n) = n
 qualSymbol (PrimName n)   = n
+
+-- | Mangle a qualified name into one that is suitable for code generation.
+mangle :: QualName -> String
+mangle qn = foldr prefix (qualSymbol qn) (qualPrefix qn)
+  where
+  prefix pfx rest = rename pfx ++ "_" ++ rest
+  rename          = concatMap $ \c ->
+    case c of
+      '_'           -> "__"
+      '.'           -> "_"
+      _ | isSpace c -> []
+        | otherwise -> [c]
 
 qualNamespace :: QualName -> Namespace
 qualNamespace (QualName ps n) = ps ++ [n]

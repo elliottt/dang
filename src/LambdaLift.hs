@@ -173,7 +173,7 @@ data Term
   | Let [LetDecl] Term
   | Symbol QualName
   | Var Name
-  | Argument Int32
+  | Argument Int
   | Lit AST.Literal
   | Prim String Int [Term]
     deriving Show

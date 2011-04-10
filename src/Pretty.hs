@@ -65,6 +65,9 @@ instance Pretty a => Pretty [a] where
 instance Pretty () where
   pp _ _ = empty
 
+instance Pretty Int where
+  pp _ i = int i
+
 instance Pretty Int8 where
   pp _ i = integer (fromIntegral i)
 

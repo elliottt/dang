@@ -14,7 +14,9 @@ int main() {
     init_gc();
 
     // main is a zero-argument function
-    res = _cvMain_main0(alloc_closure(0,_cvMain_main0));
+    res = _cvMain_main0(NULL);
+
+    printf("res = %p\n", res);
 
     switch(res->type) {
         case TYPE_INT:

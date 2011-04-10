@@ -2,41 +2,46 @@ module CodeGen.Env where
 
 import CodeGen.Types
 import Interface
-import QualName
 import ReadWrite
+import QualName
+import Utils
 
-import Text.LLVM (Value)
+import Text.LLVM
+import Text.LLVM.AST
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
-
-data Env = Env
-  { envInterface :: Interface R
-  , envClosure   :: Value Args
-  , envArgs      :: Set.Set String
-  , envLocal     :: Map.Map String (Value Val)
+data CGEnv = CGEnv
+  { cgClosure :: [Typed Value]
+  , cgLocals  :: Map.Map Name (Typed Value)
+  , cgIface   :: Interface R
   }
 
-mkEnv :: Interface R -> Value Args -> [String] -> Env
-mkEnv i rtsEnv args = Env
-  { envInterface = i
-  , envClosure   = rtsEnv
-  , envArgs      = Set.fromList args
-  , envLocal     = Map.empty
+emptyCGEnv :: Interface R -> [Typed Value] -> CGEnv
+emptyCGEnv iface clos = CGEnv
+  { cgIface   = iface
+  , cgClosure = clos
+  , cgLocals  = Map.empty
   }
 
--- | Lookup a function definition out of the local environment.
-envFunDecl :: QualName -> Env -> Maybe FunDecl
-envFunDecl n = findFunDecl n . envInterface
+type LookupBy a = a -> CGEnv -> Maybe (Typed Value)
 
--- | Lookup a value in the environment of values that have been seen by the code
--- generator.
-envValue :: String -> Env -> Maybe (Value Val)
-envValue n = Map.lookup n . envLocal
+lookupArgument :: LookupBy Int
+lookupArgument ix env = cgClosure env !!? ix
 
--- | Add a local variable to the environment.
-addLocal :: String -> Value Val -> Env -> Env
-addLocal n v env = env { envLocal = Map.insert n v (envLocal env) }
+lookupVar :: LookupBy Name
+lookupVar v = Map.lookup v . cgLocals
 
-lookupLocal :: String -> Env -> Maybe (Value Val)
-lookupLocal n = Map.lookup n . envLocal
+addVar :: Name -> Typed Value -> CGEnv -> CGEnv
+addVar v tv env = env { cgLocals = Map.insert v tv (cgLocals env) }
+
+lookupFunDecl :: QualName -> CGEnv -> Maybe FunDecl
+lookupFunDecl qn = findFunDecl qn . cgIface
+
+lookupSymbol :: LookupBy QualName
+lookupSymbol qn = fmap declSymbol . lookupFunDecl qn
+
+declSymbol :: FunDecl -> Typed Value
+declSymbol fd = ty -: Symbol (funSymbol fd)
+  where
+  pho = ptrT heapObjT
+  ty  = ptrT (FunTy pho (replicate (funArity fd) pho))

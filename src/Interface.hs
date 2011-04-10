@@ -17,7 +17,7 @@ import qualified Data.ByteString as S
 
 data FunDecl = FunDecl
   { funSymbol :: String
-  , funArity  :: Int32
+  , funArity  :: Int
   } deriving Show
 
 instance Serialize FunDecl where
