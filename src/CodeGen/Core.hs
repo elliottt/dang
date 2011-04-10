@@ -11,6 +11,7 @@ import qualified LambdaLift  as LL
 import qualified Syntax.AST  as AST
 
 import Control.Monad (foldM)
+import Data.Int (Int64)
 import Text.LLVM
 import Text.LLVM.AST
 
@@ -48,11 +49,26 @@ cgDecl :: Interface R -> LL.Decl -> LLVM ()
 cgDecl iface decl = do
   let qn   = LL.declName decl
       sym  = Symbol (funSymbol fd)
+      info = funInfoTable sym
       args = replicate (funArity fd) (ptrT heapObjT)
       fd   = case findFunDecl qn iface of
         Nothing -> error ("cgDecl: ``" ++ pretty qn ++ "'' not defined")
         Just x  -> x
-  defineUnpack (funArity fd) sym
+
+  -- generate the unpacking function
+  unpack <- defineUnpack (funArity fd) sym
+
+  -- define the info table constant
+  let arity = length args
+  global info $ struct False
+    [ natT  -: closureFun
+      -- XXX need to calculate the real size of the closure
+    , natT  -: (arity * 8)
+    , natT  -: arity
+    , codeT -: unpack
+    ]
+
+  -- generate the function body
   _ <- define emptyFunAttrs (ptrT heapObjT) sym args $ \ clos -> do
     label (Ident "Entry")
     res <- cgTerm (emptyCGEnv iface clos) (LL.declBody decl)
@@ -126,7 +142,10 @@ cgArgument env i = case lookupArgument i env of
 
 -- | Literals.
 cgLiteral :: AST.Literal -> BB (Typed Value)
-cgLiteral (AST.LInt i) = return (iT 64 -: i)
+cgLiteral (AST.LInt i) = cgBoxInt i
+
+cgBoxInt :: Int64 -> BB (Typed Value)
+cgBoxInt i = error "boxInt"
 
 cgPrim :: CGEnv -> String -> Int -> [LL.Term] -> BB (Typed Value)
 cgPrim env n arity args = error "cgPrim"

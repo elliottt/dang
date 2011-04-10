@@ -55,6 +55,9 @@ definePrims  = do
   -- llvm intrinsics
   declare voidT llvm_memcpy [ ptrT (iT 8), ptrT (iT 8), iT 32, iT 32, iT 1 ]
 
+  -- XXX remove this once integers are able to be defined in the language
+  -- global ...
+
 -- | Convenient interface to the memcpy intrinsic.
 memcpy :: Typed Value -> Typed Value -> Typed Value -> BB ()
 memcpy dst src len = do
@@ -81,7 +84,7 @@ heapObjInfoTablePtr  = offset (ptrT infoT) 0
 
 -- | The address of the payload associated with a heap object.
 heapObjPayloadPtr :: Offset
-heapObjPayloadPtr  = offset (Array 0 (ptrT (iT 8))) 1
+heapObjPayloadPtr  = offset (Array 0 (iT 8)) 1
 
 
 -- Function Closures -----------------------------------------------------------
@@ -106,14 +109,14 @@ extractArg :: Typed Value -> Int -> BB (Typed Value)
 extractArg clos i = getelementptr (ptrT heapObjT) clos [iT 32 -: i]
 
 -- | Define the unpacking function for a function of a given arity.
-defineUnpack :: Arity -> Symbol -> LLVM ()
+defineUnpack :: Arity -> Symbol -> LLVM (Typed Value)
 defineUnpack arity sym = do
-  _ <- define emptyFunAttrs (ptrT heapObjT) (funUnpackSym sym) [ptrT heapObjT]
+  u <- define emptyFunAttrs (ptrT heapObjT) (funUnpackSym sym) [ptrT heapObjT]
     $ \ [env] -> do
       ptr  <- heapObjPayloadPtr env
       clos <- bitcast ptr (ptrT heapObjT)
       ret =<< call (ptrT heapObjT) sym =<< mapM (extractArg clos) [0 .. arity-1]
-  return ()
+  return (codeT -: u)
 
 -- | The arity pointer from a function info table.
 funTableArityPtr :: Offset
