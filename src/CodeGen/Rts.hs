@@ -5,11 +5,7 @@ module CodeGen.Rts where
 import CodeGen.Types
 import QualName
 
-import Control.Monad (zipWithM_)
-import Data.Char (isSpace)
-import Data.List (intercalate)
 import Text.LLVM
-import Text.LLVM.AST
 
 
 -- Utilities -------------------------------------------------------------------
@@ -94,7 +90,7 @@ heapObjPayloadPtr  = offset (Array 0 (iT 8)) 1
 
 -- | Turn a function name into one that is suitable for code generation.
 mangleName :: Arity -> QualName -> Symbol
-mangleName arity n = Symbol (mangle n)
+mangleName _arity n = Symbol (mangle n)
 
 -- | The name of the info table associated with a symbol.
 funInfoTable :: Symbol -> Symbol
@@ -114,8 +110,8 @@ extractArg clos i = getelementptr (ptrT heapObjT) clos [iT 32 -: i]
 -- | Define the unpacking function for a function of a given arity.
 defineUnpack :: Arity -> Symbol -> LLVM (Typed Value)
 defineUnpack arity sym = do
-  u <- define emptyFunAttrs (ptrT heapObjT) (funUnpackSym sym) [ptrT heapObjT]
-    $ \ [env] -> do
+  u <- define emptyFunAttrs (ptrT heapObjT) (funUnpackSym sym) (ptrT heapObjT)
+    $ \ env -> do
       ptr  <- heapObjPayloadPtr env
       clos <- bitcast ptr (ptrT heapObjT)
       ret =<< call (ptrT heapObjT) sym =<< mapM (extractArg clos) [0 .. arity-1]
@@ -173,7 +169,9 @@ symbolApply arity rty fun args = note "symbolApply" $
 
 -- | Application when not enough arguments are present for execution to happen.
 symbolUnderApply :: Symbol -> [Typed Value] -> BB (Typed Value)
-symbolUnderApply fun args = error "symbolUnderApply"
+symbolUnderApply fun _args = "symbolUnderApply" `note` do
+  _obj <- allocFun fun
+  undefined
 
 symbolOverApply :: Arity -> Type -> Symbol -> [Typed Value] -> BB (Typed Value)
 symbolOverApply arity rty sym args = "symbolOverApply" `note` do
@@ -183,4 +181,4 @@ symbolOverApply arity rty sym args = "symbolOverApply" `note` do
 
 -- | Application when all we have is a closure.
 closApply :: Typed Value -> [Typed Value] -> BB (Typed Value)
-closApply clos args = error "closApply"
+closApply _clos _args = error "closApply"

@@ -9,7 +9,6 @@ import ReadWrite
 import qualified QualNameMap as QM
 
 import Control.Monad (ap)
-import Data.Int (Int32)
 import Data.Serialize (runGet,runPut,Get,Putter,Serialize(get,put))
 import System.FilePath (joinPath,(<.>),(</>))
 import qualified Data.ByteString as S

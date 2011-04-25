@@ -33,7 +33,6 @@ import qualified Syntax.AST as AST
 
 import Control.Applicative (Applicative(..))
 import Data.Graph (SCC(..))
-import Data.Int (Int32)
 import Data.List (partition,elemIndex)
 import Data.Typeable (Typeable)
 import MonadLib

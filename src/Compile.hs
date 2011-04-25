@@ -13,7 +13,6 @@ import Rename
 import qualified Syntax.AST as AST
 
 import Text.LLVM
-import Text.LLVM.AST (ppModule)
 import MonadLib
 import System.IO (hPrint,hFlush)
 

@@ -7,7 +7,6 @@ import QualName
 import Utils
 
 import Text.LLVM
-import Text.LLVM.AST
 import qualified Data.Map as Map
 
 data CGEnv = CGEnv

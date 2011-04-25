@@ -13,7 +13,6 @@ import qualified Syntax.AST  as AST
 import Control.Monad (foldM)
 import Data.Int (Int64)
 import Text.LLVM
-import Text.LLVM.AST
 
 
 -- Declarations ----------------------------------------------------------------
@@ -69,7 +68,7 @@ cgDecl iface decl = do
     ]
 
   -- generate the function body
-  _ <- define emptyFunAttrs (ptrT heapObjT) sym args $ \ clos -> do
+  _ <- define' emptyFunAttrs (ptrT heapObjT) sym args $ \ clos -> do
     label (Ident "Entry")
     res <- cgTerm (emptyCGEnv iface clos) (LL.declBody decl)
     ret res
@@ -148,8 +147,8 @@ cgBoxInt :: Int64 -> BB (Typed Value)
 cgBoxInt i = do
   obj     <- allocData (ptrT dataT -: Symbol "Int_info")
   payload <- heapObjPayloadPtr obj
-  store i =<< bitcast obj (ptrT (iT 64))
+  store i =<< bitcast payload (ptrT (iT 64))
   return obj
 
 cgPrim :: CGEnv -> String -> Int -> [LL.Term] -> BB (Typed Value)
-cgPrim env n arity args = error "cgPrim"
+cgPrim _env _n _arity _args = error "cgPrim"
