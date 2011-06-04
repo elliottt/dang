@@ -61,7 +61,6 @@ quiet_cmd_cc_o_c = CC      $@
 quiet_cmd_cc_o_bc = CC[BC]  $@
       cmd_cc_o_bc = $(CC) $(CFLAGS) -emit-llvm -o $@ -c $<
 
-.PRECIOUS: %.bc
 %.bc: %.c
 	$(call cmd,cc_o_bc)
 
@@ -72,7 +71,6 @@ ASFLAGS          =
 quiet_cmd_as_o_s = AS      $@
       cmd_as_o_s = $(AS) $(ASFLAGS) -o $@ $<
 
-.PRECIOUS: %.s
 %.o: %.s
 	$(call cmd,as_o_s)
 
