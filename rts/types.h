@@ -16,11 +16,19 @@ typedef unsigned char bool;
 
 %HeapObj = type { %InfoT*, [0 x %Byte] }
 
+// generic info-table
+%InfoT = type { %Nat // type
+              }
+
+// unpacking function that takes a full environment, and applies it to the
+// underlying function
 %Code = type %HeapObj*(%HeapObj*)*
 
-%InfoT = type { %Nat }
-
-%FunT = type { %Nat, %Nat, %Nat, %Code }
+%FunT = type { %Nat  // type
+             , %Nat  // payload size
+             , %Nat  // function arity
+             , %Code // pointer to an unpacking function
+             }
 
 #endif
 

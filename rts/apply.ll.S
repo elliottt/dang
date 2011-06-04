@@ -1,6 +1,8 @@
 
+// vim: filetype=llvm
+
 #include "types.h"
 
-define %HeapObj* @apply(%HeapObj *%env) {
-	ret %HeapObj* %env
+define %HeapObj* @apply(%HeapObj *%fun, %Nat %len, %HeapObj **%env) {
+	unreachable
 }
