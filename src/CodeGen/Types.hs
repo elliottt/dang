@@ -62,9 +62,9 @@ defineTypes  = do
   -- function info-tables have their arity, and a pointer to the function that
   -- will unpack the payload in the heap.
   alias (Ident "FunT") $ infoTable
-    [ natT       -- payload size
-    , natT       -- function arity
-    , ptrT codeT -- code pointer
+    [ natT  -- payload size
+    , natT  -- function arity
+    , codeT -- code pointer
     ]
 
   -- data info tables

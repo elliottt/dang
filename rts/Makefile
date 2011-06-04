@@ -7,11 +7,14 @@ all: librts.a
 include $(TOPDIR)/mk/verbose.mk
 include $(TOPDIR)/mk/build.mk
 include $(TOPDIR)/mk/clean.mk
+include $(TOPDIR)/mk/print.mk
 
 CSOURCES := $(shell find . -name '*.c')
 CHEADERS := $(shell find . -name '*.h')
-SOURCES  := $(CSOURCES) gc-prim.ll
-OBJECTS  := $(patsubst %.ll,%.o,$(patsubst %.c,%.o,$(SOURCES)))
+SOURCES  := $(CSOURCES) gc-prim.ll apply.ll.S
+OBJECTS  := $(patsubst %.ll,%.o, \
+            $(patsubst %.c,%.o, \
+            $(patsubst %.ll.S,%.o,$(SOURCES))))
 CFLAGS += -g
 
 librts.a: $(OBJECTS)

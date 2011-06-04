@@ -12,8 +12,8 @@ import ReadWrite
 import Rename
 import qualified Syntax.AST as AST
 
-import Text.LLVM
 import MonadLib
+import Text.LLVM
 import System.IO (hPrint,hFlush)
 
 compile :: Interface R -> AST.Module -> FilePath -> Dang ()
@@ -52,8 +52,10 @@ codeGen :: QualName -> Interface R -> [Decl] -> Dang Doc
 codeGen qn env ds = do
   logInfo "Generating LLVM assembly"
   writeInterface qn $! iface
-  return (ppModule m)
+  whenDebugOpt dbgDumpLLVM (io (print doc))
+  return doc
   where
+  doc       = ppModule m
   (iface,m) = runLLVM $ do
     defineTypes
     definePrims

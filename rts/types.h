@@ -1,37 +1,27 @@
-#ifndef __RTS_TYPES_H
-#define __RTS_TYPES_H
+#ifndef __TYPES_H
+#define __TYPES_H
 
-#define EXPORT
-#define IMPORT
+#ifndef ASSEMBLY
+#include <stdint.h>
 
-typedef unsigned char bool;
-typedef unsigned long nat;
-typedef long s32;
-typedef long long s64;
+typedef int64_t nat;
 typedef unsigned char byte;
+typedef unsigned char bool;
 
-typedef enum
-  { TYPE_INT        = 0x0
-  , TYPE_CLOSURE    = 0x1
-  } value_t;
+#else
 
-struct value {
-    value_t type;
-    union {
-        s64 ival;
-        struct closure *cval;
-    } v;
-};
+%Nat  = type i64;
+%Byte = type i8;
+%Bool = type i1;
 
-struct closure;
+%HeapObj = type { %InfoT*, [0 x %Byte] }
 
-typedef struct value *(*code_ptr)(struct closure *);
+%Code = type %HeapObj*(%HeapObj*)*
 
-struct closure {
-    code_ptr code;
-    nat arity;
-    struct value **env;
-    nat len;
-};
+%InfoT = type { %Nat }
+
+%FunT = type { %Nat, %Nat, %Nat, %Code }
+
+#endif
 
 #endif

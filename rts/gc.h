@@ -5,8 +5,7 @@
 
 void init_gc();
 
-EXPORT void *allocate(const char *, nat);
-EXPORT void register_gc_root(struct value *);
-EXPORT void perform_gc();
+byte *gc_alloc(nat);
+void gc_perform();
 
 #endif

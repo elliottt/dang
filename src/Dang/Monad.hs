@@ -8,9 +8,11 @@ module Dang.Monad (
   , runDang
 
   , Options(..)
+  , DebugOpts(..)
   , getOptions
   , Verbosity
   , displayHelp
+  , whenDebugOpt
 
   , Action(..)
   , actionSources
@@ -52,7 +54,7 @@ data Options = Options
   , optAction        :: Action
   , optVerbosity     :: Verbosity
   , optCompileOnly   :: Bool
-  , optDumpOpts      :: DumpOpts
+  , optDebugOpts      :: DebugOpts
   } deriving Show
 
 defaultOptions :: Options
@@ -61,7 +63,7 @@ defaultOptions  = Options
   , optAction        = NoAction
   , optVerbosity     = 0
   , optCompileOnly   = False
-  , optDumpOpts      = emptyDumpOpts
+  , optDebugOpts      = emptyDebugOpts
   }
 
 data Action
@@ -115,7 +117,7 @@ options  =
     "Set the logging verbosity"
   , Option "c" [] (NoArg setCompileOnly)
     "Compile only"
-  ] ++ dumpOpts
+  ] ++ debugOpts
 
 handleHelp :: Option
 handleHelp _ = do
@@ -134,28 +136,28 @@ setVerbosity msg opts =
 setCompileOnly :: Option
 setCompileOnly opts = return opts { optCompileOnly = True }
 
-updateDumpOpts :: (DumpOpts -> IO DumpOpts) -> Option
-updateDumpOpts k opts = do
-  d <- k (optDumpOpts opts)
-  return opts { optDumpOpts = d }
+updateDebugOpts :: (DebugOpts -> IO DebugOpts) -> Option
+updateDebugOpts k opts = do
+  d <- k (optDebugOpts opts)
+  return opts { optDebugOpts = d }
 
-data DumpOpts = DumpOpts
-  { dumpLLVM :: Bool
+data DebugOpts = DebugOpts
+  { dbgDumpLLVM :: Bool
   } deriving Show
 
-emptyDumpOpts :: DumpOpts
-emptyDumpOpts  = DumpOpts
-  { dumpLLVM = False
+emptyDebugOpts :: DebugOpts
+emptyDebugOpts  = DebugOpts
+  { dbgDumpLLVM = False
   }
 
-dumpOpts :: [OptDescr Option]
-dumpOpts  =
-  [ Option "" ["dump-llvm"] (NoArg (updateDumpOpts setDumpLLVM))
+debugOpts :: [OptDescr Option]
+debugOpts  =
+  [ Option "" ["dump-llvm"] (NoArg (updateDebugOpts setDumpLLVM))
     "Dump the generated LLVM assembly"
   ]
 
-setDumpLLVM :: DumpOpts -> IO DumpOpts
-setDumpLLVM opts = return opts { dumpLLVM = True }
+setDumpLLVM :: DebugOpts -> IO DebugOpts
+setDumpLLVM opts = return opts { dbgDumpLLVM = True }
 
 
 -- Monad -----------------------------------------------------------------------
@@ -230,3 +232,8 @@ catchJustE p m h = catchE m $ \ e ->
   case p =<< fromException e of
     Just b  -> h b
     Nothing -> raiseE e
+
+whenDebugOpt :: (BaseM m Dang) => (DebugOpts -> Bool) -> m () -> m ()
+whenDebugOpt p m = do
+  opts <- getOptions
+  when (p (optDebugOpts opts)) m
