@@ -12,7 +12,7 @@ data Type
   | TVar Int TParam
   | TGen Int TParam
   | TNat Int64
-    deriving (Eq,Show)
+    deriving (Eq,Show,Ord)
 
 instance Pretty Type where
   pp _ (TCon n)       = text n
@@ -25,7 +25,7 @@ instance Pretty Type where
 data TParam = TParam
   { paramName :: String
   , paramKind :: Kind
-  } deriving (Eq,Show)
+  } deriving (Eq,Show,Ord)
 
 instance Pretty TParam where
   pp _ p = text (paramName p)
@@ -60,7 +60,7 @@ setSort = TCon "Set"
 
 -- | Things with quantified variables.
 data Forall a = Forall [TParam] a
-    deriving (Show)
+    deriving (Show,Eq,Ord)
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = text "forall" <+> ppList 0 ps <> char '.' <+> pp 0 a

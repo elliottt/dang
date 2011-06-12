@@ -35,7 +35,6 @@ instance Serialize QualName where
   put (QualName ps n) = putWord8 0 >> put ps >> put n
   put (PrimName n)    = putWord8 1 >> put n
 
-
 -- | Make a qualified name.
 qualName :: Namespace -> Name -> QualName
 qualName  = QualName

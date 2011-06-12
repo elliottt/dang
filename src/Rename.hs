@@ -130,14 +130,6 @@ renameDecl d = do
       , declBody = b'
       }
 
-freshBinding :: Name -> [String] -> Term -> Decl
-freshBinding n vs body = Decl
-  { declName   = n
-  , declVars   = vs
-  , declBody   = body
-  , declExport = Private
-  }
-
 -- | Rename variable occurrences and bindings in terms.
 renameTerm :: Monad m => Term -> Rename m Term
 renameTerm t =
@@ -154,6 +146,15 @@ renameTerm t =
       b'  <- renameTerm b
       return (Let [freshBinding name vs' b'] (Local name))
 
+-- | Create a fresh declaration for the body of an abstraction.
+freshBinding :: Name -> [String] -> Term -> Decl
+freshBinding n vs body = Decl
+  { declName   = n
+  , declType   = Nothing
+  , declVars   = vs
+  , declBody   = body
+  , declExport = Private
+  }
 
 renameGlobal :: Monad m => QualName -> Rename m Term
 renameGlobal qn

@@ -67,10 +67,8 @@ instance Pretty Open where
     symList = parens (commas (map (pp 0) (openSymbols o)))
 
 
-data Export
-  = Public
-  | Private
-    deriving (Eq,Show)
+data Export = Public | Private
+    deriving (Eq,Show,Ord)
 
 instance Pretty Export where
   pp _ Public  = text "public"
@@ -81,10 +79,11 @@ type Var = String
 
 data Decl = Decl
   { declExport :: Export
+  , declType   :: Maybe (Forall Type)
   , declName   :: Name
   , declVars   :: [Var]
   , declBody   :: Term
-  } deriving (Eq,Show)
+  } deriving (Eq,Show,Ord)
 
 instance FreeVars Decl where
   freeVars d = ignoreVars (declBinds d) (freeVars (declBody d))
@@ -93,9 +92,12 @@ instance Names Decl where
   identifiers d = identifiers (declBody d)
 
 instance Pretty Decl where
-  pp _ d = pp 0 (declExport d)          <+> text (declName d) <+>
-           hsep (map text (declVars d)) <+> char '='          <+>
-           pp 0 (declBody d)
+  pp _ d = semis [ty,body]
+    where
+    prefix = pp 0 (declExport d) <+> text (declName d)
+    body = prefix <+> hsep (map text (declVars d)) <+> char '='
+       <+> pp 0 (declBody d)
+    ty   = maybe empty (\t -> prefix <+> text "::" <+> pp 0 t) (declType d)
   ppList _ ds = semis (map (pp 0) ds)
 
 declNames :: [Decl] -> [Var]
@@ -130,7 +132,7 @@ data Term
   | Global QualName
   | Lit Literal
   | Prim Var
-    deriving (Eq,Show)
+    deriving (Eq,Show,Ord)
 
 instance FreeVars Term where
   freeVars (Abs vs t) = ignoreVars vs (freeVars t)
@@ -195,7 +197,7 @@ apply f xs = App f xs
 
 data Literal
   = LInt Int64
-    deriving (Eq,Show)
+    deriving (Eq,Show,Ord)
 
 instance FreeVars Literal where
   freeVars _ = Set.empty
@@ -209,7 +211,7 @@ instance Pretty Literal where
 data PrimTerm = PrimTerm
   { primTermName :: String
   , primTermType :: Forall Type
-  } deriving (Show)
+  } deriving (Eq,Show,Ord)
 
 instance Pretty PrimTerm where
   pp _ p = text "primitive" <+> text (primTermName p)
@@ -221,7 +223,7 @@ instance Pretty PrimTerm where
 data PrimType = PrimType
   { primTypeName :: String
   , primTypeKind :: Kind
-  } deriving (Show)
+  } deriving (Eq,Show,Ord)
 
 instance Pretty PrimType where
   pp _ p = text "primitive type" <+> text (primTypeName p)

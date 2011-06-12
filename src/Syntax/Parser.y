@@ -13,6 +13,8 @@ import TypeChecker.Types
 
 import MonadLib
 import qualified Codec.Binary.UTF8.Generic as UTF8
+
+import Debug.Trace
 }
 
 %token
@@ -82,43 +84,45 @@ top_module :: { Module }
 
 -- Declarations ----------------------------------------------------------------
 
-top_decls :: { [PTopDecl] }
-  : top_decls ';' top_decl      { $3:$1 }
-  | top_decls ';' public_decls  { $3 ++ $1 }
-  | top_decls ';' private_decls { $3 ++ $1 }
-  | top_decl                    { [$1] }
+top_decls :: { PDecls }
+  : top_decls ';' top_decl      { $1 `combinePDecls` $3 }
+  | top_decls ';' public_decls  { $1 `combinePDecls` $3 }
+  | top_decls ';' private_decls { $1 `combinePDecls` $3 }
+  | top_decl                    { $1 }
+  | public_decls                { $1 }
+  | private_decls               { $1 }
 
-top_decl :: { PTopDecl }
-  : top_fun_bind { PDecl $1 }
-  | open         { POpen $1 }
+top_decl :: { PDecls }
+  : top_fun_bind { mkDecl $1 }
+  | open         { mkOpen $1 }
   | primitive    { $1 }
 
-primitive :: { PTopDecl }
+primitive :: { PDecls }
   : 'primitive' primitive_body { $2 }
 
-primitive_body :: { PTopDecl }
-  : IDENT           '::' qual_type { PPrimTerm (PrimTerm $1 $3) }
-  | 'type' CONIDENT '::' kind      { PPrimType (PrimType $2 $4) }
+primitive_body :: { PDecls }
+  : IDENT           '::' qual_type { mkPrimTerm (PrimTerm $1 $3) }
+  | 'type' CONIDENT '::' kind      { mkPrimType (PrimType $2 $4) }
 
-public_decls :: { [PTopDecl] }
-  : 'public' '{' fun_binds '}' { map (\f -> PDecl (f Public)) $3 }
+public_decls :: { PDecls }
+  : 'public' '{' fun_binds '}' { publicExport (mkDecls $3) }
 
-private_decls :: { [PTopDecl] }
-  : 'private' '{' fun_binds '}' { map (\f -> PDecl (f Private)) $3 }
+private_decls :: { PDecls }
+  : 'private' '{' fun_binds '}' { privateExport (mkDecls $3) }
 
 qual_name_prefix :: { [Name] }
   : qual_name_prefix '.' CONIDENT { $3:$1 }
   | CONIDENT                      { [$1] }
 
 top_fun_bind :: { Decl }
-  : export_type fun_bind { $2 $1 }
+  : export_type fun_bind { $2 { declExport = $1 } }
 
-fun_bind :: { Export -> Decl }
-  : IDENT arg_list '=' exp { \e -> Decl e $1 (reverse $2) $4 }
-
-fun_binds :: { [Export -> Decl] }
+fun_binds :: { [Decl] }
   : fun_binds ';' fun_bind { $3:$1 }
   | fun_bind               { [$1] }
+
+fun_bind :: { Decl }
+  : IDENT arg_list '=' exp { Decl Private Nothing $1 (reverse $2) $4 }
 
 export_type :: { Export }
   : {- empty -} { Public }
@@ -161,8 +165,8 @@ lexp :: { Term }
   | fexp                              { $1 }
 
 let_binds :: { [Decl] }
-  : let_binds ';' fun_bind { $3 Private : $1 }
-  | fun_bind               { [$1 Private] }
+  : let_binds ';' fun_bind { $3:$1 }
+  | fun_bind               { [$1]  }
 
 fexp :: { Term }
   : aexp aexp_list { apply $1 (reverse $2) }
@@ -223,4 +227,6 @@ lexer k = scan >>= k
 
 happyError :: Parser a
 happyError  = raiseP "Parse error"
+
+parseError tokens = raiseP "Parse thinger"
 }
