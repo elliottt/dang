@@ -112,9 +112,12 @@ defineUnpack :: Arity -> Symbol -> LLVM (Typed Value)
 defineUnpack arity sym = do
   u <- define emptyFunAttrs (ptrT heapObjT) (funUnpackSym sym) (ptrT heapObjT)
     $ \ env -> do
-      ptr  <- heapObjPayloadPtr env
-      clos <- bitcast ptr (ptrT heapObjT)
-      ret =<< call (ptrT heapObjT) sym =<< mapM (extractArg clos) [0 .. arity-1]
+      args <- case arity of
+                0 -> return []
+                _ -> do ptr  <- heapObjPayloadPtr env
+                        clos <- bitcast ptr (ptrT heapObjT)
+                        mapM (extractArg clos) [0 .. arity - 1]
+      ret =<< call (ptrT heapObjT) sym args
   return (codeT -: u)
 
 -- | The size of a function payload.
