@@ -95,6 +95,7 @@ top_decls :: { PDecls }
 
 top_decl :: { PDecls }
   : top_fun_bind { mkDecl $1 }
+  | type_bind    { $1 }
   | open         { mkOpen $1 }
   | primitive    { $1 }
 
@@ -106,10 +107,17 @@ primitive_body :: { PDecls }
   | 'type' CONIDENT '::' kind      { mkPrimType (PrimType $2 $4) }
 
 public_decls :: { PDecls }
-  : 'public' '{' fun_binds '}' { publicExport (mkDecls $3) }
+  : 'public' '{' binds '}' { publicExport $3 }
 
 private_decls :: { PDecls }
-  : 'private' '{' fun_binds '}' { privateExport (mkDecls $3) }
+  : 'private' '{' binds '}' { privateExport $3 }
+
+-- XXX there's a shift/reduce conflict here
+binds :: { PDecls }
+  : binds ';' fun_bind  { addDecl $3 $1 }
+  | binds ';' type_bind { combinePDecls $3 $1 }
+  | fun_bind            { mkDecl $1 }
+  | type_bind           { $1 }
 
 qual_name_prefix :: { [Name] }
   : qual_name_prefix '.' CONIDENT { $3:$1 }
@@ -118,9 +126,12 @@ qual_name_prefix :: { [Name] }
 top_fun_bind :: { Decl }
   : export_type fun_bind { $2 { declExport = $1 } }
 
-fun_binds :: { [Decl] }
-  : fun_binds ';' fun_bind { $3:$1 }
-  | fun_bind               { [$1] }
+type_bind :: { PDecls }
+  : IDENT '::' type_bind_body { mkTypeDecl $1 $3 }
+
+type_bind_body :: { Forall Type }
+  : qual_type { $1 }
+  | type      { Forall [] $1 }
 
 fun_bind :: { Decl }
   : IDENT arg_list '=' exp { Decl Private Nothing $1 (reverse $2) $4 }

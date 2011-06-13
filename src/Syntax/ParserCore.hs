@@ -181,6 +181,14 @@ emptyPDecls  = PDecls
 mkDecl :: Decl -> PDecls
 mkDecl d = emptyPDecls { parsedDecls = singleton (declName d) (Right d) }
 
+mkTypeDecl :: Name -> Forall Type -> PDecls
+mkTypeDecl n t = emptyPDecls { parsedDecls = singleton n (Left t) }
+
+addDecl :: Decl -> PDecls -> PDecls
+addDecl d ds = ds
+  { parsedDecls = addNamed resolveTypes (declName d) (Right d) (parsedDecls ds)
+  }
+
 mkDecls :: [Decl] -> PDecls
 mkDecls ds = emptyPDecls { parsedDecls = foldl step Map.empty ds }
   where
