@@ -57,6 +57,7 @@ import Debug.Trace
 
 
 %monad { Parser } { (>>=) } { return }
+%error { parseError }
 %name parseModule top_module
 %name parseForall qual_type
 %tokentype { Lexeme }
@@ -226,7 +227,7 @@ lexer :: (Lexeme -> Parser a) -> Parser a
 lexer k = scan >>= k
 
 happyError :: Parser a
-happyError  = raiseP "Parse error"
+happyError  = raiseP "Happy error"
 
-parseError tokens = raiseP "Parse thinger"
+parseError tokens = raiseP "Parse error"
 }
