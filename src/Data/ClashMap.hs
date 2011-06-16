@@ -16,10 +16,19 @@ module Data.ClashMap (
   , empty
   , singleton
   , insert, insertWith
+
+    -- * Update/Delete
+  , delete
+
+    -- * Combine
   , union, unionWith
+  , intersection, intersectionWith
 
     -- * Query
   , lookup
+
+    -- * Traversal
+  , mapKeys
 
     -- * Reduction
   , foldClashMap
@@ -174,6 +183,15 @@ insertWith :: Ord k => Strategy a -> k -> a -> ClashMap k a -> ClashMap k a
 insertWith strat k a (ClashMap m) =
   ClashMap (Map.insertWith (mergeWithStrategy strat) k (Ok a) m)
 
+
+-- Delete/Update ---------------------------------------------------------------
+
+delete :: Ord k => k -> ClashMap k a -> ClashMap k a
+delete k (ClashMap m) = ClashMap (Map.delete k m)
+
+
+-- Combine ---------------------------------------------------------------------
+
 -- | Union, using the clash @Strategy@.
 union :: Ord k => ClashMap k a -> ClashMap k a -> ClashMap k a
 union  = unionWith clash
@@ -184,6 +202,16 @@ unionWith :: Ord k
 unionWith strat (ClashMap a) (ClashMap b) =
   ClashMap (Map.unionWith (mergeWithStrategy strat) a b)
 
+-- | Intersect, using the clash @Strategy@.
+intersection :: Ord k => ClashMap k a -> ClashMap k a -> ClashMap k a
+intersection  = intersectionWith clash
+
+-- | Intersect, using a resolution @Strategy@.
+intersectionWith :: Ord k
+                 => Strategy a -> ClashMap k a -> ClashMap k a -> ClashMap k a
+intersectionWith strat (ClashMap a) (ClashMap b) =
+  ClashMap (Map.intersectionWith (mergeWithStrategy strat) a b)
+
 
 -- Query -----------------------------------------------------------------------
 
@@ -191,6 +219,11 @@ unionWith strat (ClashMap a) (ClashMap b) =
 lookup :: Ord k => k -> ClashMap k a -> Maybe (Clash a)
 lookup k (ClashMap m) = Map.lookup k m
 
+
+-- Traversal -------------------------------------------------------------------
+
+mapKeys :: (Ord k, Ord k') => (k -> k') -> ClashMap k a -> ClashMap k' a
+mapKeys f (ClashMap m) = ClashMap (Map.mapKeys f m)
 
 -- Reduction -------------------------------------------------------------------
 

@@ -16,11 +16,11 @@ import Pretty
 import QualName
 import ReadWrite
 import Syntax.AST
+import qualified Data.ClashMap as CM
 
 import Data.Maybe (mapMaybe)
 import MonadLib
 import qualified Data.Set as Set
-import qualified Data.Map as Map
 
 
 -- Scope Checking Monad --------------------------------------------------------
@@ -31,7 +31,7 @@ data RO = RO
 
 emptyRO :: RO
 emptyRO  = RO
-  { roNames = Map.empty
+  { roNames = CM.empty
   }
 
 newtype Scope a = Scope
@@ -62,40 +62,25 @@ runScope  = runReaderT emptyRO . getScope
 data Resolved
   = Resolved QualName
   | Bound Name
-  | Clash Name [QualName]
     deriving (Eq,Show)
 
-type ResolvedNames = Map.Map QualName Resolved
+type ResolvedNames = CM.ClashMap QualName Resolved
 
 -- | True when the Resolved name is a bound variable.
 isBound :: Resolved -> Bool
 isBound Bound{} = True
 isBound _       = False
 
--- | The set of names that are resolved by a single qualified name.
-resolvedNames :: Resolved -> [QualName]
-resolvedNames (Resolved qn) = [qn]
-resolvedNames (Bound n)     = [simpleName n]
-resolvedNames (Clash _ ns)  = ns
-
--- | Merge resolved names, favoring new bound variables for shadowing.  If the
--- boolean parameter is True, the second resolved name is assumed to be weak,
--- and the first resolved name will be preferred.
-mergeResolved :: Resolved -> Resolved -> Resolved
+-- | Merge resolved names, favoring new bound variables for shadowing.
+mergeResolved :: CM.Strategy Resolved
 mergeResolved a b
-  | isBound a = a
-  | a == b    = a
-  | otherwise = clash a b
-
--- | Merge two resolved names into a name clash.
-clash :: Resolved -> Resolved -> Resolved
-clash a@(Clash n _)   b = Clash n (resolvedNames a ++ resolvedNames b)
-clash   (Bound n)     b = Clash n (simpleName n : resolvedNames b)
-clash   (Resolved qn) b = Clash (qualSymbol qn) (qn : resolvedNames b)
+  | isBound a = CM.ok a
+  | a == b    = CM.ok a
+  | otherwise = CM.clash a b
 
 -- | Merge two resolved name substitutions.
 mergeResolvedNames :: ResolvedNames -> ResolvedNames -> ResolvedNames
-mergeResolvedNames  = Map.unionWith mergeResolved
+mergeResolvedNames  = CM.unionWith mergeResolved
 
 
 -- Scope Checking --------------------------------------------------------------
@@ -104,16 +89,15 @@ mergeResolvedNames  = Map.unionWith mergeResolved
 resolve :: QualName -> Scope Term
 resolve qn = do
   ro <- ask
-  case Map.lookup qn (roNames ro) of
-    Nothing -> fail ("Symbol `" ++ pretty qn ++ "' not defined")
-    Just r  -> resolvedTerm r
+  case CM.clashElems `fmap` CM.lookup qn (roNames ro) of
+    Just [r] -> return (resolvedTerm r)
+    Just _rs -> fail ("Symbol `" ++ pretty qn ++ "' is defined multiple times")
+    Nothing  -> fail ("Symbol `" ++ pretty qn ++ "' not defined")
 
 -- | The term that this entry represents (global/local).
-resolvedTerm :: Resolved -> Scope Term
-resolvedTerm (Resolved qn) = return (Global qn)
-resolvedTerm (Bound n)     = return (Local n)
-resolvedTerm (Clash n ns)  =
-  fail (n ++ " defined in multiple places:" ++ unlines (map pretty ns))
+resolvedTerm :: Resolved -> Term
+resolvedTerm (Resolved qn) = Global qn
+resolvedTerm (Bound n)     = Local n
 
 -- | The use of a module, via an open declaration, or qualified use.  When the
 -- use is from a qualified name only, the boolean value is True, and the module
@@ -161,7 +145,7 @@ usedModules m =
 -- | Register all of the names defined in a module as both their local and fully
 -- qualified versions.
 definedNames :: Module -> ResolvedNames
-definedNames m = Map.fromList (concatMap step (modDecls m))
+definedNames m = CM.fromList (concatMap step (modDecls m))
   where
   ns     = modNamespace m
   step d = [ (qn, Resolved qn), (simpleName n, Resolved qn) ]
@@ -231,7 +215,7 @@ loadInterfaces  = foldM step (freezeInterface emptyInterface)
 -- | Given an aggregate interface, and a set of module uses, generate the final
 -- mapping from used names to resolved names.
 buildEnv :: Interface R -> [Use] -> ResolvedNames
-buildEnv iface = foldr step Map.empty
+buildEnv iface = foldr step CM.empty
   where
   step (Use o _) = mergeResolvedNames (resolveOpen iface o)
 
@@ -242,16 +226,15 @@ resolveOpen iface o = rename resolved
   syms                    = resolveModule iface (openMod o)
   resolved | openHiding o = resolveHiding (openSymbols o) syms
            | otherwise    = resolveOnly   (openSymbols o) syms
-  rename =
-    case openAs o of
-      Nothing -> id
-      Just m' -> Map.mapKeys (changeNamespace (qualNamespace m'))
+  rename = case openAs o of
+    Nothing -> id
+    Just m' -> CM.mapKeys (changeNamespace (qualNamespace m'))
 
 -- | Resolve all symbols from a module as though they were opened with no
 -- qualifications.
 resolveModule :: Interface R -> QualName -> ResolvedNames
 resolveModule iface m =
-  Map.fromListWith mergeResolved (map step (modContents m iface))
+  CM.fromListWith mergeResolved (map step (modContents m iface))
   where
   step (qn,_) = (simpleName (qualSymbol qn), Resolved qn)
 
@@ -260,12 +243,12 @@ resolveModule iface m =
 resolveHiding :: [Name] -> ResolvedNames -> ResolvedNames
 resolveHiding ns syms = foldl step syms ns
   where
-  step m n = Map.delete (simpleName n) m
+  step m n = CM.delete (simpleName n) m
 
 -- | Resolve an open declaration that selects some names, and optionally renames
 -- the module.
 resolveOnly :: [Name] -> ResolvedNames -> ResolvedNames
-resolveOnly ns syms = Map.intersection syms (Map.fromList (map step ns))
+resolveOnly ns syms = CM.intersection syms (CM.fromList (map step ns))
   where
   step n = (simpleName n,error "ModuleSystem.resolveOnly")
 
@@ -289,7 +272,7 @@ scopeCheckModule m = do
 bindVars :: [Var] -> Scope a -> Scope a
 bindVars vs m = do
   ro <- ask
-  let locals = Map.fromList [ (simpleName v, Bound v) | v <- vs ]
+  let locals = CM.fromList [ (simpleName v, Bound v) | v <- vs ]
   local (ro { roNames = mergeResolvedNames locals (roNames ro) }) m
 
 -- | Check all identifiers used in a declaration.
