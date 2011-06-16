@@ -11,7 +11,8 @@ module Data.ClashMap (
   , ok
   , clash
 
-    -- * Creation
+    -- * Construction
+  , fromList, fromListWith
   , empty
   , singleton
   , insert, insertWith
@@ -27,6 +28,7 @@ module Data.ClashMap (
 
 import Prelude hiding (lookup)
 
+import Control.Arrow (second)
 import Control.Monad (liftM)
 import qualified Data.Monoid as M
 import qualified Data.Foldable as F
@@ -144,6 +146,18 @@ mergeWithStrategy strat = merge
 
 -- Construction ----------------------------------------------------------------
 
+-- | Construct a @ClashMap@ from a list of key-value pairs, using the @clash@
+-- @Strategy@.
+fromList :: Ord k => [(k,a)] -> ClashMap k a
+fromList  = fromListWith clash
+
+-- | Construct a @ClashMap@ from a list of key-value pairs, using the provided
+-- clash @Strategy@.
+fromListWith :: Ord k => Strategy a -> [(k,a)] -> ClashMap k a
+fromListWith strat =
+  ClashMap . Map.fromListWith (mergeWithStrategy strat) . map (second ok)
+
+-- | The empty @ClashMap@.
 empty :: Ord k => ClashMap k a
 empty  = ClashMap Map.empty
 
@@ -160,7 +174,7 @@ insertWith :: Ord k => Strategy a -> k -> a -> ClashMap k a -> ClashMap k a
 insertWith strat k a (ClashMap m) =
   ClashMap (Map.insertWith (mergeWithStrategy strat) k (Ok a) m)
 
--- | Union, using the clash strategy.
+-- | Union, using the clash @Strategy@.
 union :: Ord k => ClashMap k a -> ClashMap k a -> ClashMap k a
 union  = unionWith clash
 
@@ -184,7 +198,7 @@ lookup k (ClashMap m) = Map.lookup k m
 foldClashMap :: (k -> Clash a -> b -> b) -> b -> ClashMap k a -> b
 foldClashMap f z (ClashMap m) = Map.foldrWithKey f z m
 
--- | Partitioon the clashing and ok values out into key-value lists.
+-- | Partition the clashing and ok values out into key-value lists.
 partitionClashes :: ClashMap k a -> ([(k,a)], [(k,[a])])
 partitionClashes = foldClashMap step ([],[])
   where

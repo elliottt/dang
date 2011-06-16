@@ -107,10 +107,10 @@ primitive_body :: { PDecls }
   | 'type' CONIDENT '::' kind      { mkPrimType (PrimType $2 $4) }
 
 public_decls :: { PDecls }
-  : 'public' '{' binds '}' { publicExport $3 }
+  : 'public' '{' binds '}' { exportBlock Public $3 }
 
 private_decls :: { PDecls }
-  : 'private' '{' binds '}' { privateExport $3 }
+  : 'private' '{' binds '}' { exportBlock Private $3 }
 
 binds :: { PDecls }
   : binds ';' fun_bind  { addDecl $3 $1 }
@@ -122,10 +122,11 @@ qual_name_prefix :: { [Name] }
   : qual_name_prefix '.' CONIDENT { $3:$1 }
   | CONIDENT                      { [$1] }
 
+-- By default, everything is set to be exported as public.
 top_fun_bind :: { Decl }
   : 'public'  fun_bind { $2 { declExport = Public } }
   | 'private' fun_bind { $2 { declExport = Private } }
-  |           fun_bind { $1 }
+  |           fun_bind { $1 { declExport = Public } }
 
 type_bind :: { PDecls }
   : IDENT '::' qual_type { mkTypeDecl $1 $3 }

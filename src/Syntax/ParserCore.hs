@@ -4,10 +4,10 @@
 
 module Syntax.ParserCore where
 
+import Data.ClashMap as CM
 import QualName
 import Syntax.AST
 import TypeChecker.Types
-import Data.ClashMap as CM
 
 import Control.Applicative (Applicative)
 import Data.Int (Int64)
@@ -15,7 +15,6 @@ import Data.Maybe (isNothing)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
-import qualified Data.Map as Map
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
@@ -139,18 +138,6 @@ testParser p str = runParser "<interactive>" (UTF8.fromString str) p
 
 type NameMap = CM.ClashMap Name
 
--- | Attempt to resolve clashes with a merge operation.
-mergeNamedBy :: Strategy a -> NameMap a -> NameMap a -> NameMap a
-mergeNamedBy  = CM.unionWith
-
--- | Add an element to a name map.
-addNamed :: Strategy a -> Name -> a -> NameMap a -> NameMap a
-addNamed  = CM.insertWith
-
--- | Map over the elements of a name map.
-mapNamed :: (a -> b) -> NameMap a -> NameMap b
-mapNamed  = fmap
-
 -- | Merge type and term declarations, when appropriate.
 resolveTypes :: Strategy (Either (Forall Type) Decl)
 resolveTypes a b = case (a,b) of
@@ -185,27 +172,20 @@ mkTypeDecl n t = emptyPDecls { parsedDecls = singleton n (Left t) }
 
 addDecl :: Decl -> PDecls -> PDecls
 addDecl d ds = ds
-  { parsedDecls = addNamed resolveTypes (declName d) (Right d) (parsedDecls ds)
+  { parsedDecls = CM.insertWith resolveTypes (declName d) (Right d)
+      (parsedDecls ds)
   }
 
 mkDecls :: [Decl] -> PDecls
 mkDecls ds = emptyPDecls { parsedDecls = foldl step CM.empty ds }
   where
-  step m d = addNamed resolveTypes (declName d) (Right d) m
+  step m d = CM.insertWith resolveTypes (declName d) (Right d) m
 
--- | Turn a block of declarations into a block of public declarations.
-publicExport :: PDecls -> PDecls
-publicExport pds = pds { parsedDecls = mapNamed step (parsedDecls pds) }
+exportBlock :: Export -> PDecls -> PDecls
+exportBlock ex pds = pds { parsedDecls = f `fmap` parsedDecls pds }
   where
-  step (Right d) = Right d { declExport = Public }
-  step e         = e
-
--- | Turn a block of declarations into a block of private declarations.
-privateExport :: PDecls -> PDecls
-privateExport pds = pds { parsedDecls = mapNamed step (parsedDecls pds) }
-  where
-  step (Right d) = Right d { declExport = Private }
-  step e         = e
+  f (Right d) = Right d { declExport = ex }
+  f e         = e
 
 mkOpen :: Open -> PDecls
 mkOpen o = emptyPDecls { parsedOpens = [o] }
@@ -225,7 +205,7 @@ combinePDecls ds1 ds2 = PDecls
   , parsedPrimTypes = merge clash parsedPrimTypes
   }
   where
-  merge strat prj = mergeNamedBy strat (prj ds1) (prj ds2)
+  merge strat prj = CM.unionWith strat (prj ds1) (prj ds2)
 
 resolveNamed :: NameMap a -> Parser [a]
 resolveNamed nm = do
