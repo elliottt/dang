@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Syntax.ParserCore where
@@ -6,10 +7,11 @@ module Syntax.ParserCore where
 import QualName
 import Syntax.AST
 import TypeChecker.Types
+import Data.ClashMap as CM
 
 import Control.Applicative (Applicative)
-import Data.Either (partitionEithers)
 import Data.Int (Int64)
+import Data.Maybe (isNothing)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
@@ -79,8 +81,14 @@ initParserState path bs = ParserState
   }
 
 newtype Parser a = Parser
-  { unParser :: StateT ParserState (ExceptionT Error Id) a
+  { unParser :: WriterT [ParserError]
+              (StateT ParserState (ExceptionT Error Id)) a
   } deriving (Functor,Applicative,Monad)
+
+data ParserError
+  = MultipleDefs Name
+  | NoBinding Name
+    deriving (Show)
 
 instance StateM Parser ParserState where
   get = Parser   get
@@ -91,6 +99,12 @@ instance ExceptionM Parser Error where
 
 instance RunExceptionM Parser Error where
   try m = Parser (try (unParser m))
+
+instance WriterM Parser [ParserError] where
+  put = Parser . put
+
+instance RunWriterM Parser [ParserError] where
+  collect = Parser . collect . unParser
 
 -- | Raise an exception from the lexer.
 raiseL :: String -> Parser a
@@ -106,10 +120,15 @@ raiseP msg = do
 
 -- | Run the parser over the file given.
 runParser :: FilePath -> S.ByteString -> Parser a -> Either Error a
-runParser path bs (Parser m) =
-  case runM m (initParserState path bs) of
-    Right (a,_) -> Right a
-    Left err    -> Left err
+runParser path bs m =
+  case runM (unParser body) (initParserState path bs) of
+    Right ((a,_),_) -> Right a
+    Left err        -> Left err
+  where
+  body = do
+    (res,errs) <- collect m
+    unless (null errs) (raiseP ("definition errors: " ++ show errs))
+    return res
 
 -- | For testing parsers within ghci.
 testParser :: Parser a -> String -> Either Error a
@@ -118,49 +137,29 @@ testParser p str = runParser "<interactive>" (UTF8.fromString str) p
 
 -- Parsed Syntax ---------------------------------------------------------------
 
-type NameMap a = Map.Map Name (Clash a)
-
-singleton :: Name -> a -> NameMap a
-singleton n a = Map.singleton n (Ok a)
-
-data Clash a = Ok a | Clash [a]
-    deriving (Eq,Show,Ord)
-
--- | The elements of a clash.
-clashElems :: Clash a -> [a]
-clashElems (Ok a)     = [a]
-clashElems (Clash as) = as
-
-type Strategy a = a -> a -> Clash a
-
--- | Merge clashing values with a strategy for the initial clash.
-mergeWithStrategy :: Strategy a -> Clash a -> Clash a -> Clash a
-mergeWithStrategy strat (Ok a) (Ok b) = strat a b
-mergeWithStrategy _     a      b      = Clash (clashElems a ++ clashElems b)
+type NameMap = CM.ClashMap Name
 
 -- | Attempt to resolve clashes with a merge operation.
 mergeNamedBy :: Strategy a -> NameMap a -> NameMap a -> NameMap a
-mergeNamedBy strat = Map.unionWith (mergeWithStrategy strat)
+mergeNamedBy  = CM.unionWith
 
 -- | Add an element to a name map.
 addNamed :: Strategy a -> Name -> a -> NameMap a -> NameMap a
-addNamed strat n a = Map.insertWith (mergeWithStrategy strat) n (Ok a)
+addNamed  = CM.insertWith
 
 -- | Map over the elements of a name map.
 mapNamed :: (a -> b) -> NameMap a -> NameMap b
-mapNamed f = Map.map $ \ c -> case c of
-  Ok a     -> Ok (f a)
-  Clash as -> Clash (map f as)
-
--- | Always produce a clash when merging.
-clash :: Strategy a
-clash a b = Clash [a,b]
+mapNamed  = fmap
 
 -- | Merge type and term declarations, when appropriate.
 resolveTypes :: Strategy (Either (Forall Type) Decl)
-resolveTypes (Right d) (Left t)  = Ok (Right (d { declType = Just t }))
-resolveTypes (Left t)  (Right d) = Ok (Right (d { declType = Just t }))
-resolveTypes a         b         = clash a b
+resolveTypes a b = case (a,b) of
+  (Right d, Left t) -> d `tryType` t
+  (Left t, Right d) -> d `tryType` t
+  _                 -> clash a b
+  where
+  tryType d t | isNothing (declType d) = ok (Right (d { declType = Just t }))
+              | otherwise              = clash a b
 
 -- | A collection of parsed declarations.  Loosely, this is a module.
 data PDecls = PDecls
@@ -172,10 +171,10 @@ data PDecls = PDecls
 
 emptyPDecls :: PDecls
 emptyPDecls  = PDecls
-  { parsedDecls     = Map.empty
+  { parsedDecls     = CM.empty
   , parsedOpens     = []
-  , parsedPrimTerms = Map.empty
-  , parsedPrimTypes = Map.empty
+  , parsedPrimTerms = CM.empty
+  , parsedPrimTypes = CM.empty
   }
 
 mkDecl :: Decl -> PDecls
@@ -190,7 +189,7 @@ addDecl d ds = ds
   }
 
 mkDecls :: [Decl] -> PDecls
-mkDecls ds = emptyPDecls { parsedDecls = foldl step Map.empty ds }
+mkDecls ds = emptyPDecls { parsedDecls = foldl step CM.empty ds }
   where
   step m d = addNamed resolveTypes (declName d) (Right d) m
 
@@ -228,20 +227,31 @@ combinePDecls ds1 ds2 = PDecls
   where
   merge strat prj = mergeNamedBy strat (prj ds1) (prj ds2)
 
-resolveNamed :: NameMap a -> ([a],[(Name,[a])])
-resolveNamed  = Map.foldrWithKey step ([],[])
-  where
-  step _ (Ok a)     (as,bs) = (a:as,bs)
-  step n (Clash es) (as,bs) = (as,(n,es):bs)
+resolveNamed :: NameMap a -> Parser [a]
+resolveNamed nm = do
+  let (oks,clashes) = CM.foldClashMap step ([],[]) nm
+      step n c (as,bs) = case clashElems c of
+        [a] -> (a:as,bs)
+        _es -> (as,MultipleDefs n:bs)
+  put clashes
+  return oks
+
+processBindings :: NameMap (Either (Forall Type) Decl) -> Parser [Decl]
+processBindings ds = do
+  let (oks,clashes) = CM.foldClashMap step ([],[]) ds
+      step n c (as,bs) = case clashElems c of
+        [Right a] -> (a:as,bs)
+        [Left _t] -> (as,NoBinding n:bs)
+        _es       -> (as,MultipleDefs n:bs)
+  put clashes
+  return oks
 
 -- | Make a module from a set of parsed declarations, and a name.
 mkModule :: QualName -> PDecls -> Parser Module
 mkModule qn pds = do
-  let (tds,derrs) = resolveNamed (parsedDecls pds)
-      (tms,merrs) = resolveNamed (parsedPrimTerms pds)
-      (tys,yerrs) = resolveNamed (parsedPrimTypes pds)
-      (ts,ds)     = partitionEithers tds
-  -- raise errors about derrs, merrs, yerrs and ts
+  ds  <- processBindings (parsedDecls pds)
+  tms <- resolveNamed (parsedPrimTerms pds)
+  tys <- resolveNamed (parsedPrimTypes pds)
   return Module
     { modName      = qn
     , modOpens     = parsedOpens pds

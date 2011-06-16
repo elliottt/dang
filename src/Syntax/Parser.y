@@ -112,7 +112,6 @@ public_decls :: { PDecls }
 private_decls :: { PDecls }
   : 'private' '{' binds '}' { privateExport $3 }
 
--- XXX there's a shift/reduce conflict here
 binds :: { PDecls }
   : binds ';' fun_bind  { addDecl $3 $1 }
   | binds ';' type_bind { combinePDecls $3 $1 }
@@ -124,22 +123,15 @@ qual_name_prefix :: { [Name] }
   | CONIDENT                      { [$1] }
 
 top_fun_bind :: { Decl }
-  : export_type fun_bind { $2 { declExport = $1 } }
+  : 'public'  fun_bind { $2 { declExport = Public } }
+  | 'private' fun_bind { $2 { declExport = Private } }
+  |           fun_bind { $1 }
 
 type_bind :: { PDecls }
-  : IDENT '::' type_bind_body { mkTypeDecl $1 $3 }
-
-type_bind_body :: { Forall Type }
-  : qual_type { $1 }
-  | type      { Forall [] $1 }
+  : IDENT '::' qual_type { mkTypeDecl $1 $3 }
 
 fun_bind :: { Decl }
   : IDENT arg_list '=' exp { Decl Private Nothing $1 (reverse $2) $4 }
-
-export_type :: { Export }
-  : {- empty -} { Public }
-  | 'public'    { Public }
-  | 'private'   { Private }
 
 open :: { Open }
   : 'open' mod_name open_body { $3 $2 }
@@ -209,8 +201,9 @@ atype :: { Type }
   | INT          { TNat $1 }
   | '(' type ')' { $2 }
 
+-- XXX fix the type parameters
 qual_type :: { Forall Type }
-  : 'forall' tparams '.' type { Forall (reverse $2) $4 }
+  : type { Forall [] $1 }
 
 tparams :: { [TParam] }
   : tparams tparam { $2 : $1 }
