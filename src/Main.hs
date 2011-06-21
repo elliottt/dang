@@ -25,6 +25,7 @@ main  = runDang $ do
   logInfo "Parsed module"
   logDebug (show m)
   logInfo (pretty m)
+  logDebug (show (moduleImports m))
   (iface,m') <- scopeCheck m
   logDebug "Module system output"
   logDebug (show m')

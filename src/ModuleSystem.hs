@@ -6,7 +6,7 @@ module ModuleSystem (
     Scope()
   , runScope
   , scopeCheck
-  , usedModules
+  , moduleImports
   ) where
 
 import Dang.IO
@@ -18,7 +18,7 @@ import ReadWrite
 import Syntax.AST
 import qualified Data.ClashMap as CM
 
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe,catMaybes)
 import MonadLib
 import qualified Data.Set as Set
 
@@ -99,6 +99,65 @@ resolvedTerm :: Resolved -> Term
 resolvedTerm (Resolved qn) = Global qn
 resolvedTerm (Bound n)     = Local n
 
+
+
+
+type ImportSet = Set.Set QualName
+
+-- | Generate the set of module names that are affected by open declarations.
+importSet :: [Open] -> ImportSet
+importSet opens
+  = Set.fromList
+  $ catMaybes $ concat [ [Just (openMod m), openAs m] | m <- opens ]
+
+-- | Given a @ImportSet@ and a set of implicit imports via qualified names,
+-- produce a set of module names to be imported.
+pruneImplicit :: ImportSet -> Set.Set QualName -> Set.Set QualName
+pruneImplicit renames = (Set.\\ renames)
+
+-- | Generate the set of module interfaces that require loading, from a
+-- @Module@.
+moduleImports :: Module -> Set.Set Use'
+moduleImports m =
+  Set.fromList (map Explicit (modOpens m)) `Set.union` Set.map Implicit implicit
+  where
+  env      = importSet (modOpens m)
+  implicit = pruneImplicit env (imports m)
+
+data Use' = Explicit Open | Implicit QualName
+    deriving (Eq,Show,Ord)
+
+-- | Collect all the implicit module imports.
+class Imports a where
+  imports :: a -> Set.Set QualName
+
+instance Imports a => Imports (Maybe a) where
+  imports = maybe Set.empty imports
+
+instance Imports a => Imports [a] where
+  imports = Set.unions . map imports
+
+instance Imports Module where
+  imports m = imports (modDecls m)
+
+instance Imports Decl where
+  imports d = imports (declBody d)
+
+instance Imports Term where
+  imports (Abs _ b)   = imports b
+  imports (Let ds b)  = imports ds `Set.union` imports b
+  imports (App f xs)  = imports f `Set.union` imports xs
+  imports (Local _)   = Set.empty
+  imports (Global qn) = maybe Set.empty Set.singleton (qualModule qn)
+  imports (Prim _)    = Set.empty
+  imports (Lit l)     = imports l
+
+instance Imports Literal where
+  imports (LInt _) = Set.empty
+
+
+
+
 -- | The use of a module, via an open declaration, or qualified use.  When the
 -- use is from a qualified name only, the boolean value is True, and the module
 -- usage is thought of as weak.  The usage is weak in the sense that the
@@ -111,9 +170,6 @@ data Use = Use
   { useOpen :: Open
   , _useWeak :: Bool
   } deriving (Show,Eq,Ord)
-
-useModule :: Use -> QualName
-useModule  = openMod . useOpen
 
 -- | Given a module, return the modules that are opened by it.
 openedModules :: Module -> Set.Set Use
@@ -136,11 +192,6 @@ implicitlyOpenedModules m =
       (ns,[n]) = splitAt (len - 1) ps
   toUse _  = Nothing
   thisModule  = modNamespace m
-
--- | All the modules used by a module.
-usedModules :: Module -> Set.Set QualName
-usedModules m =
-  Set.map useModule (openedModules m `Set.union` implicitlyOpenedModules m)
 
 -- | Register all of the names defined in a module as both their local and fully
 -- qualified versions.

@@ -3,8 +3,9 @@
 module QualName where
 
 import Pretty
+import Utils (splitLast)
 
-import Control.Monad (ap)
+import Control.Monad (ap,guard)
 import Data.Char (isSpace)
 import Data.Serialize (Serialize(get,put),getWord8,putWord8)
 import Data.Typeable (Typeable)
@@ -60,6 +61,14 @@ qualPrefix (PrimName _)    = []
 qualSymbol :: QualName -> Name
 qualSymbol (QualName _ n) = n
 qualSymbol (PrimName n)   = n
+
+-- | Get the module name associated with a qualified name.
+qualModule :: QualName -> Maybe QualName
+qualModule qn = do
+  let pfx = qualPrefix qn
+  guard (not (null pfx))
+  (ns,n) <- splitLast pfx
+  return (QualName ns n)
 
 -- | Mangle a qualified name into one that is suitable for code generation.
 mangle :: QualName -> String
