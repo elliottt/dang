@@ -23,8 +23,22 @@ cgDecls :: Interface R -> [LL.Decl] -> LLVM (Interface RW)
 cgDecls iface ds = do
   let this = declsInterface ds
       env  = iface `mergeInterfaces` this
+  cgImports iface
   mapM_ (cgDecl env) ds
   return this
+
+-- | Declare all external imports.
+cgImports :: Interface R -> LLVM ()
+cgImports  = mapM_ (uncurry declareExtern) . ifaceContents
+
+-- | Produce an import declaration for an imported symbol.
+declareExtern :: QualName -> FunDecl -> LLVM ()
+declareExtern qn fd = do
+  let sym = Symbol (funSymbol fd)
+      obj = ptrT heapObjT
+  _ <- declare obj sym (replicate (funArity fd) obj)
+  _ <- declare obj (funUnpackSym sym) [obj]
+  return ()
 
 -- | Generate the interface that represents a group of declarations.
 declsInterface :: [LL.Decl] -> Interface RW

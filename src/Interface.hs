@@ -60,6 +60,9 @@ findUnqualFunDecl n = QM.findUnqual n . intFunDecls
 modContents :: QualName -> Interface i -> [(QualName,FunDecl)]
 modContents qn = QM.findPrefix (qualPrefix qn ++ [qualSymbol qn]) . intFunDecls
 
+ifaceContents :: Interface i -> [(QualName,FunDecl)]
+ifaceContents  = QM.toList . intFunDecls
+
 ifaceFile :: QualName -> FilePath
 ifaceFile qn = joinPath (qualPrefix qn) </> qualSymbol qn <.> "di"
 
