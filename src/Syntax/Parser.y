@@ -25,7 +25,6 @@ import Debug.Trace
 
 -- symbols
   '\\' { Lexeme $$ (TReserved "\\") }
-  '->' { Lexeme $$ (TReserved "->") }
   '='  { Lexeme $$ (TReserved "=")  }
   '('  { Lexeme $$ (TReserved "(")  }
   ')'  { Lexeme $$ (TReserved ")")  }
@@ -34,9 +33,12 @@ import Debug.Trace
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
-  '::' { Lexeme $$ (TReserved "::") }
   '=>' { Lexeme $$ (TReserved "=>") }
-  '*'  { Lexeme $$ (TReserved "*")  }
+
+-- special operators
+  '->' { Lexeme $$ (TOperIdent "->") }
+  '*'  { Lexeme $$ (TOperIdent "*")  }
+  '::' { Lexeme $$ (TOperIdent "::") }
 
 -- reserved names
   'module'    { Lexeme $$ (TReserved "module")    }
@@ -51,9 +53,10 @@ import Debug.Trace
   'type'      { Lexeme $$ (TReserved "type")      }
 
 -- identifiers
-  CONIDENT { Lexeme _ (TConIdent $$) }
-  IDENT    { Lexeme _ (TSymIdent $$) }
-  INT      { Lexeme _ (TInt $$)      }
+  CONIDENT { Lexeme _ (TConIdent $$)  }
+  IDENT    { Lexeme _ (TSymIdent $$)  }
+  OPER     { Lexeme _ (TOperIdent $$) }
+  INT      { Lexeme _ (TInt $$)       }
 
 
 %monad { Parser } { (>>=) } { return }
@@ -103,8 +106,8 @@ primitive :: { PDecls }
   : 'primitive' primitive_body { $2 }
 
 primitive_body :: { PDecls }
-  : IDENT           '::' qual_type { mkPrimTerm (PrimTerm $1 $3) }
-  | 'type' CONIDENT '::' kind      { mkPrimType (PrimType $2 $4) }
+  : 'type' tycon '::' kind      { mkPrimType (PrimType $2 $4) }
+  | IDENT        '::' qual_type { mkPrimTerm (PrimTerm $1 $3) }
 
 public_decls :: { PDecls }
   : 'public' '{' binds '}' { exportBlock Public $3 }
@@ -213,6 +216,12 @@ tparams :: { [TParam] }
 tparam :: { TParam }
   : IDENT { TParam $1 setSort }
 
+tycon :: { String }
+  : CONIDENT     { $1 }
+  | '(' OPER ')' { $2 }
+  -- XXX does reserved syntax really need to be repeated here?
+  | '(' '->' ')' { "->" }
+
 
 -- Kinds -----------------------------------------------------------------------
 
@@ -229,10 +238,10 @@ akind :: { Kind }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
-lexer k = scan >>= k
+lexer k = k =<< scan
 
 happyError :: Parser a
-happyError  = raiseP "Happy error"
+happyError  = raiseP "Happy error" nullPosition
 
-parseError tokens = raiseP "Parse error"
+parseError l = raiseP ("Parse error near: " ++ show (lexToken l)) (lexPos l)
 }

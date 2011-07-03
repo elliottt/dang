@@ -36,6 +36,14 @@ initPosition path = Position
   , posFile = path
   }
 
+nullPosition :: Position
+nullPosition  = Position
+  { posOff  = 0
+  , posLine = 1
+  , posCol  = 1
+  , posFile = "<unknown>"
+  }
+
 movePos :: Position -> Char -> Position
 movePos (Position a line col path) c =
   case c of
@@ -47,6 +55,7 @@ data Token
   = TReserved String
   | TConIdent String
   | TSymIdent String
+  | TOperIdent String
   | TInt Int64
   | TEof
     deriving (Eq,Show)
@@ -114,10 +123,8 @@ raiseL msg = do
   raise (Error LexerError msg (psPos st))
 
 -- | Raise an exception from the parser.
-raiseP :: String -> Parser a
-raiseP msg = do
-  st <- get
-  raise (Error ParserError msg (psPos st))
+raiseP :: String -> Position -> Parser a
+raiseP msg pos = raise (Error ParserError msg pos)
 
 -- | Run the parser over the file given.
 runParser :: FilePath -> S.ByteString -> Parser a -> Either Error a
@@ -128,7 +135,8 @@ runParser path bs m =
   where
   body = do
     (res,errs) <- collect m
-    unless (null errs) (raiseP ("definition errors: " ++ show errs))
+    unless (null errs)
+        (raiseP ("definition errors: " ++ show errs) nullPosition)
     return res
 
 -- | For testing parsers within ghci.

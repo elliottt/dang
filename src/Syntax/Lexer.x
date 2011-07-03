@@ -14,9 +14,11 @@ $digit       = [0-9]
 $letter      = [a-zA-Z]
 $lowerletter = [a-z]
 $capletter   = [A-Z]
+$symbol      = [\- \> \< \: \*]
 
-@conident = $capletter [$letter $digit [_ \! \? \']]*
-@symident = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
+@conident  = $capletter [$letter $digit [_ \! \? \']]*
+@symident  = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
+@operident = $symbol+
 
 :-
 
@@ -35,7 +37,6 @@ $white+         ;
 
 \\              { reserved }
 "="             { reserved }
-"->"            { reserved }
 "("             { reserved }
 ")"             { reserved }
 "let"           { reserved }
@@ -45,9 +46,7 @@ $white+         ;
 ";"             { reserved }
 ","             { reserved }
 "."             { reserved }
-"::"            { reserved }
 "=>"            { reserved }
-"*"             { reserved }
 
 "module"        { reserved }
 "where"         { reserved }
@@ -62,6 +61,7 @@ $white+         ;
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }
+@operident      { emitS TOperIdent    }
 $digit+         { emitS (TInt . read) }
 }
 
@@ -140,6 +140,15 @@ alexSetStartCode code = do
   set $! s { psLexCode = code }
 
 begin code _ _ = alexSetStartCode code >> scan
+
+
+-- | For testing the lexer within ghci.
+testLexer :: Parser [Lexeme]
+testLexer  = do
+  lex <- scan
+  if lexToken lex == TEof
+    then return []
+    else (lex :) `fmap` testLexer
 
 }
 
