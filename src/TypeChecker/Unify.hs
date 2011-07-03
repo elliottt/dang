@@ -6,6 +6,7 @@ module TypeChecker.Unify where
 import Dang.Monad
 import Pretty
 import TypeChecker.Types
+import Utils ((!!?))
 
 import Control.Monad (unless)
 import Data.Maybe (fromMaybe)
@@ -106,3 +107,38 @@ varBind p ty
   | isTVar ty                  = return emptySubst
   | p `Set.member` typeVars ty = raiseE (UnifyOccursCheck p ty)
   | otherwise                  = return (p +-> ty)
+
+
+-- Instantiation ---------------------------------------------------------------
+
+data InstError = InstError TParam
+    deriving (Show,Typeable)
+
+instance Exception InstError
+
+class Instantiate t where
+  inst :: ExceptionM m SomeException => [Type] -> t -> m t
+
+instance Instantiate a => Instantiate [a] where
+  inst ts = mapM (inst ts)
+
+instance Instantiate Type where
+  inst ts (TApp l r) = do
+    l' <- inst ts l
+    r' <- inst ts r
+    return (TApp l' r')
+
+  inst ts (TGen n p) = case ts !!? n of
+    Nothing -> raiseE (InstError p)
+    Just ty -> return ty
+
+  inst _ ty = return ty
+
+
+-- Quantification --------------------------------------------------------------
+
+quantify :: [TParam] -> Type -> Forall Type
+quantify ps ty = Forall vs (apply s ty)
+  where
+  vs = [ v | v <- Set.toList (typeVars ty), v `elem` ps ]
+  s  = Subst (zipWith (\n p -> (p,TGen n p)) [0 ..] vs)

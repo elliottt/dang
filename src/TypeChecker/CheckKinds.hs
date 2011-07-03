@@ -7,10 +7,11 @@ import Syntax.AST
 import TypeChecker.Assume
 import TypeChecker.Monad
 import TypeChecker.Types
-import Variables
+import TypeChecker.Unify as Types
 
 import Control.Monad (foldM)
 import Data.Typeable (Typeable)
+import qualified Data.Set as Set
 
 
 -- Utilities -------------------------------------------------------------------
@@ -42,9 +43,8 @@ kcModule :: KindEnv -> Module -> TC Module
 kcModule env m = do
   let env0 = foldr addPrimType env (modPrimTypes m)
 
-  (pts',declEnv) <- kcPrimTerms env0 (modPrimTerms m)
-
-  decls' <- mapM (kcDecl declEnv) (modDecls m)
+  pts'   <- mapM (kcPrimTerm env0) (modPrimTerms m)
+  decls' <- mapM (kcDecl env0) (modDecls m)
 
   return m
     { modPrimTerms = pts'
@@ -56,20 +56,14 @@ kcModule env m = do
 addPrimType :: PrimType -> KindEnv -> KindEnv
 addPrimType pt = addAssump (Assume (primTypeName pt) (primTypeKind pt))
 
--- | Kind check individual primitive terms, fixing their kinds, and adding any
--- generated assumptions about the environment.
-kcPrimTerms :: KindEnv -> [PrimTerm] -> TC ([PrimTerm],KindEnv)
-kcPrimTerms env0 = foldM step ([],env0)
-  where
-  step (ps',env) pt = do
-    (pt',env') <- kcPrimTerm env0 pt
-    return (pt':ps', mergeAssumps env' env)
-
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
-kcPrimTerm :: KindEnv -> PrimTerm -> TC (PrimTerm,KindEnv)
-kcPrimTerm env pt = do
-  undefined
+kcPrimTerm :: KindEnv -> PrimTerm -> TC PrimTerm
+kcPrimTerm env0 pt = introType (primTermType pt) $ \ vars ty -> do
+  let env = mergeAssumps vars env0
+  (tyk,ty') <- inferKind env ty
+  unify kstar tyk
+  return pt { primTermType = quantifyAll ty' }
 
 -- | Check the kind of the type of a declaration, then the kinds of any type
 -- usages inside the term structure.
@@ -117,3 +111,35 @@ inferKind env ty = case ty of
   TGen _ p -> kindError "Unexpected generic variable"
 
   TNat _ -> return (knat,ty)
+
+
+-- Type Helpers ----------------------------------------------------------------
+
+introType :: Forall Type -> (KindEnv -> Type -> TC a) -> TC a
+introType (Forall ps ty) k = withVarIndex (length ps) $ do
+  ps' <- mapM freshTParam ps
+  let env = [ Assume (paramName p) (paramKind p) | p <- ps' ]
+  ty' <- inst (zipWith TVar [0..] ps') ty
+  k env ty'
+
+-- | Given a type parameter, assign it a fresh kind variable.
+freshTParam :: TParam -> TC TParam
+freshTParam p = do
+  k <- freshKindVar
+  return p { paramKind = k }
+
+-- | Quantify all variables in a type, fixing their kind variables to stars on
+-- the way.
+quantifyAll :: Type -> Forall Type
+quantifyAll ty = Forall ps (Types.apply s ty)
+  where
+  vs          = typeVars ty
+  vs'         = Set.map fixKind vs
+  step v n v' = (v, TGen n v')
+  ps          = Set.toList vs
+  s           = Subst (zipWith3 step ps [0 ..] (Set.toList vs'))
+
+-- | Turn kind variables into stars.
+fixKind :: TParam -> TParam
+fixKind p | isTVar (paramKind p) = p { paramKind = kstar }
+          | otherwise            = p

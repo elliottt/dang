@@ -26,7 +26,7 @@ instance RunExceptionM TC SomeException where
 
 data RW = RW
   { rwSubst :: Subst
-  , rwIndex :: !Int
+  , rwIndex :: !Index
   }
 
 data RO = RO
@@ -57,6 +57,15 @@ applySubst :: Type -> TC Type
 applySubst ty = do
   rw <- TC get
   return (apply (rwSubst rw) ty)
+
+-- | Reset the index base for a type-checking operation.
+withVarIndex :: Index -> TC a -> TC a
+withVarIndex i' m = do
+  rw <- TC get
+  TC (set rw { rwIndex = i' })
+  a  <- m
+  TC (set rw { rwIndex = rwIndex rw })
+  return a
 
 -- | Generate fresh type variables, with the given kind.
 freshVar :: Kind -> TC Type

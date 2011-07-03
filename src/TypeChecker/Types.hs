@@ -1,16 +1,20 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module TypeChecker.Types where
 
 import Pretty
 
 import Data.Int (Int64)
 
+type Index = Int
 
 data Type
   = TApp Type Type
   | TInfix String Type Type
   | TCon String
-  | TVar Int TParam
-  | TGen Int TParam
+  | TVar Index TParam
+  | TGen Index TParam
   | TNat Int64
     deriving (Eq,Show,Ord)
 
@@ -65,6 +69,9 @@ setSort = TCon "Set"
 -- | Things with quantified variables.
 data Forall a = Forall [TParam] a
     deriving (Show,Eq,Ord)
+
+forallParams :: Forall a -> [TParam]
+forallParams (Forall ps _) = ps
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = text "forall" <+> ppList 0 ps <> char '.' <+> pp 0 a
