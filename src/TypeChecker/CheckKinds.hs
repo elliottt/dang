@@ -140,5 +140,7 @@ quantifyAll ty = Forall ps (Types.apply s ty)
 
 -- | Turn kind variables into stars.
 fixKind :: TParam -> TParam
-fixKind p | isTVar (paramKind p) = p { paramKind = kstar }
-          | otherwise            = p
+fixKind p = p { paramKind = Types.apply s k }
+  where
+  k = paramKind p
+  s = Subst [ (v,kstar) | v <- Set.toList (typeVars k) ]
