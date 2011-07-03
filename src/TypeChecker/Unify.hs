@@ -82,7 +82,8 @@ mgu a b = case (a,b) of
   -- infix type constructor application
   (TInfix n l r, TInfix m x y) -> do
     unless (n == m) $ unifyError $ concat
-      [ "Expected infix constructor ``", n, "'', got ``", m, "''" ]
+      [ "Expected infix constructor ``", pretty n
+      , "'', got ``", pretty m, "''" ]
     sl <- mgu l x
     sr <- mgu r y
     return (sl @@ sr)

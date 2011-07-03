@@ -4,12 +4,13 @@
 module TypeChecker.Assume where
 
 import Dang.Monad
+import QualName
 
 import Data.Typeable (Typeable)
 import MonadLib
 
 
-data Assump t = Assume String t
+data Assump t = Assume QualName t
     deriving (Eq,Ord,Show)
 
 prop :: Assump t -> t
@@ -17,7 +18,7 @@ prop (Assume _ t) = t
 
 type Assumps t = [Assump t]
 
-data AssumpError = UnboundIdentifier String
+data AssumpError = UnboundIdentifier QualName
     deriving (Show,Typeable)
 
 instance Exception AssumpError
@@ -25,7 +26,7 @@ instance Exception AssumpError
 noAssumps :: Assumps t
 noAssumps  = []
 
-findAssump :: ExceptionM m SomeException => String -> Assumps t -> m t
+findAssump :: ExceptionM m SomeException => QualName -> Assumps t -> m t
 findAssump n []                           = raiseE (UnboundIdentifier n)
 findAssump n (Assume n' t:as) | n == n'   = return t
                               | otherwise = findAssump n as

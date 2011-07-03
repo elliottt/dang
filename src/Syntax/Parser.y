@@ -201,7 +201,7 @@ type_tail :: { Type -> Type }
 
 atype :: { Type }
   : IDENT        { TVar 0 (TParam $1 setSort) }
-  | CONIDENT     { TCon $1 }
+  | CONIDENT     { TCon (simpleName $1) }
   | INT          { TNat $1 }
   | '(' type ')' { $2 }
 

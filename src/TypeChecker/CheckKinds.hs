@@ -3,6 +3,7 @@
 module TypeChecker.CheckKinds where
 
 import Dang.Monad
+import QualName
 import Syntax.AST
 import TypeChecker.Assume
 import TypeChecker.Monad
@@ -24,8 +25,8 @@ type KindAssump = Assump Kind
 
 type KindEnv = Assumps Sort
 
-findKind :: String -> KindEnv -> TC Kind
-findKind  = findAssump
+findKind :: QualName -> KindEnv -> TC Kind
+findKind n env = applySubst =<< findAssump n env
 
 data KindError = KindError String
     deriving (Typeable,Show)
@@ -55,7 +56,8 @@ kcModule env m = do
 -- | Add a primitive type definition to the kind environment.  A good example of
 -- one of these is the arrow constructor.
 addPrimType :: PrimType -> KindEnv -> KindEnv
-addPrimType pt = addAssump (Assume (primTypeName pt) (primTypeKind pt))
+addPrimType pt =
+  addAssump (Assume (primName (primTypeName pt)) (primTypeKind pt))
 
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
@@ -127,7 +129,7 @@ inferKind env ty = case ty of
   -- it through the environment, or that if it's a variable, that it might
   -- already have been unified with something concrete.
   TVar i p -> do
-    k' <- applySubst =<< findKind (paramName p) env
+    k' <- applySubst =<< findKind (simpleName (paramName p)) env
     return (k', TVar i p { paramKind = k' })
 
   -- All generic variables should disappear through instantiation, so this
@@ -145,7 +147,7 @@ inferKind env ty = case ty of
 introType :: Forall Type -> (KindEnv -> Type -> TC a) -> TC a
 introType (Forall ps ty) k = withVarIndex (length ps) $ do
   ps' <- mapM freshTParam ps
-  let env = [ Assume (paramName p) (paramKind p) | p <- ps' ]
+  let env = [ Assume (simpleName (paramName p)) (paramKind p) | p <- ps' ]
   ty' <- inst (zipWith TVar [0..] ps') ty
   k env ty'
 
