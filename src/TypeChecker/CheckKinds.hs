@@ -36,6 +36,8 @@ kindError  = raiseE . KindError
 
 -- Kind Checking ---------------------------------------------------------------
 
+-- | Check the kinds of all type usages in a Module.  Return a Module that
+-- contains all it's declarations with fixed kinds.
 kcModule :: KindEnv -> Module -> TC Module
 kcModule env m = do
   let env0 = foldr addPrimType env (modPrimTypes m)
@@ -69,6 +71,8 @@ kcPrimTerm :: KindEnv -> PrimTerm -> TC (PrimTerm,KindEnv)
 kcPrimTerm env pt = do
   undefined
 
+-- | Check the kind of the type of a declaration, then the kinds of any type
+-- usages inside the term structure.
 kcDecl :: KindEnv -> Decl -> TC Decl
 kcDecl env d = do
   undefined
