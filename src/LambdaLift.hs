@@ -29,6 +29,7 @@ import Prim
 import QualName
 import ReadWrite
 import Syntax.AST (Export(..))
+import Variables
 import qualified Syntax.AST as AST
 
 import Control.Applicative (Applicative(..))
@@ -234,7 +235,7 @@ createClosure :: [AST.Decl] -> LL [Decl]
 createClosure ds = do
   ro <- LL ask
   let names = roVars ro
-  let fvs   = AST.freeVars ds Set.\\ names
+  let fvs   = freeVars ds Set.\\ names
   let fvl   = map qualSymbol (Set.toList fvs)
   rewriteFreeVars fvl ds $ bindVars fvs (mapM (llDecl . extendVars fvl) ds)
 

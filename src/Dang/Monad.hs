@@ -29,6 +29,7 @@ module Dang.Monad (
 
 import Control.Applicative (Applicative)
 import Control.Exception (Exception(..),SomeException)
+import Control.Monad.Fix (MonadFix)
 import Data.List (partition)
 import Data.Typeable (Typeable)
 import MonadLib
@@ -164,7 +165,7 @@ setDumpLLVM opts = return opts { dbgDumpLLVM = True }
 
 newtype Dang a = Dang
   { getDang :: ReaderT Options IO a
-  } deriving (Functor,Applicative)
+  } deriving (Functor,Applicative,MonadFix)
 
 instance Monad Dang where
   {-# INLINE return #-}

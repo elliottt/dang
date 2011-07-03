@@ -6,21 +6,13 @@ module Syntax.AST where
 import Pretty
 import QualName
 import TypeChecker.Types
+import Variables
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
 import Data.Int (Int64)
 import qualified Data.Set as Set
 
-
-class FreeVars a where
-  freeVars :: a -> Set.Set QualName
-
-instance FreeVars a => FreeVars (Maybe a) where
-  freeVars = maybe Set.empty freeVars
-
-instance FreeVars a => FreeVars [a] where
-  freeVars = Set.unions . map freeVars
 
 ignoreVars :: [Var] -> Set.Set QualName -> Set.Set QualName
 ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)

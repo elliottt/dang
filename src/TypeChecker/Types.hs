@@ -14,6 +14,10 @@ data Type
   | TNat Int64
     deriving (Eq,Show,Ord)
 
+isTVar :: Type -> Bool
+isTVar TVar{} = True
+isTVar _      = False
+
 instance Pretty Type where
   pp _ (TCon n)       = text n
   pp _ (TVar _ m)     = pp 0 m
