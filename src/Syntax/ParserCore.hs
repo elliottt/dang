@@ -8,6 +8,7 @@ import Data.ClashMap as CM
 import QualName
 import Syntax.AST
 import TypeChecker.Types
+import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
 import Data.Int (Int64)
@@ -15,6 +16,7 @@ import Data.Maybe (isNothing)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Set as Set
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
@@ -169,6 +171,9 @@ mkDecl d = emptyPDecls { parsedDecls = singleton (declName d) (Right d) }
 
 mkTypeDecl :: Name -> Forall Type -> PDecls
 mkTypeDecl n t = emptyPDecls { parsedDecls = singleton n (Left t) }
+
+mkForall :: Type -> Forall Type
+mkForall ty = quantify (Set.toList (typeVars ty)) ty
 
 addDecl :: Decl -> PDecls -> PDecls
 addDecl d ds = ds

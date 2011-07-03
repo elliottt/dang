@@ -204,7 +204,7 @@ atype :: { Type }
 
 -- XXX fix the type parameters
 qual_type :: { Forall Type }
-  : type { Forall [] $1 }
+  : type { mkForall $1 }
 
 tparams :: { [TParam] }
   : tparams tparam { $2 : $1 }
