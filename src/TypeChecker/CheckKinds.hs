@@ -115,6 +115,9 @@ inferKind env ty = case ty of
 
 -- Type Helpers ----------------------------------------------------------------
 
+-- | Introduce new kind variables for each quantified type variable.  Give to a
+-- continuation, an environment that contains those variables, and a type with
+-- them instantiated.
 introType :: Forall Type -> (KindEnv -> Type -> TC a) -> TC a
 introType (Forall ps ty) k = withVarIndex (length ps) $ do
   ps' <- mapM freshTParam ps
