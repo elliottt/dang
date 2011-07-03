@@ -45,6 +45,7 @@ tapp  = TApp
 -- | Arrow introduction.
 tarrow :: Type -> Type -> Type
 tarrow  = TInfix "->"
+infixr 9 `tarrow`
 
 type Kind = Type
 
@@ -59,6 +60,7 @@ knat  = TCon "#"
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
 karrow  = TInfix "->"
+infixr 9 `karrow`
 
 type Sort = Type
 

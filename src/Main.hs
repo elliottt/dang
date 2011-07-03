@@ -9,6 +9,7 @@ import ModuleSystem
 import Pretty
 import Syntax.Parser
 import Syntax.ParserCore
+import TypeChecker
 import qualified Syntax.AST as AST
 
 import MonadLib
@@ -17,18 +18,28 @@ import qualified Data.ByteString.UTF8 as UTF8
 
 main :: IO ()
 main  = runDang $ do
-  opts   <- ask
+  opts <- ask
+
   let a      = optAction opts
   logDebug ("Taking action: " ++ show a)
   let [file] = actionSources a
-  m      <- loadModule file
+
+  m <- loadModule file
   logInfo "Parsed module"
   logDebug (show m)
   logInfo (pretty m)
-  (iface,m') <- scopeCheck m
+
+  logDebug "Running module system"
+  (iface,scm) <- scopeCheck m
   logDebug "Module system output"
-  logDebug (show m')
-  compile iface m' (ofile file)
+  logDebug (show scm)
+
+  logDebug "Kind checking"
+  kcm <- kindCheckModule scm
+  logDebug "Kind checking output:"
+  logDebug (show kcm)
+
+  compile iface kcm (ofile file)
   unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
 
 loadModule :: FilePath -> Dang AST.Module

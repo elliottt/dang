@@ -128,6 +128,11 @@ instance Instantiate Type where
     r' <- inst ts r
     return (TApp l' r')
 
+  inst ts (TInfix n l r) = do
+    l' <- inst ts l
+    r' <- inst ts r
+    return (TInfix n l' r')
+
   inst ts (TGen n p) = case ts !!? n of
     Nothing -> raiseE (InstError p)
     Just ty -> return ty

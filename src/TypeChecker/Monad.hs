@@ -7,13 +7,16 @@ import Dang.Monad
 import TypeChecker.Types
 import TypeChecker.Unify
 
+import Control.Applicative (Applicative)
 import Control.Monad.Fix (MonadFix)
 import MonadLib
-import qualified Data.Map as Map
 
 
 newtype TC a = TC { unTC :: StateT RW Dang a }
-    deriving (Functor,Monad,MonadFix)
+    deriving (Functor,Applicative,Monad,MonadFix)
+
+runTC :: TC a -> Dang a
+runTC (TC m) = fst `fmap` runStateT emptyRW m
 
 instance BaseM TC Dang where
   inBase = TC . inBase
@@ -29,8 +32,10 @@ data RW = RW
   , rwIndex :: !Index
   }
 
-data RO = RO
-  { roEnv :: Map.Map String Type
+emptyRW :: RW
+emptyRW  = RW
+  { rwSubst = emptySubst
+  , rwIndex = 0
   }
 
 

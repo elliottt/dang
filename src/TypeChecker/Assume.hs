@@ -22,6 +22,9 @@ data AssumpError = UnboundIdentifier String
 
 instance Exception AssumpError
 
+noAssumps :: Assumps t
+noAssumps  = []
+
 findAssump :: ExceptionM m SomeException => String -> Assumps t -> m t
 findAssump n []                           = raiseE (UnboundIdentifier n)
 findAssump n (Assume n' t:as) | n == n'   = return t

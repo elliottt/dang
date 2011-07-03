@@ -9,8 +9,9 @@ import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify as Types
 
-import Control.Monad (foldM)
+import Control.Applicative ((<$>),(<*>))
 import Data.Typeable (Typeable)
+import qualified Data.Traversable as T
 import qualified Data.Set as Set
 
 
@@ -59,17 +60,37 @@ addPrimType pt = addAssump (Assume (primTypeName pt) (primTypeKind pt))
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
 kcPrimTerm :: KindEnv -> PrimTerm -> TC PrimTerm
-kcPrimTerm env0 pt = introType (primTermType pt) $ \ vars ty -> do
-  let env = mergeAssumps vars env0
-  (tyk,ty') <- inferKind env ty
-  unify kstar tyk
-  return pt { primTermType = quantifyAll ty' }
+kcPrimTerm env pt = do
+  qt <- kcTypeSig env (primTermType pt)
+  return pt { primTermType = qt }
 
 -- | Check the kind of the type of a declaration, then the kinds of any type
 -- usages inside the term structure.
 kcDecl :: KindEnv -> Decl -> TC Decl
 kcDecl env d = do
-  undefined
+  qt <- T.sequenceA (kcTypeSig env `fmap` declType d)
+  b  <- kcTerm env (declBody d)
+  return d { declType = qt, declBody = b }
+
+-- | Introduce kind variables for all type variables, and kind check a type
+-- signature.
+kcTypeSig :: KindEnv -> Forall Type -> TC (Forall Type)
+kcTypeSig env0 qt = introType qt $ \ vars ty -> do
+  let env = mergeAssumps vars env0
+  (tyk,ty') <- inferKind env ty
+  unify kstar tyk
+  return (quantifyAll ty')
+
+-- | Check the kind structure of any types that show up in terms.
+kcTerm :: KindEnv -> Term -> TC Term
+kcTerm env tm = case tm of
+  Abs vs b -> Abs vs <$> kcTerm env b
+  Let ds b -> Let    <$> mapM (kcDecl env) ds <*> kcTerm env b
+  App f xs -> App    <$> kcTerm env f         <*> mapM (kcTerm env) xs
+  Local{}  -> return tm
+  Global{} -> return tm
+  Lit{}    -> return tm
+  Prim{}   -> return tm
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
 inferKind :: KindEnv -> Type -> TC (Kind,Type)
@@ -80,17 +101,20 @@ inferKind env ty = case ty of
     (rk,r') <- inferKind env r
     a       <- freshKindVar
     unify (rk `karrow` a) lk
-    return (a,TApp l' r')
+    a'      <- applySubst a
+    return (a',TApp l' r')
 
   -- Infix constructors should have their kind in the environment already, so
   -- it's just a case of unifying the arguments and the kind of the constructor
   -- produce a result.
   TInfix n l r -> do
-    nk      <- findKind n env
     (lk,l') <- inferKind env l
     (rk,r') <- inferKind env r
-    unify nk (lk `karrow` rk `karrow` kstar)
-    return (nk,TInfix n l' r')
+    nk      <- findKind n env
+    res     <- freshKindVar
+    unify nk (lk `karrow` rk `karrow` res)
+    res'    <- applySubst res
+    return (res',TInfix n l' r')
 
   -- Constructors should just have their kinds already specified in the
   -- environment.  There's no need to check them, as they should only be
@@ -108,9 +132,9 @@ inferKind env ty = case ty of
 
   -- All generic variables should disappear through instantiation, so this
   -- shouldn't happen.
-  TGen _ p -> kindError "Unexpected generic variable"
+  TGen{} -> kindError "Unexpected generic variable"
 
-  TNat _ -> return (knat,ty)
+  TNat{} -> return (knat,ty)
 
 
 -- Type Helpers ----------------------------------------------------------------
