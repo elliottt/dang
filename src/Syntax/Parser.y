@@ -202,7 +202,6 @@ type_tail :: { Type -> Type }
 atype :: { Type }
   : IDENT        { TVar 0 (TParam $1 setSort) }
   | CONIDENT     { TCon (simpleName $1) }
-  | INT          { TNat $1 }
   | '(' type ')' { $2 }
 
 -- XXX fix the type parameters

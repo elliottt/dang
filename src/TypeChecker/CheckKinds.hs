@@ -136,8 +136,6 @@ inferKind env ty = case ty of
   -- shouldn't happen.
   TGen{} -> kindError "Unexpected generic variable"
 
-  TNat{} -> return (knat,ty)
-
 
 -- Type Helpers ----------------------------------------------------------------
 

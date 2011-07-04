@@ -33,7 +33,6 @@ instance Types Type where
     TInfix n l r -> TInfix n (apply s l) (apply s r)
     TVar _ p     -> fromMaybe ty (lookupSubst p s)
     TGen{}       -> ty
-    TNat{}       -> ty
     TCon{}       -> ty
 
   typeVars ty = case ty of
@@ -41,7 +40,6 @@ instance Types Type where
     TInfix _ l r -> typeVars l `Set.union` typeVars r
     TVar _ p     -> Set.singleton p
     TGen{}       -> Set.empty
-    TNat{}       -> Set.empty
     TCon{}       -> Set.empty
 
 lookupSubst :: TParam -> Subst -> Maybe Type

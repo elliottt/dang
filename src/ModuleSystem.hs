@@ -338,4 +338,3 @@ scopeCheckType ty = case ty of
 
   TVar{} -> return ty
   TGen{} -> return ty
-  TNat{} -> return ty

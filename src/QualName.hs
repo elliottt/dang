@@ -5,9 +5,10 @@ module QualName where
 import Pretty
 import Utils (splitLast)
 
-import Control.Monad (ap,guard)
+import Control.Applicative ((<$>),(<*>))
+import Control.Monad (guard)
 import Data.Char (isSpace)
-import Data.Serialize (Serialize(get,put),getWord8,putWord8)
+import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
 import Data.Typeable (Typeable)
 import Numeric (showHex)
 import qualified Data.Set as Set
@@ -27,14 +28,19 @@ instance Pretty QualName where
   pp _ (PrimName n)    = text n
 
 instance Serialize QualName where
-  get = getWord8 >>= \tag ->
-    case tag of
-      0 -> QualName `fmap` get `ap` get
-      1 -> PrimName `fmap` get
-      _ -> fail ("QualName: unknown tag 0x" ++ showHex tag "")
+  get = getQualName
+  put = putQualName
 
-  put (QualName ps n) = putWord8 0 >> put ps >> put n
-  put (PrimName n)    = putWord8 1 >> put n
+getQualName :: Get QualName
+getQualName  = getWord8 >>= \tag ->
+  case tag of
+    0 -> QualName <$> get <*> get
+    1 -> PrimName <$> get
+    _ -> fail ("QualName: unknown tag 0x" ++ showHex tag "")
+
+putQualName :: Putter QualName
+putQualName (QualName ps n) = putWord8 0 >> put ps >> put n
+putQualName (PrimName n)    = putWord8 1 >> put n
 
 -- | Make a qualified name.
 qualName :: Namespace -> Name -> QualName

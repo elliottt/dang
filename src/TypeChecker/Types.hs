@@ -6,9 +6,18 @@ module TypeChecker.Types where
 import Pretty
 import QualName
 
-import Data.Int (Int64)
+import Control.Applicative ((<$>),(<*>))
+import Data.Serialize
+    (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
+    ,putListOf)
 
 type Index = Int
+
+putIndex :: Putter Index
+putIndex  = putWord32be . toEnum
+
+getIndex :: Get Index
+getIndex  = fromEnum <$> getWord32be
 
 data Type
   = TApp Type Type
@@ -16,8 +25,24 @@ data Type
   | TCon QualName
   | TVar Index TParam
   | TGen Index TParam
-  | TNat Int64
     deriving (Eq,Show,Ord)
+
+putType :: Putter Type
+putType (TApp l r)     = putWord8 0 >> putType l     >> putType r
+putType (TInfix n l r) = putWord8 1 >> putQualName n >> putType l >> putType r
+putType (TCon n)       = putWord8 2 >> putQualName n
+putType (TVar i p)     = putWord8 3 >> putIndex i    >> putTParam p
+putType (TGen i p)     = putWord8 4 >> putIndex i    >> putTParam p
+
+getType :: Get Type
+getType  = getWord8 >>= \ tag ->
+  case tag of
+    0 -> TApp   <$> getType     <*> getType
+    1 -> TInfix <$> getQualName <*> getType <*> getType
+    2 -> TCon   <$> getQualName
+    3 -> TVar   <$> getIndex    <*> getTParam
+    4 -> TGen   <$> getIndex    <*> getTParam
+    _ -> fail ("Invalid tag: " ++ show tag)
 
 isTVar :: Type -> Bool
 isTVar TVar{} = True
@@ -27,7 +52,6 @@ instance Pretty Type where
   pp _ (TCon n)       = ppr n
   pp _ (TVar _ m)     = ppr m
   pp _ (TGen _ m)     = ppr m
-  pp _ (TNat i)       = integer (fromIntegral i)
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
   pp p (TInfix c a b) = optParens (p > 0) (pp 2 a <+> ppr c <+> pp 2 b)
 
@@ -38,6 +62,12 @@ data TParam = TParam
 
 instance Pretty TParam where
   pp _ p = text (paramName p)
+
+putTParam :: Putter TParam
+putTParam p = put (paramName p) >> putKind (paramKind p)
+
+getTParam :: Get TParam
+getTParam  = TParam <$> get <*> getKind
 
 -- | Type-application introduction.
 tapp :: Type -> Type -> Type
@@ -50,13 +80,15 @@ infixr 9 `tarrow`
 
 type Kind = Type
 
+putKind :: Putter Kind
+putKind  = putType
+
+getKind :: Get Kind
+getKind  = getType
+
 -- | The kind of types.
 kstar :: Kind
 kstar  = TCon (primName "*")
-
--- | The kind of type-naturals.
-knat :: Kind
-knat  = TCon (primName "#")
 
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
@@ -72,6 +104,12 @@ setSort = TCon (primName "Set")
 -- | Things with quantified variables.
 data Forall a = Forall [TParam] a
     deriving (Show,Eq,Ord)
+
+putForall :: Putter a -> Putter (Forall a)
+putForall p (Forall ps a) = putListOf putTParam ps >> p a
+
+getForall :: Get a -> Get (Forall a)
+getForall a = Forall <$> getListOf getTParam <*> a
 
 forallParams :: Forall a -> [TParam]
 forallParams (Forall ps _) = ps
