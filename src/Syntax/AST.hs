@@ -69,6 +69,8 @@ instance Pretty Export where
 
 type Var = String
 
+-- This should really be split into typed and untyped declarations;  There's no
+-- way to guarantee that it has a type after type-checking.
 data Decl = Decl
   { declExport :: Export
   , declType   :: Maybe (Forall Type)
