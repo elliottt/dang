@@ -16,13 +16,14 @@ module Interface2 (
   , lookupKind
 
     -- * Serialization
-  , getInterface
-  , putInterface
+  , getInterface, openInterface
+  , putInterface, writeInterface
   ) where
 
 import Dang.IO
 import Dang.Monad
 import QualName
+import ReadWrite
 import Syntax.AST
 import TypeChecker.Types
 
@@ -38,7 +39,7 @@ import qualified Data.Map as Map
 type IFaceTypes = Map.Map QualName FunSymbol
 type IFaceKinds = Map.Map QualName Kind
 
-data Interface = Interface
+data Interface rw = Interface
   { ifaceVersion   :: Version
   , ifaceNamespace :: Namespace
   , ifaceTypes     :: IFaceTypes
@@ -59,7 +60,7 @@ data FunSymbol = FunSymbol
 currentVersion :: Version
 currentVersion  = Version 0 1
 
-moduleInterface :: Module -> Interface
+moduleInterface :: Module -> Interface RW
 moduleInterface m = Interface
   { ifaceNamespace = qualNamespace (modName m)
   , ifaceVersion   = currentVersion
@@ -102,20 +103,28 @@ mkPrimTypeKind pt = (primName (primTypeName pt), primTypeKind pt)
 -- Query -----------------------------------------------------------------------
 
 -- | Lookup information about a symbol in an interface.
-lookupFunSymbol :: QualName -> Interface -> Maybe FunSymbol
+lookupFunSymbol :: QualName -> Interface rw -> Maybe FunSymbol
 lookupFunSymbol qn = Map.lookup qn . ifaceTypes
 
+-- | The map from qualified names to @FunSymbol@s that an interface provides.
+interfaceTypes :: Interface rw -> IFaceTypes
+interfaceTypes  = ifaceTypes
+
 -- | Lookup the kind of a qualified type name.
-lookupKind :: QualName -> Interface -> Maybe Kind
+lookupKind :: QualName -> Interface rw -> Maybe Kind
 lookupKind qn = Map.lookup qn . ifaceKinds
+
+-- | The map from qualified names to kinds that an interface provides.
+interfaceKinds :: Interface rw -> IFaceKinds
+interfaceKinds  = ifaceKinds
 
 
 -- Serialization ---------------------------------------------------------------
 
-interfaceFile :: Interface -> FilePath
+interfaceFile :: Interface rw -> FilePath
 interfaceFile iface = joinPath (ifaceNamespace iface) <.> "di"
 
-writeInterface :: Interface -> Dang ()
+writeInterface :: Interface rw -> Dang ()
 writeInterface iface =
   withWOBinaryFile (interfaceFile iface) $ \ h ->
     io (S.hPutStr h (runPut (putInterface iface)))
@@ -123,7 +132,7 @@ writeInterface iface =
 modInterface :: QualName -> FilePath
 modInterface qn = joinPath (qualPrefix qn) </> qualSymbol qn <.> "di"
 
-openInterface :: QualName -> Dang Interface
+openInterface :: QualName -> Dang (Interface R)
 openInterface qn =
   withROBinaryFile (modInterface qn) $ \ h -> do
     bytes <- io (S.hGetContents h)
@@ -131,14 +140,14 @@ openInterface qn =
       Left err -> fail err
       Right a  -> return a
 
-putInterface :: Putter Interface
+putInterface :: Putter (Interface rw)
 putInterface iface = do
   putVersion    (ifaceVersion iface)
   putNamespace  (ifaceNamespace iface)
   putIFaceTypes (ifaceTypes iface)
   putIFaceKinds (ifaceKinds iface)
 
-getInterface :: Get Interface
+getInterface :: Get (Interface R)
 getInterface  = Interface
             <$> getVersion
             <*> getNamespace
