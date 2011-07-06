@@ -20,6 +20,7 @@ import qualified Data.ClashMap as CM
 
 import Control.Applicative
 import Data.Maybe (catMaybes)
+import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Foldable as F
 import qualified Data.Set as Set
@@ -58,6 +59,19 @@ instance RunExceptionM Scope SomeException where
 
 runScope :: Scope a -> Dang a
 runScope  = runReaderT emptyRO . getScope
+
+
+-- Errors ----------------------------------------------------------------------
+
+data ScopeError = MissingInterface QualName
+    deriving (Show,Typeable)
+
+instance Exception ScopeError
+
+-- | Generate a missing interface exception, with the module name that was being
+-- loaded.
+missingInterface :: QualName -> Scope a
+missingInterface  = raiseE . MissingInterface
 
 
 -- Import Gathering ------------------------------------------------------------
@@ -177,7 +191,12 @@ primTermNames pt = [ (simpleName n, res), (pn, res) ]
 loadInterfaces :: Set.Set Use -> Scope (Interface R)
 loadInterfaces  = F.foldlM step (freezeInterface emptyInterface)
   where
-  step i u = mergeInterfaces i `fmap` inBase (openInterface (usedModule u))
+  step i u = do
+    let m = usedModule u
+    e <- try (inBase (openInterface m))
+    case e of
+      Right ui -> return (mergeInterfaces i ui)
+      Left{}   -> missingInterface m
 
 -- | Given an aggregate interface, and a set of module uses, generate the final
 -- mapping from used names to resolved names.
