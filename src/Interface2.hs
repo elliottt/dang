@@ -1,5 +1,6 @@
 module Interface2 (
     Interface()
+  , InterfaceSet()
 
     -- * Versioning
   , Version(..)
@@ -16,6 +17,7 @@ module Interface2 (
   , lookupKind
 
     -- * Serialization
+  , interfaceFile, modInterface
   , getInterface, openInterface
   , putInterface, writeInterface
   ) where
@@ -36,6 +38,9 @@ import System.FilePath (joinPath,(<.>),(</>))
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
 
+
+-- Interfaces ------------------------------------------------------------------
+
 type IFaceTypes = Map.Map QualName FunSymbol
 type IFaceKinds = Map.Map QualName Kind
 
@@ -55,11 +60,20 @@ data FunSymbol = FunSymbol
   } deriving (Show)
 
 
+-- Interface Collections -------------------------------------------------------
+
+-- | A collection of read-only interfaces.
+newtype InterfaceSet = InterfaceSet
+  { interfaces :: Map.Map Namespace (Interface R)
+  } deriving (Show)
+
+
 -- Creation --------------------------------------------------------------------
 
 currentVersion :: Version
 currentVersion  = Version 0 1
 
+-- | The interface presented by a module.
 moduleInterface :: Module -> Interface RW
 moduleInterface m = Interface
   { ifaceNamespace = qualNamespace (modName m)
@@ -102,21 +116,23 @@ mkPrimTypeKind pt = (primName (primTypeName pt), primTypeKind pt)
 
 -- Query -----------------------------------------------------------------------
 
--- | Lookup information about a symbol in an interface.
-lookupFunSymbol :: QualName -> Interface rw -> Maybe FunSymbol
-lookupFunSymbol qn = Map.lookup qn . ifaceTypes
+class IsInterface i where
+  -- | Lookup information about a symbol in an interface.
+  lookupFunSymbol :: QualName -> i -> Maybe FunSymbol
 
--- | The map from qualified names to @FunSymbol@s that an interface provides.
-interfaceTypes :: Interface rw -> IFaceTypes
-interfaceTypes  = ifaceTypes
+  -- | Lookup the kind of a qualified type name.
+  lookupKind :: QualName -> i -> Maybe Kind
 
--- | Lookup the kind of a qualified type name.
-lookupKind :: QualName -> Interface rw -> Maybe Kind
-lookupKind qn = Map.lookup qn . ifaceKinds
+instance IsInterface (Interface rw) where
+  lookupFunSymbol qn = Map.lookup qn . ifaceTypes
+  lookupKind qn = Map.lookup qn . ifaceKinds
 
--- | The map from qualified names to kinds that an interface provides.
-interfaceKinds :: Interface rw -> IFaceKinds
-interfaceKinds  = ifaceKinds
+instance IsInterface InterfaceSet where
+  lookupFunSymbol qn rs =
+    lookupFunSymbol qn =<< Map.lookup (qualPrefix qn) (interfaces rs)
+
+  lookupKind qn rs =
+    lookupKind qn =<< Map.lookup (qualPrefix qn) (interfaces rs)
 
 
 -- Serialization ---------------------------------------------------------------
@@ -124,7 +140,7 @@ interfaceKinds  = ifaceKinds
 interfaceFile :: Interface rw -> FilePath
 interfaceFile iface = joinPath (ifaceNamespace iface) <.> "di"
 
-writeInterface :: Interface rw -> Dang ()
+writeInterface :: Interface RW -> Dang ()
 writeInterface iface =
   withWOBinaryFile (interfaceFile iface) $ \ h ->
     io (S.hPutStr h (runPut (putInterface iface)))
