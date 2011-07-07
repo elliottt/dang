@@ -6,7 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module LambdaLift (
+module Compile.LambdaLift (
     -- * Lambda Lifting Monad
     LL()
   , runLL

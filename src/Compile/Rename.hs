@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Rename (
+module Compile.Rename (
     Rename()
   , runRename
   , renameModule

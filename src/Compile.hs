@@ -1,14 +1,14 @@
 module Compile where
 
 import CodeGen
+import Compile.LambdaLift
+import Compile.Rename
 import Dang.IO
 import Dang.Monad
 import Dang.Tool
 import Interface
-import LambdaLift
 import Pretty
 import ReadWrite
-import Rename
 import qualified Syntax.AST as AST
 
 import MonadLib

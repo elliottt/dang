@@ -7,8 +7,8 @@ import Interface
 import Pretty
 import QualName
 import ReadWrite
-import qualified LambdaLift  as LL
-import qualified Syntax.AST  as AST
+import qualified Compile.LambdaLift as LL
+import qualified Syntax.AST as AST
 
 import Control.Monad (foldM)
 import Data.Int (Int64)
