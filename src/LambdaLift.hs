@@ -27,7 +27,6 @@ import Interface
 import Pretty
 import Prim
 import QualName
-import ReadWrite
 import Syntax.AST (Export(..))
 import Variables
 import qualified Syntax.AST as AST
@@ -47,10 +46,10 @@ data RO = RO
   { roVars     :: Set.Set QualName
   , roContext  :: [Name]
   , roSubst    :: Subst
-  , roExternal :: Interface R
+  , roExternal :: InterfaceSet
   }
 
-emptyRO :: Interface R -> RO
+emptyRO :: InterfaceSet -> RO
 emptyRO iface = RO
   { roVars     = Set.empty
   , roContext  = []
@@ -65,7 +64,7 @@ newtype LL a = LL
   { unLL :: ReaderT RO (WriterT [Decl] Dang) a
   } deriving (Functor,Applicative,Monad)
 
-runLL :: Interface R -> LL a -> Dang (a,[Decl])
+runLL :: InterfaceSet -> LL a -> Dang (a,[Decl])
 runLL iface (LL m) = do
   (a,ds) <- runWriterT (runReaderT (emptyRO iface) m)
   return (a,ds)

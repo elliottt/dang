@@ -17,54 +17,38 @@ import Text.LLVM
 
 -- Declarations ----------------------------------------------------------------
 
--- | Generate code for a block of declarations, and return their interface as an
--- effect.
-cgDecls :: Interface R -> [LL.Decl] -> LLVM (Interface RW)
-cgDecls iface ds = do
-  let this = declsInterface ds
-      env  = iface `mergeInterfaces` this
-  cgImports iface
+-- | Generate code for a block of declarations.
+cgDecls :: InterfaceSet -> Interface RW -> [LL.Decl] -> LLVM ()
+cgDecls iset this ds = do
+  let env = addInterface this iset
+  cgImports iset
   mapM_ (cgDecl env) ds
-  return this
 
 -- | Declare all external imports.
-cgImports :: Interface R -> LLVM ()
-cgImports  = mapM_ (uncurry declareExtern) . ifaceContents
+cgImports :: InterfaceSet -> LLVM ()
+cgImports  = mapM_ (uncurry declareExtern) . funSymbols
 
 -- | Produce an import declaration for an imported symbol.
-declareExtern :: QualName -> FunDecl -> LLVM ()
-declareExtern qn fd = do
-  let sym = Symbol (funSymbol fd)
+declareExtern :: QualName -> FunSymbol -> LLVM ()
+declareExtern _qn fd = do
+  let sym = Symbol (funName fd)
       obj = ptrT heapObjT
   _ <- declare obj sym (replicate (funArity fd) obj)
   _ <- declare obj (funUnpackSym sym) [obj]
   return ()
-
--- | Generate the interface that represents a group of declarations.
-declsInterface :: [LL.Decl] -> Interface RW
-declsInterface  = foldl step emptyInterface
-  where
-  step iface d = addFunDecl (LL.declName d) (declToFunDecl d) iface
-
--- | Produce a @FunDecl@ from a declaration.
-declToFunDecl :: LL.Decl -> FunDecl
-declToFunDecl d = FunDecl
-  { funArity  = length (LL.declVars d)
-  , funSymbol = mangle (LL.declName d)
-  }
 
 -- | Generate code for a declaration.
 --
 -- NOTE: The declaration passed in must be present in the interface that is
 -- given.  The assumption is that the given interface is a merged one, that also
 -- includes all dependencies for this module.
-cgDecl :: Interface R -> LL.Decl -> LLVM ()
-cgDecl iface decl = do
+cgDecl :: InterfaceSet -> LL.Decl -> LLVM ()
+cgDecl iset decl = do
   let qn   = LL.declName decl
-      sym  = Symbol (funSymbol fd)
+      sym  = Symbol (funName fd)
       info = funInfoTable sym
       args = replicate (funArity fd) (ptrT heapObjT)
-      fd   = case findFunDecl qn iface of
+      fd   = case lookupFunSymbol qn iset of
         Nothing -> error ("cgDecl: ``" ++ pretty qn ++ "'' not defined")
         Just x  -> x
 
@@ -84,7 +68,7 @@ cgDecl iface decl = do
   -- generate the function body
   _ <- define' emptyFunAttrs (ptrT heapObjT) sym args $ \ clos -> do
     label (Ident "Entry")
-    res <- cgTerm (emptyCGEnv iface clos) (LL.declBody decl)
+    res <- cgTerm (emptyCGEnv iset clos) (LL.declBody decl)
     ret res
 
   return ()
@@ -108,10 +92,10 @@ cgApply env (LL.Symbol f) xs = cgApplySym env f xs
 cgApply env f             xs = cgApplyGen env f xs
 
 cgApplySym :: CGEnv -> QualName -> [LL.Term] -> BB (Typed Value)
-cgApplySym env qn xs = case lookupFunDecl qn env of
+cgApplySym env qn xs = case lookupFunSymbol qn env of
   Nothing -> error ("cgApplySym: ``" ++ pretty qn ++ "'' not defined")
   Just fd ->
-    let sym   = Symbol (funSymbol fd)
+    let sym   = Symbol (funName fd)
         arity = funArity fd
      in symbolApply arity (ptrT heapObjT) sym =<< mapM (cgTerm env) xs
 

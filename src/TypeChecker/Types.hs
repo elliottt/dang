@@ -7,6 +7,7 @@ import Pretty
 import QualName
 
 import Control.Applicative ((<$>),(<*>))
+import Control.Monad (guard)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
     ,putListOf)
@@ -75,8 +76,27 @@ tapp  = TApp
 
 -- | Arrow introduction.
 tarrow :: Type -> Type -> Type
-tarrow  = TInfix (primName "->")
+tarrow  = TInfix arrowConstr
 infixr 9 `tarrow`
+
+arrowConstr :: QualName
+arrowConstr  = primName "->"
+
+destInfix :: Type -> Maybe (QualName,Type,Type)
+destInfix (TInfix qn l r) = return (qn,l,r)
+destInfix _               = Nothing
+
+destArrow :: Type -> Maybe (Type,Type)
+destArrow ty = do
+  (qn,l,r) <- destInfix ty
+  guard (qn == arrowConstr)
+  return (l,r)
+
+-- | Count the number of arguments to a function.
+typeArity :: Type -> Int
+typeArity ty = maybe 0 rec (destArrow ty)
+  where
+  rec (_,r) = 1 + typeArity r
 
 type Kind = Type
 
@@ -92,7 +112,7 @@ kstar  = TCon (primName "*")
 
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
-karrow  = TInfix (primName "->")
+karrow  = TInfix arrowConstr
 infixr 9 `karrow`
 
 type Sort = Type
@@ -113,6 +133,9 @@ getForall a = Forall <$> getListOf getTParam <*> a
 
 forallParams :: Forall a -> [TParam]
 forallParams (Forall ps _) = ps
+
+forallData :: Forall a -> a
+forallData (Forall _ a) = a
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = text "forall" <+> ppList 0 ps <> char '.' <+> pp 0 a

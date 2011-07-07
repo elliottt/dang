@@ -7,7 +7,6 @@ import Dang.Tool
 import Interface
 import LambdaLift
 import Pretty
-import QualName
 import ReadWrite
 import Rename
 import qualified Syntax.AST as AST
@@ -16,20 +15,20 @@ import MonadLib
 import Text.LLVM
 import System.IO (hPrint,hFlush)
 
-compile :: Interface R -> AST.Module -> FilePath -> Dang ()
-compile iface m out = do
+compile :: InterfaceSet -> AST.Module -> FilePath -> Dang ()
+compile iset m out = do
   logInfo "Renaming AST"
   let m' = rename m
   logDebug "Renaming output:"
   logDebug (show m')
 
-  decls <- lambdaLift iface m'
+  decls <- lambdaLift iset m'
   logDebug "Lambda-lifting output"
   logDebug (show decls)
   logDebug (unlines ["Lambda-lifted decls:", pretty decls])
 
   withOpenTempFile $ \ llvm h -> do
-    doc <- codeGen (AST.modName m) iface decls
+    doc <- codeGen iset (moduleInterface m') decls
     io $ do
       hPrint h doc
       hFlush h
@@ -42,21 +41,20 @@ compile iface m out = do
 rename :: AST.Module -> AST.Module
 rename  = runLift . runRename [] . renameModule
 
-lambdaLift :: Interface R -> AST.Module -> Dang [Decl]
+lambdaLift :: InterfaceSet -> AST.Module -> Dang [Decl]
 lambdaLift iface m = do
   logInfo "Lambda-lifting AST"
   (as,bs) <- runLL iface (llModule m)
   return (as ++ bs)
 
-codeGen :: QualName -> Interface R -> [Decl] -> Dang Doc
-codeGen qn env ds = do
+codeGen :: InterfaceSet -> Interface RW -> [Decl] -> Dang Doc
+codeGen env iface ds = do
   logInfo "Generating LLVM assembly"
-  writeInterface qn $! iface
+  writeInterface iface
   whenDebugOpt dbgDumpLLVM (io (print doc))
   return doc
   where
-  doc       = ppModule m
-  (iface,m) = runLLVM $ do
+  doc = ppModule $ snd $ runLLVM $ do
     defineTypes
     definePrims
-    cgDecls env ds
+    cgDecls env iface ds

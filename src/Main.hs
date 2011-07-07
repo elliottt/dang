@@ -30,7 +30,7 @@ main  = runDang $ do
   logInfo (pretty m)
 
   logDebug "Running module system"
-  (iface,scm) <- scopeCheck m
+  (iset,scm) <- scopeCheck m
   logDebug "Module system output"
   logDebug (show scm)
 
@@ -39,7 +39,7 @@ main  = runDang $ do
   logDebug "Kind checking output:"
   logDebug (show kcm)
 
-  compile iface kcm (ofile file)
+  compile iset kcm (ofile file)
   unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
 
 loadModule :: FilePath -> Dang AST.Module

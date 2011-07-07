@@ -2,7 +2,6 @@ module CodeGen.Env where
 
 import CodeGen.Types
 import Interface
-import ReadWrite
 import QualName
 import Utils
 
@@ -12,12 +11,12 @@ import qualified Data.Map as Map
 data CGEnv = CGEnv
   { cgClosure :: [Typed Value]
   , cgLocals  :: Map.Map Name (Typed Value)
-  , cgIface   :: Interface R
+  , cgIface   :: InterfaceSet
   }
 
-emptyCGEnv :: Interface R -> [Typed Value] -> CGEnv
-emptyCGEnv iface clos = CGEnv
-  { cgIface   = iface
+emptyCGEnv :: InterfaceSet -> [Typed Value] -> CGEnv
+emptyCGEnv iset clos = CGEnv
+  { cgIface   = iset
   , cgClosure = clos
   , cgLocals  = Map.empty
   }
@@ -30,17 +29,20 @@ lookupArgument ix env = cgClosure env !!? ix
 lookupVar :: LookupBy Name
 lookupVar v = Map.lookup v . cgLocals
 
+lookupSymbol :: LookupBy QualName
+lookupSymbol qn = fmap declSymbol . lookupFunSymbol qn
+
 addVar :: Name -> Typed Value -> CGEnv -> CGEnv
 addVar v tv env = env { cgLocals = Map.insert v tv (cgLocals env) }
 
-lookupFunDecl :: QualName -> CGEnv -> Maybe FunDecl
-lookupFunDecl qn = findFunDecl qn . cgIface
+instance IsInterface CGEnv where
+  lookupFunSymbol qn = lookupFunSymbol qn . cgIface
+  funSymbols         = funSymbols         . cgIface
+  lookupKind qn      = lookupKind qn      . cgIface
+  kinds              = kinds              . cgIface
 
-lookupSymbol :: LookupBy QualName
-lookupSymbol qn = fmap declSymbol . lookupFunDecl qn
-
-declSymbol :: FunDecl -> Typed Value
-declSymbol fd = ty -: Symbol (funSymbol fd)
+declSymbol :: FunSymbol -> Typed Value
+declSymbol fd = ty -: Symbol (funName fd)
   where
   pho = ptrT heapObjT
   ty  = ptrT (FunTy pho (replicate (funArity fd) pho))
