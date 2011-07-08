@@ -138,4 +138,7 @@ forallData :: Forall a -> a
 forallData (Forall _ a) = a
 
 instance Pretty a => Pretty (Forall a) where
-  pp _ (Forall ps a) = text "forall" <+> ppList 0 ps <> char '.' <+> pp 0 a
+  pp _ (Forall ps a) = vars <+> pp 0 a
+    where
+    vars | null ps   = empty
+         | otherwise = text "forall" <+> ppList 0 ps <> char '.'

@@ -1,12 +1,20 @@
 module TypeChecker where
 
-import Dang.Monad
+import Dang.IO (logStage,logDebug,logInfo)
+import Dang.Monad (Dang)
+import Pretty (pretty)
+import Syntax.AST (Module)
 import TypeChecker.Assume (noAssumps)
 import TypeChecker.CheckKinds (kcModule)
 import TypeChecker.Monad (runTC)
-import Syntax.AST (Module)
 
 
 -- | Top-level interface to kind checking.
 kindCheckModule :: Module -> Dang Module
-kindCheckModule m = runTC (kcModule noAssumps m)
+kindCheckModule m = do
+  logStage "kind-checker"
+  kcm <- runTC (kcModule noAssumps m)
+  logInfo "Kind checking output:"
+  logDebug (show kcm)
+  logInfo (pretty kcm)
+  return kcm

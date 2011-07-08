@@ -7,8 +7,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Compile.LambdaLift (
+    lambdaLift
+
     -- * Lambda Lifting Monad
-    LL()
+  , LL()
   , runLL
   , llDecls
   , llModule
@@ -22,7 +24,8 @@ module Compile.LambdaLift (
   , LLError(..)
   ) where
 
-import Dang.Monad
+import Dang.IO (logInfo,logStage,logDebug)
+import Dang.Monad (Dang,SomeException,Exception,raiseE)
 import Interface
 import Pretty
 import Prim
@@ -39,6 +42,21 @@ import MonadLib
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+
+-- External Interface ----------------------------------------------------------
+
+lambdaLift :: InterfaceSet -> AST.Module -> Dang [Decl]
+lambdaLift iface m = do
+  logStage "lambda-lifter"
+  (as,bs) <- runLL iface (llModule m)
+  let decls = as ++ bs
+  logInfo "Lambda-lifting results:"
+  logDebug (show decls)
+  logInfo (pretty decls)
+  return decls
+
+
+-- Lambda-lifting Monad --------------------------------------------------------
 
 type Subst = Map.Map Name Term
 

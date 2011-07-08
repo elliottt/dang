@@ -7,14 +7,30 @@ module Compile.Rename (
   , runRename
   , renameModule
   , renameDecls
+  , rename
   ) where
 
+import Dang.IO (logInfo,logStage,logDebug)
+import Dang.Monad (Dang)
+import Pretty (pretty)
 import QualName
 import Syntax.AST
 
 import Control.Applicative (Applicative(..),(<$>))
 import MonadLib
 import qualified Data.Map as Map
+
+
+-- External Interface ----------------------------------------------------------
+
+rename :: Module -> Dang Module
+rename m = do
+  logStage "renamer"
+  let m' = runLift (runRename [] (renameModule m))
+  logInfo "Renaming output:"
+  logDebug (show m')
+  logInfo (pretty m')
+  return m'
 
 
 -- Renaming Monad --------------------------------------------------------------

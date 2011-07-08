@@ -290,7 +290,12 @@ resolveOnly ns syms = CM.intersection syms (CM.fromList (map step ns))
 -- | Fully qualify all of the symbols inside of a module.  This does IO, as it
 -- may end up needing to read other interface files to make a decision.
 scopeCheck :: Module -> Dang (InterfaceSet, Module)
-scopeCheck m = runScope (withEnv m (scopeCheckModule m))
+scopeCheck m = do
+  logStage "module-system"
+  res@(_,scm) <- runScope (withEnv m (scopeCheckModule m))
+  logDebug "Module system output"
+  logDebug (show scm)
+  return res
 
 -- | Check all of the identifiers in a module, requiring that they are defined
 -- somewhere.

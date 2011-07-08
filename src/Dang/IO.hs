@@ -13,7 +13,7 @@ module Dang.IO (
   , onFileNotFound
 
   , whenVerbosity
-  , logInfo
+  , logInfo, logStage
   , logDebug
   ) where
 
@@ -114,3 +114,8 @@ logInfo  = whenVerbosity 1 . logString "INFO"
 
 logDebug :: BaseM m Dang => String -> m ()
 logDebug  = whenVerbosity 2 . logString "DEBUG"
+
+logStage :: BaseM m Dang => String -> m ()
+logStage l = whenVerbosity 1 (io (putStrLn ("--{" ++ l ++ "}" ++ line)))
+  where
+  line = replicate (80 - length l - 4) '-'
