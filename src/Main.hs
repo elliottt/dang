@@ -23,7 +23,7 @@ main  = runDang $ do
 
   m          <- loadModule file
   (iset,scm) <- scopeCheck m
-  kcm        <- kindCheckModule scm
+  kcm        <- kindCheckModule iset scm
 
   compile iset kcm (ofile file)
   unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
