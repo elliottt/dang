@@ -147,14 +147,14 @@ freshTParam p = do
 quantifyAll :: Type -> Forall Type
 quantifyAll ty = Forall ps (Types.apply s ty)
   where
-  vs          = Set.toList (typeVars ty)
+  (is,vs)     = unzip (Set.toList (typeVars ty))
   ps          = map fixKind vs
-  step v n p' = (v, TGen n p')
-  s           = Subst (zipWith3 step vs [0 ..] ps)
+  step i n p' = (i, TGen n p')
+  s           = Subst (zipWith3 step is [0 ..] ps)
 
 -- | Turn kind variables into stars.
 fixKind :: TParam -> TParam
 fixKind p = p { paramKind = Types.apply s k }
   where
   k = paramKind p
-  s = Subst [ (v,kstar) | v <- Set.toList (typeVars k) ]
+  s = Subst [ (i,kstar) | (i,_) <- Set.toList (typeVars k) ]

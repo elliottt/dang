@@ -15,7 +15,7 @@ import MonadLib (ExceptionM)
 import qualified Data.Set as Set
 
 
-newtype Subst = Subst { unSubst :: [(TParam,Type)] }
+newtype Subst = Subst { unSubst :: [(Index,Type)] }
     deriving (Show)
 
 instance Pretty Subst where
@@ -25,31 +25,31 @@ instance Pretty Subst where
 
 class Types a where
   apply    :: Subst -> a -> a
-  typeVars :: a -> Set.Set TParam
+  typeVars :: a -> Set.Set (Index,TParam)
 
 instance Types Type where
   apply s ty = case ty of
     TApp f x     -> TApp (apply s f) (apply s x)
     TInfix n l r -> TInfix n (apply s l) (apply s r)
-    TVar _ p     -> fromMaybe ty (lookupSubst p s)
+    TVar i _     -> fromMaybe ty (lookupSubst i s)
     TGen{}       -> ty
     TCon{}       -> ty
 
   typeVars ty = case ty of
     TApp f x     -> typeVars f `Set.union` typeVars x
     TInfix _ l r -> typeVars l `Set.union` typeVars r
-    TVar _ p     -> Set.singleton p
+    TVar i p     -> Set.singleton (i,p)
     TGen{}       -> Set.empty
     TCon{}       -> Set.empty
 
-lookupSubst :: TParam -> Subst -> Maybe Type
+lookupSubst :: Index -> Subst -> Maybe Type
 lookupSubst p (Subst u) = lookup p u
 
 emptySubst :: Subst
 emptySubst  = Subst []
 
 -- | Generate a singleton substitution.
-(+->) :: TParam -> Type -> Subst
+(+->) :: Index -> Type -> Subst
 v +-> ty = Subst [(v,ty)]
 
 -- | Compose two substitutions.
@@ -87,8 +87,8 @@ mgu a b = case (a,b) of
     return (sl @@ sr)
 
   -- variables
-  (TVar _ p, r) -> varBind p r
-  (l, TVar _ p) -> varBind p l
+  (TVar i p, r) -> varBind i p r
+  (l, TVar i p) -> varBind i p l
 
   -- constructors
   (TCon l, TCon r) | l == r -> return emptySubst
@@ -101,11 +101,11 @@ mgu a b = case (a,b) of
 -- | Generate a substitution that unifies a variable with a type.
 --
 -- XXX should this do a kind check in addition to an occurs check?
-varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
-varBind p ty
-  | isTVar ty                  = return emptySubst
-  | p `Set.member` typeVars ty = raiseE (UnifyOccursCheck p ty)
-  | otherwise                  = return (p +-> ty)
+varBind :: ExceptionM m SomeException => Index -> TParam -> Type -> m Subst
+varBind i p ty
+  | isTVar ty                      = return emptySubst
+  | (i,p) `Set.member` typeVars ty = raiseE (UnifyOccursCheck p ty)
+  | otherwise                      = return (i +-> ty)
 
 
 -- Instantiation ---------------------------------------------------------------
@@ -141,8 +141,8 @@ instance Instantiate Type where
 
 -- Quantification --------------------------------------------------------------
 
-quantify :: [TParam] -> Type -> Forall Type
-quantify ps ty = Forall vs (apply s ty)
+quantify :: [(Index,TParam)] -> Type -> Forall Type
+quantify ps ty = Forall (map snd vs) (apply s ty)
   where
   vs = [ v | v <- Set.toList (typeVars ty), v `elem` ps ]
-  s  = Subst (zipWith (\n p -> (p,TGen n p)) [0 ..] vs)
+  s  = Subst (zipWith (\n (i,p) -> (i,TGen n p)) [0 ..] vs)

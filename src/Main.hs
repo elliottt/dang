@@ -24,7 +24,8 @@ main  = runDang $ do
   m          <- loadModule file
   (iset,scm) <- scopeCheck m
   kcm        <- kindCheckModule iset scm
+  tcm        <- typeCheckModule iset kcm
 
-  compile iset kcm (ofile file)
+  compile iset tcm (ofile file)
   unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
   logStage "oh-snap"

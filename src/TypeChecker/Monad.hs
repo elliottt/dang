@@ -4,13 +4,16 @@
 
 module TypeChecker.Monad where
 
+import Dang.IO (logDebug)
 import Dang.Monad
 import Interface
+import Pretty (pretty)
 import QualName
 import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
+import Control.Arrow (second)
 import Control.Monad.Fix (MonadFix)
 import Data.Typeable (Typeable)
 import MonadLib
@@ -47,9 +50,17 @@ type Assumps = Map.Map QualName Type
 
 data RO = RO
   { roInterfaceSet :: InterfaceSet
-  , roTypeBindings :: Map.Map QualName Type
+  , roTypeBindings :: Map.Map QualName TypeBinding
   , roKindBindings :: Map.Map QualName Kind
   }
+
+data TypeBinding
+  = Quantified (Forall Type)
+  | TypeBinding Type
+
+bindingScheme :: TypeBinding -> Forall Type
+bindingScheme (Quantified scheme) = scheme
+bindingScheme (TypeBinding ty)    = Forall [] ty
 
 emptyRO :: InterfaceSet -> RO
 emptyRO iset = RO
@@ -71,18 +82,29 @@ roFindKind qn ro = fromISet `mplus` fromBinding
   fromISet    = lookupKind qn (roInterfaceSet ro)
   fromBinding = Map.lookup qn (roKindBindings ro)
 
-roBindType :: QualName -> Kind -> RO -> RO
-roBindType qn k ro = ro { roTypeBindings = Map.insert qn k (roTypeBindings ro) }
+roBindType :: QualName -> Type -> RO -> RO
+roBindType qn ty ro =
+  ro { roTypeBindings = Map.insert qn (TypeBinding ty) (roTypeBindings ro) }
 
 roBindTypes :: [(QualName,Type)] -> RO -> RO
-roBindTypes binds ro =
-  ro { roTypeBindings = Map.union (Map.fromList binds) (roTypeBindings ro) }
+roBindTypes ts ro =
+  ro { roTypeBindings = Map.union (Map.fromList (map (second TypeBinding) ts))
+                            (roTypeBindings ro) }
+
+roBindScheme :: QualName -> Forall Type -> RO -> RO
+roBindScheme qn scheme ro =
+  ro { roTypeBindings = Map.insert qn (Quantified scheme) (roTypeBindings ro) }
+
+roBindSchemes :: [(QualName,Forall Type)] -> RO -> RO
+roBindSchemes ts ro =
+  ro { roTypeBindings = Map.union (Map.fromList (map (second Quantified) ts))
+                            (roTypeBindings ro) }
 
 roFindScheme :: QualName -> RO -> Maybe (Forall Type)
 roFindScheme qn ro = fromISet `mplus` fromBinding
   where
   fromISet    = funType `fmap` lookupFunSymbol qn (roInterfaceSet ro)
-  fromBinding = Forall [] `fmap` Map.lookup qn (roTypeBindings ro)
+  fromBinding = bindingScheme `fmap` Map.lookup qn (roTypeBindings ro)
 
 
 -- Primitive Operations --------------------------------------------------------
@@ -118,12 +140,22 @@ withVarIndex i' m = do
   TC (set rw { rwIndex = rwIndex rw })
   return a
 
+nextIndex :: TC Int
+nextIndex  = do
+  rw <- TC get
+  TC (set rw { rwIndex = rwIndex rw + 1 })
+  return (rwIndex rw)
+
 -- | Generate fresh type variables, with the given kind.
 freshVar :: Kind -> TC Type
 freshVar k = do
-  rw <- TC get
-  TC (set rw { rwIndex = rwIndex rw + 1 })
-  return (TVar (rwIndex rw) (TParam "" k))
+  ix <- nextIndex
+  return (TVar ix (TParam ('t':show ix) k))
+
+freshVarFromTParam :: TParam -> TC Type
+freshVarFromTParam p = do
+  ix <- nextIndex
+  return (TVar ix p)
 
 data UnboundIdentifier = UnboundIdentifier QualName
     deriving (Show,Typeable)
@@ -155,10 +187,16 @@ addKindBinding :: QualName -> Kind -> TC a -> TC a
 addKindBinding qn k = modifyRO (roBindKind qn k)
 
 addKindBindings :: [(QualName,Kind)] -> TC a -> TC a
-addKindBindings binds = modifyRO (roBindKinds binds)
+addKindBindings  = modifyRO . roBindKinds
 
 addTypeBinding :: QualName -> Type -> TC a -> TC a
 addTypeBinding qn ty = modifyRO (roBindType qn ty)
 
 addTypeBindings :: [(QualName,Type)] -> TC a -> TC a
-addTypeBindings binds = modifyRO (roBindTypes binds)
+addTypeBindings  = modifyRO . roBindTypes
+
+addSchemeBinding :: QualName -> Forall Type -> TC a -> TC a
+addSchemeBinding qn scheme = modifyRO (roBindScheme qn scheme)
+
+addSchemeBindings :: [(QualName, Forall Type)] -> TC a -> TC a
+addSchemeBindings  = modifyRO . roBindSchemes
