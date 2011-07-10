@@ -12,4 +12,3 @@ instance FreeVars a => FreeVars (Maybe a) where
 
 instance FreeVars a => FreeVars [a] where
   freeVars = Set.unions . map freeVars
-
