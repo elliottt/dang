@@ -13,7 +13,7 @@ import Dang.Monad
 import Interface
 import Pretty
 import QualName
-import Syntax.AST hiding (declNames)
+import Syntax.AST
 import TypeChecker.Types
 import qualified Data.ClashMap as CM
 
@@ -23,7 +23,6 @@ import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Foldable as F
 import qualified Data.Set as Set
-import qualified Data.Traversable as T
 
 
 -- Scope Checking Monad --------------------------------------------------------
@@ -115,19 +114,22 @@ instance Imports a => Imports [a] where
   imports = Set.unions . map imports
 
 instance Imports Module where
-  imports m = imports (modDecls m)
+  imports m = imports (modTyped m) `Set.union` imports (modUntyped m)
 
-instance Imports Decl where
-  imports d = imports (declBody d)
+instance Imports TypedDecl where
+  imports = imports . typedBody
+
+instance Imports UntypedDecl where
+  imports = imports . untypedBody
 
 instance Imports Term where
-  imports (Abs _ b)   = imports b
-  imports (Let ds b)  = imports ds `Set.union` imports b
-  imports (App f xs)  = imports f `Set.union` imports xs
-  imports (Local _)   = Set.empty
-  imports (Global qn) = maybe Set.empty Set.singleton (qualModule qn)
-  imports (Prim _)    = Set.empty
-  imports (Lit l)     = imports l
+  imports (Abs _ b)     = imports b
+  imports (Let ts us b) = Set.unions [imports ts, imports us, imports b]
+  imports (App f xs)    = imports f `Set.union` imports xs
+  imports (Local _)     = Set.empty
+  imports (Global qn)   = maybe Set.empty Set.singleton (qualModule qn)
+  imports (Prim _)      = Set.empty
+  imports (Lit l)       = imports l
 
 instance Imports Literal where
   imports (LInt _) = Set.empty
@@ -158,7 +160,10 @@ definedNames :: Module -> ResolvedNames
 definedNames m = CM.fromList
                $ concatMap primTypeNames (modPrimTypes m)
               ++ concatMap primTermNames (modPrimTerms m)
-              ++ concatMap (declNames (modNamespace m)) (modDecls m)
+              ++ concatMap (typedNames ns) (modTyped m)
+              ++ concatMap (untypedNames ns) (modUntyped m)
+  where
+  ns = modNamespace m
 
 -- | Extract the simple and qualified names that a declaration introduces.
 declResolvedNames :: (a -> Name) -> (Name -> QualName)
@@ -169,9 +174,12 @@ declResolvedNames simple qualify d = [ (simpleName n, res), (qn, res) ]
   qn  = qualify n
   res = Resolved qn
 
--- | The resolved names from a single declaration.
-declNames :: Namespace -> Decl -> [(QualName,Resolved)]
-declNames ns = declResolvedNames declName (qualName ns)
+-- | The resolved names from a single typed declaration.
+typedNames :: Namespace -> TypedDecl -> [(QualName,Resolved)]
+typedNames ns = declResolvedNames typedName (qualName ns)
+
+untypedNames :: Namespace -> UntypedDecl -> [(QualName,Resolved)]
+untypedNames ns = declResolvedNames untypedName (qualName ns)
 
 -- | The resolved names form a single primitive type declaration.
 primTypeNames :: PrimType -> [(QualName,Resolved)]
@@ -302,10 +310,12 @@ scopeCheck m = do
 scopeCheckModule :: Module -> Scope Module
 scopeCheckModule m = do
   pts <- mapM scopeCheckPrimTerm (modPrimTerms m)
-  ds  <- mapM scopeCheckDecl (modDecls m)
+  ts  <- mapM scopeCheckTypedDecl (modTyped m)
+  us  <- mapM scopeCheckUntypedDecl (modUntyped m)
   return m
     { modPrimTerms = pts
-    , modDecls     = ds
+    , modTyped     = ts
+    , modUntyped   = us
     }
 
 -- | Register variables as bound for the computation that is passed.
@@ -316,14 +326,20 @@ bindVars vs m = do
   local (ro { roNames = mergeResolvedNames locals (roNames ro) }) m
 
 -- | Check all identifiers used in a declaration.
-scopeCheckDecl :: Decl -> Scope Decl
-scopeCheckDecl d = bindVars (declVars d) $ do
-  qt <- T.sequenceA (scopeCheckForall `fmap` declType d)
-  b  <- scopeCheckTerm (declBody d)
+scopeCheckTypedDecl :: TypedDecl -> Scope TypedDecl
+scopeCheckTypedDecl d = bindVars (typedVars d) $ do
+  qt <- scopeCheckForall (typedType d)
+  b  <- scopeCheckTerm   (typedBody d)
   return d
-    { declBody = b
-    , declType = qt
+    { typedType = qt
+    , typedBody = b
     }
+
+-- | Check all identifiers used in a declaration.
+scopeCheckUntypedDecl :: UntypedDecl -> Scope UntypedDecl
+scopeCheckUntypedDecl d = bindVars (untypedVars d) $ do
+  b  <- scopeCheckTerm (untypedBody d)
+  return d { untypedBody = b }
 
 -- | Check the type associated with a primitive term.
 scopeCheckPrimTerm :: PrimTerm -> Scope PrimTerm
@@ -334,14 +350,16 @@ scopeCheckPrimTerm pt = do
 -- | Check all identifiers used in a term.
 scopeCheckTerm :: Term -> Scope Term
 scopeCheckTerm t = case t of
-  Lit _    -> return t
-  Prim _   -> return t
-  Abs vs b -> Abs vs `fmap` bindVars vs (scopeCheckTerm b)
-  Let ds b -> bindVars (map declName ds)
-       (Let `fmap` mapM scopeCheckDecl ds `ap` scopeCheckTerm b)
-  App f xs -> App `fmap` scopeCheckTerm f `ap` mapM scopeCheckTerm xs
-  Global n -> resolveTerm n
-  Local n  -> resolveTerm (simpleName n) -- the parser doesn't parse these
+  Lit _       -> return t
+  Prim _      -> return t
+  Abs vs b    -> Abs vs <$> bindVars vs (scopeCheckTerm b)
+  Let ts us b -> bindVars (letBinds ts us)
+               $ Let <$> mapM scopeCheckTypedDecl ts
+                     <*> mapM scopeCheckUntypedDecl us
+                     <*> scopeCheckTerm b
+  App f xs    -> App <$> scopeCheckTerm f <*> mapM scopeCheckTerm xs
+  Global n    -> resolveTerm n
+  Local n     -> resolveTerm (simpleName n) -- the parser doesn't parse these
 
 -- | Check the underlying type in a quantified type.
 scopeCheckForall :: Forall Type -> Scope (Forall Type)
@@ -350,12 +368,12 @@ scopeCheckForall (Forall ps ty) = Forall ps `fmap` scopeCheckType ty
 -- | Check all identifiers used in a type.
 scopeCheckType :: Type -> Scope Type
 scopeCheckType ty = case ty of
-  TApp l r -> TApp `fmap` scopeCheckType l `ap` scopeCheckType r
+  TApp l r -> TApp <$> scopeCheckType l <*> scopeCheckType r
 
   TInfix n l r ->
-    TInfix `fmap` resolveType n `ap` scopeCheckType l `ap` scopeCheckType r
+    TInfix <$> resolveType n <*> scopeCheckType l <*> scopeCheckType r
 
-  TCon n -> TCon `fmap` resolveType n
+  TCon n -> TCon <$> resolveType n
 
   TVar{} -> return ty
   TGen{} -> return ty
