@@ -134,8 +134,8 @@ subst args n = do
     Just t  -> return t
     Nothing -> raiseLL ("Unbound variable: " ++ n)
 
-extendVars :: [AST.Var] -> AST.Decl -> AST.Decl
-extendVars vs d = d { AST.declVars = vs ++ AST.declVars d }
+extendTypedDeclVars :: [AST.Var] -> AST.TypedDecl -> AST.TypedDecl
+extendTypedDeclVars vs d = d { AST.typedVars = vs ++ AST.typedVars d }
 
 bindVars :: Set.Set QualName -> LL a -> LL a
 bindVars vs m = do
@@ -220,64 +220,65 @@ apply f xs = Apply f xs
 llModule :: AST.Module -> LL [Decl]
 llModule m = namespace (AST.modNamespace m) $ introSymbols ds $ llDecls ds
   where
-  ds = AST.modDecls m
+  ds = AST.modTyped m
 
 isPrivate :: Export -> Bool
 isPrivate Private = True
 isPrivate _       = False
 
-introSymbols :: [AST.Decl] -> LL a -> LL a
+introSymbols :: [AST.TypedDecl] -> LL a -> LL a
 introSymbols ds m = do
   ro <- ask
-  let term d = Symbol (qualName (roContext ro) (AST.declName d))
-      qs' = Map.fromList [ (AST.declName d, term d) | d <- ds ]
+  let term d = Symbol (qualName (roContext ro) (AST.typedName d))
+      qs' = Map.fromList [ (AST.typedName d, term d) | d <- ds ]
   local (ro { roSubst = Map.union qs' (roSubst ro) }) m
 
 -- | Lambda-lift a group of declarations, checking recursive declarations in a
 -- group.
-llDecls :: [AST.Decl] -> LL [Decl]
+llDecls :: [AST.TypedDecl] -> LL [Decl]
 llDecls ds = do
   ns <- prefix
-  let names               = Set.fromList (map (qualName ns) (AST.declNames ds))
+  let names               = Set.fromList (map (qualName ns . AST.typedName) ds)
       step (AcyclicSCC d) = bindVars names (createClosure [d])
       step (CyclicSCC rs) = bindVars names (createClosure rs)
-  concat `fmap` mapM step (AST.sccDecls ns ds)
+  concat `fmap` mapM step (AST.sccTypedDecls ns ds)
 
 -- | Rewrite references to declared names with applications that fill in its
 -- free variables.  Augment the variables list for each declaration to include
 -- the free variables. Descend, and lambda-lift each declaration individually.
 -- It's OK to extend the arguments here, as top-level functions won't have free
 -- variables.
-createClosure :: [AST.Decl] -> LL [Decl]
+createClosure :: [AST.TypedDecl] -> LL [Decl]
 createClosure ds = do
   ro <- LL ask
   let names = roVars ro
   let fvs   = freeVars ds Set.\\ names
   let fvl   = map qualSymbol (Set.toList fvs)
-  rewriteFreeVars fvl ds $ bindVars fvs (mapM (llDecl . extendVars fvl) ds)
+  rewriteFreeVars fvl ds
+    (bindVars fvs (mapM (llTypedDecl . extendTypedDeclVars fvl) ds))
 
 -- | Generate a mapping from the old symbol a declaration binds to an expression
 -- that applies the free variables of that symbol.  One key assumption made here
 -- is that free variables are always coming from the scope of the enclosing
 -- function.
-rewriteFreeVars :: [AST.Var] -> [AST.Decl] -> LL a -> LL a
+rewriteFreeVars :: [AST.Var] -> [AST.TypedDecl] -> LL a -> LL a
 rewriteFreeVars fvs ds m = do
   ps <- prefix
-  let term d = Symbol (qualName ps (AST.declName d))
-  extend [ (AST.declName d, apply t args) | d <- ds, let t = term d ] m
+  let term d = Symbol (qualName ps (AST.typedName d))
+  extend [ (AST.typedName d, apply t args) | d <- ds, let t = term d ] m
   where
   args = zipWith (const . Argument) [0 ..] fvs
 
 -- | Lambda lift the body of a declaration.  Assume that all modifications to
 -- the free variables have been performed already.
-llDecl :: AST.Decl -> LL Decl
-llDecl d = do
-  let args = AST.declVars d
-  b' <- llTerm args (AST.declBody d)
+llTypedDecl :: AST.TypedDecl -> LL Decl
+llTypedDecl d = do
+  let args = AST.typedVars d
+  b' <- llTerm args (AST.typedBody d)
   ps <- prefix
-  let ex = AST.declExport d
-  let name | null args && isPrivate ex = simpleName  (AST.declName d)
-           | otherwise                 = qualName ps (AST.declName d)
+  let ex = AST.typedExport d
+  let name | null args && isPrivate ex = simpleName  (AST.typedName d)
+           | otherwise                 = qualName ps (AST.typedName d)
   return Decl
     { declExport = ex
     , declName   = name
@@ -296,7 +297,7 @@ llLetDecl d = LetDecl
   n   = declName d
   sym = qualSymbol n
 
-llLetDecls :: [AST.Decl] -> ([LetDecl] -> LL a) -> LL a
+llLetDecls :: [AST.TypedDecl] -> ([LetDecl] -> LL a) -> LL a
 llLetDecls ds k = do
   ds' <- llDecls ds
   let (as,bs) = partition hasArguments ds'
@@ -314,17 +315,18 @@ llLetDecls ds k = do
 llTerm :: [AST.Var] -> AST.Term -> LL Term
 llTerm args t =
   case t of
-    AST.Abs{}    -> raiseLL "llTerm: unexpected Abs"
-    AST.Prim n   -> llPrim args n []
-    AST.App f xs -> llApp args f xs
-    AST.Local n  -> subst args n
-    AST.Global n -> return (Symbol n)
-    AST.Lit l    -> return (Lit l)
-    AST.Let ds e -> llLetDecls ds $ \ls -> do
+    AST.Abs{}       -> raiseLL "llTerm: unexpected Abs"
+    AST.Prim n      -> llPrim args n []
+    AST.App f xs    -> llApp args f xs
+    AST.Local n     -> subst args n
+    AST.Global n    -> return (Symbol n)
+    AST.Lit l       -> return (Lit l)
+    AST.Let ts [] e -> llLetDecls ts $ \ls -> do
       e' <- llTerm args e
       if null ls
          then return e'
          else return (Let ls e')
+    AST.Let _  _  _ -> raiseLL "llTerm: unexpected untyped declarations"
 
 llApp :: [AST.Var] -> AST.Term -> [AST.Term] -> LL Term
 llApp args t xs =
