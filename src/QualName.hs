@@ -11,7 +11,6 @@ import Data.Char (isSpace)
 import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
 import Data.Typeable (Typeable)
 import Numeric (showHex)
-import qualified Data.Set as Set
 
 
 type Name = String
@@ -95,12 +94,3 @@ qualNamespace (PrimName _)    = []
 changeNamespace :: Namespace -> QualName -> QualName
 changeNamespace ps (QualName _ n) = QualName ps n
 changeNamespace _  qn@PrimName{}  = qn
-
-class Names a where
-  identifiers :: a -> Set.Set QualName
-
-instance Names a => Names (Maybe a) where
-  identifiers = maybe Set.empty identifiers
-
-instance Names a => Names [a] where
-  identifiers = Set.unions . map identifiers
