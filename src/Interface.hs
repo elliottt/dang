@@ -38,7 +38,6 @@ import Syntax.AST
 import TypeChecker.Types
 
 import Control.Applicative ((<$>),(<*>))
-import Data.Maybe (fromJust)
 import Data.Serialize
     (Get,Putter,get,put,getWord8,putWord8,getMapOf,putMapOf,runPut,runGet)
 import Data.Word (Word8)
@@ -118,10 +117,12 @@ moduleInterface m = Interface
   where
   ns = qualNamespace (modName m)
 
+-- | There should be no untyped declarations left at this point, so the untyped
+-- declarations are not used when generating an interface.
 mkIFaceTypes :: Namespace -> Module -> IFaceTypes
 mkIFaceTypes ns m = Map.fromList
                   $ map mkPrimTermFunSymbol (modPrimTerms m)
-                 ++ map (mkDeclFunSymbol ns) (modDecls m)
+                 ++ map (mkTypedDeclFunSymbol ns) (modTyped m)
 
 mkPrimTermFunSymbol :: PrimTerm -> (QualName,FunSymbol)
 mkPrimTermFunSymbol pt = (qn,sym)
@@ -132,13 +133,13 @@ mkPrimTermFunSymbol pt = (qn,sym)
     , funType = primTermType pt
     }
 
-mkDeclFunSymbol :: Namespace -> Decl -> (QualName,FunSymbol)
-mkDeclFunSymbol ns d = (qn, sym)
+mkTypedDeclFunSymbol :: Namespace -> TypedDecl -> (QualName,FunSymbol)
+mkTypedDeclFunSymbol ns d = (qn, sym)
   where
-  qn  = qualName ns (declName d)
+  qn  = qualName ns (typedName d)
   sym = FunSymbol
     { funName = mangle qn
-    , funType = fromJust (declType d) -- dangerous!
+    , funType = typedType d
     }
 
 mkIFaceKinds :: Namespace -> Module -> IFaceKinds
