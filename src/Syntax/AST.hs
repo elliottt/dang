@@ -92,6 +92,16 @@ instance Pretty TypedDecl where
 typedBinds :: TypedDecl -> [Var]
 typedBinds d = typedName d : typedVars d
 
+-- | Create a typed declaration from an untyped one.
+mkTypedDecl :: UntypedDecl -> Forall Type -> TypedDecl
+mkTypedDecl u ty = TypedDecl
+  { typedExport = untypedExport u
+  , typedType   = ty
+  , typedName   = untypedName u
+  , typedVars   = untypedVars u
+  , typedBody   = untypedBody u
+  }
+
 sccTypedDecls :: Namespace -> [TypedDecl] -> [SCC TypedDecl]
 sccTypedDecls ns = stronglyConnComp . typedDeclsFvGraph ns
 

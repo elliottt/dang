@@ -12,7 +12,6 @@ import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
 import Data.Int (Int64)
-import Data.Maybe (isNothing)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
@@ -148,19 +147,9 @@ testParser p str = runParser "<interactive>" (UTF8.fromString str) p
 
 type NameMap = CM.ClashMap Name
 
--- | Merge type and term declarations, when appropriate.
-resolveTypes :: Strategy (Either (Forall Type) Decl)
-resolveTypes a b = case (a,b) of
-  (Right d, Left t) -> d `tryType` t
-  (Left t, Right d) -> d `tryType` t
-  _                 -> clash a b
-  where
-  tryType d t | isNothing (declType d) = ok (Right (d { declType = Just t }))
-              | otherwise              = clash a b
-
 -- | A collection of parsed declarations.  Loosely, this is a module.
 data PDecls = PDecls
-  { parsedDecls     :: NameMap (Either (Forall Type) Decl)
+  { parsedPDecls    :: NameMap PDecl
   , parsedOpens     :: [Open]
   , parsedPrimTerms :: NameMap PrimTerm
   , parsedPrimTypes :: NameMap PrimType
@@ -168,37 +157,70 @@ data PDecls = PDecls
 
 emptyPDecls :: PDecls
 emptyPDecls  = PDecls
-  { parsedDecls     = CM.empty
+  { parsedPDecls    = CM.empty
   , parsedOpens     = []
   , parsedPrimTerms = CM.empty
   , parsedPrimTypes = CM.empty
   }
 
-mkDecl :: Decl -> PDecls
-mkDecl d = emptyPDecls { parsedDecls = singleton (declName d) (Right d) }
+-- | Merge two sets of parsed declarations.
+combinePDecls :: PDecls -> PDecls -> PDecls
+combinePDecls ds1 ds2 = PDecls
+  { parsedPDecls    = merge resolveTypes parsedPDecls
+  , parsedOpens     = parsedOpens ds1 ++ parsedOpens ds2
+  , parsedPrimTerms = merge clash parsedPrimTerms
+  , parsedPrimTypes = merge clash parsedPrimTypes
+  }
+  where
+  merge strat prj = CM.unionWith strat (prj ds1) (prj ds2)
 
+-- | Term declarations can be in three stages during parsing: just a body, just
+-- a type, or both a type and a term.  This type captures those states.
+data PDecl
+  = DeclTerm UntypedDecl
+  | DeclType (Forall Type)
+  | DeclTyped TypedDecl
+    deriving (Show)
+
+-- | Merge type and untyped declarations into a typed declaration, otherwise
+-- generate a name clash.
+resolveTypes :: Strategy PDecl
+resolveTypes a b = case (a,b) of
+  (DeclTerm u, DeclType ty) -> ok (DeclTyped (mkTypedDecl u ty))
+  (DeclType ty, DeclTerm u) -> ok (DeclTyped (mkTypedDecl u ty))
+  _                         -> clash a b
+
+
+-- | Generate a term declaration that's lacking a type binding.
+mkUntyped :: UntypedDecl -> PDecls
+mkUntyped d =
+  emptyPDecls { parsedPDecls = singleton (untypedName d) (DeclTerm d) }
+
+-- | Generate a declaration of a type for a term.
 mkTypeDecl :: Name -> Forall Type -> PDecls
-mkTypeDecl n t = emptyPDecls { parsedDecls = singleton n (Left t) }
+mkTypeDecl n t = emptyPDecls { parsedPDecls = singleton n (DeclType t) }
 
+-- | Quantify all free variables in a parsed type.
 mkForall :: Type -> Forall Type
 mkForall ty = quantify (Set.toList (typeVars ty)) ty
 
-addDecl :: Decl -> PDecls -> PDecls
+addDecl :: UntypedDecl -> PDecls -> PDecls
 addDecl d ds = ds
-  { parsedDecls = CM.insertWith resolveTypes (declName d) (Right d)
-      (parsedDecls ds)
+  { parsedPDecls = CM.insertWith resolveTypes (untypedName d) (DeclTerm d)
+      (parsedPDecls ds)
   }
 
-mkDecls :: [Decl] -> PDecls
-mkDecls ds = emptyPDecls { parsedDecls = foldl step CM.empty ds }
+mkDecls :: [UntypedDecl] -> PDecls
+mkDecls ds = emptyPDecls { parsedPDecls = foldl step CM.empty ds }
   where
-  step m d = CM.insertWith resolveTypes (declName d) (Right d) m
+  step m d = CM.insertWith resolveTypes (untypedName d) (DeclTerm d) m
 
 exportBlock :: Export -> PDecls -> PDecls
-exportBlock ex pds = pds { parsedDecls = f `fmap` parsedDecls pds }
+exportBlock ex pds = pds { parsedPDecls = f `fmap` parsedPDecls pds }
   where
-  f (Right d) = Right d { declExport = ex }
-  f e         = e
+  f (DeclTerm d)  = DeclTerm d { untypedExport = ex }
+  f (DeclTyped d) = DeclTyped d { typedExport = ex }
+  f e             = e
 
 mkOpen :: Open -> PDecls
 mkOpen o = emptyPDecls { parsedOpens = [o] }
@@ -209,17 +231,6 @@ mkPrimTerm d = emptyPDecls { parsedPrimTerms = singleton (primTermName d) d }
 mkPrimType :: PrimType -> PDecls
 mkPrimType d = emptyPDecls { parsedPrimTypes = singleton (primTypeName d) d }
 
--- | Merge two sets of parsed declarations.
-combinePDecls :: PDecls -> PDecls -> PDecls
-combinePDecls ds1 ds2 = PDecls
-  { parsedDecls     = merge resolveTypes parsedDecls
-  , parsedOpens     = parsedOpens ds1 ++ parsedOpens ds2
-  , parsedPrimTerms = merge clash parsedPrimTerms
-  , parsedPrimTypes = merge clash parsedPrimTypes
-  }
-  where
-  merge strat prj = CM.unionWith strat (prj ds1) (prj ds2)
-
 resolveNamed :: NameMap a -> Parser [a]
 resolveNamed nm = do
   let (oks,clashes) = CM.foldClashMap step ([],[]) nm
@@ -229,26 +240,28 @@ resolveNamed nm = do
   put clashes
   return oks
 
-processBindings :: NameMap (Either (Forall Type) Decl) -> Parser [Decl]
+processBindings :: NameMap PDecl -> Parser ([TypedDecl],[UntypedDecl])
 processBindings ds = do
-  let (oks,clashes) = CM.foldClashMap step ([],[]) ds
-      step n c (as,bs) = case clashElems c of
-        [Right a] -> (a:as,bs)
-        [Left _t] -> (as,NoBinding n:bs)
-        _es       -> (as,MultipleDefs n:bs)
+  let (typed,untyped,clashes) = CM.foldClashMap step ([],[],[]) ds
+      step n c (ts,us,bs) = case clashElems c of
+        [DeclTyped t]  -> (t:ts,us,bs)
+        [DeclTerm u]   -> (ts,u:us,bs)
+        [DeclType _ty] -> (ts,us,NoBinding n:bs)
+        _es            -> (ts,us,MultipleDefs n:bs)
   put clashes
-  return oks
+  return (typed,untyped)
 
 -- | Make a module from a set of parsed declarations, and a name.
 mkModule :: QualName -> PDecls -> Parser Module
 mkModule qn pds = do
-  ds  <- processBindings (parsedDecls pds)
-  tms <- resolveNamed (parsedPrimTerms pds)
-  tys <- resolveNamed (parsedPrimTypes pds)
+  (ts,us) <- processBindings (parsedPDecls pds)
+  tms     <- resolveNamed (parsedPrimTerms pds)
+  tys     <- resolveNamed (parsedPrimTypes pds)
   return Module
     { modName      = qn
     , modOpens     = parsedOpens pds
-    , modDecls     = ds
+    , modTyped     = ts
+    , modUntyped   = us
     , modPrimTerms = tms
     , modPrimTypes = tys
     }

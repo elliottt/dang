@@ -97,7 +97,7 @@ top_decls :: { PDecls }
   | private_decls               { $1 }
 
 top_decl :: { PDecls }
-  : top_fun_bind { mkDecl $1 }
+  : top_fun_bind { mkUntyped $1 }
   | type_bind    { $1 }
   | open         { mkOpen $1 }
   | primitive    { $1 }
@@ -118,7 +118,7 @@ private_decls :: { PDecls }
 binds :: { PDecls }
   : binds ';' fun_bind  { addDecl $3 $1 }
   | binds ';' type_bind { combinePDecls $3 $1 }
-  | fun_bind            { mkDecl $1 }
+  | fun_bind            { mkUntyped $1 }
   | type_bind           { $1 }
 
 qual_name_prefix :: { [Name] }
@@ -126,55 +126,52 @@ qual_name_prefix :: { [Name] }
   | CONIDENT                      { [$1] }
 
 -- By default, everything is set to be exported as public.
-top_fun_bind :: { Decl }
-  : 'public'  fun_bind { $2 { declExport = Public } }
-  | 'private' fun_bind { $2 { declExport = Private } }
-  |           fun_bind { $1 { declExport = Public } }
+top_fun_bind :: { UntypedDecl }
+  : 'public'  fun_bind { $2 { untypedExport = Public } }
+  | 'private' fun_bind { $2 { untypedExport = Private } }
+  |           fun_bind { $1 { untypedExport = Public } }
 
 type_bind :: { PDecls }
-  : IDENT '::' qual_type { mkTypeDecl $1 $3 }
+: IDENT '::' qual_type { mkTypeDecl $1 $3 }
 
-fun_bind :: { Decl }
-  : IDENT arg_list '=' exp { Decl Private Nothing $1 (reverse $2) $4 }
+fun_bind :: { UntypedDecl }
+: IDENT arg_list '=' exp { UntypedDecl Private $1 (reverse $2) $4 }
 
 open :: { Open }
-  : 'open' mod_name open_body { $3 $2 }
+: 'open' mod_name open_body { $3 $2 }
 
 open_body :: { QualName -> Open }
-  : 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
-  | open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
+: 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
+| open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
 
 open_tail :: { (Bool,[Name]) }
-  : {- empty -}                { (True, []) }
-  | '(' mod_names ')'          { (False, $2) }
-  | 'hiding' '(' mod_names ')' { (True, $3) }
+: {- empty -}                { (True, []) }
+| '(' mod_names ')'          { (False, $2) }
+| 'hiding' '(' mod_names ')' { (True, $3) }
 
 mod_names :: { [Name] }
-  : IDENT               { [$1] }
-  | mod_names ',' IDENT { $3:$1 }
+: IDENT               { [$1] }
+| mod_names ',' IDENT { $3:$1 }
 
 arg_list :: { [String] }
-  : arg_list IDENT { $2 : $1 }
-  | {- empty -}    { [] }
+: arg_list IDENT { $2 : $1 }
+| {- empty -}    { [] }
 
 
 -- Terms -----------------------------------------------------------------------
 
 exp :: { Term }
-  : '\\' abs_args '->' lexp { Abs (reverse $2) $4 }
-  | lexp                    { $1 }
+: '\\' abs_args '->' lexp { Abs (reverse $2) $4 }
+| lexp                    { $1 }
 
 abs_args :: { [String] }
-  : abs_args IDENT { $2 : $1 }
-  | IDENT          { [$1] }
+: abs_args IDENT { $2 : $1 }
+| IDENT          { [$1] }
 
 lexp :: { Term }
-  : 'let' '{' let_binds '}' 'in' fexp { Let (reverse $3) $6 }
-  | fexp                              { $1 }
-
-let_binds :: { [Decl] }
-  : let_binds ';' fun_bind { $3:$1 }
-  | fun_bind               { [$1]  }
+: 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
+                                    processBindings (parsedPDecls $3) }
+| fexp                          { $1 }
 
 fexp :: { Term }
   : aexp aexp_list { apply $1 (reverse $2) }
