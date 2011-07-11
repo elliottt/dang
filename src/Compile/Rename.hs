@@ -116,16 +116,6 @@ renameModule m = do
   ts' <- mapM renameTypedDecl (modTyped m)
   return m { modTyped = ts' }
 
-{-
--- | Introduce term variable mappings between unqualified and qualified versions
--- of the same name.
-fullyQualify :: Monad m => Namespace -> [TypedDecl] -> Rename m a -> Rename m a
-fullyQualify ps ds m = do
-  ro <- ask
-  let step i d = addSubst (typedName d) (qualName ps (typedName d)) i
-  local (foldl step ro ds) m
-  -}
-
 -- | Rename a declaration, assuming a fresh name is already in the environment.
 renameTypedDecl :: Monad m => TypedDecl -> Rename m TypedDecl
 renameTypedDecl d = do
