@@ -11,7 +11,6 @@ import TypeChecker.Unify as Types
 
 import Control.Applicative ((<$>),(<*>))
 import Data.Typeable (Typeable)
-import qualified Data.Traversable as T
 import qualified Data.Set as Set
 
 
@@ -36,12 +35,14 @@ kindError  = raiseE . KindError
 kcModule :: Module -> TC Module
 kcModule m = addKindBindings (map primTypeBinding (modPrimTypes m)) $ do
 
-  pts'   <- mapM kcPrimTerm (modPrimTerms m)
-  decls' <- mapM kcDecl (modDecls m)
+  pts' <- mapM kcPrimTerm (modPrimTerms m)
+  ts'  <- mapM kcTypedDecl (modTyped m)
+  us'  <- mapM kcUntypedDecl (modUntyped m)
 
   return m
     { modPrimTerms = pts'
-    , modDecls     = decls'
+    , modTyped     = ts'
+    , modUntyped   = us'
     }
 
 primTypeBinding :: PrimType -> (QualName,Kind)
@@ -56,11 +57,21 @@ kcPrimTerm pt = do
 
 -- | Check the kind of the type of a declaration, then the kinds of any type
 -- usages inside the term structure.
-kcDecl :: Decl -> TC Decl
-kcDecl d = do
-  qt <- T.sequenceA (kcTypeSig `fmap` declType d)
-  b  <- kcTerm (declBody d)
-  return d { declType = qt, declBody = b }
+kcTypedDecl :: TypedDecl -> TC TypedDecl
+kcTypedDecl d = do
+  qt <- kcTypeSig (typedType d)
+  b  <- kcTerm (typedBody d)
+  return d
+    { typedType = qt
+    , typedBody = b
+    }
+
+-- | Check the kinds of any types used within the body of an untyped
+-- declaration.
+kcUntypedDecl :: UntypedDecl -> TC UntypedDecl
+kcUntypedDecl d = do
+  b <- kcTerm (untypedBody d)
+  return d { untypedBody = b }
 
 -- | Introduce kind variables for all type variables, and kind check a type
 -- signature.
@@ -73,13 +84,14 @@ kcTypeSig qt = introType qt $ \ ty -> do
 -- | Check the kind structure of any types that show up in terms.
 kcTerm :: Term -> TC Term
 kcTerm tm = case tm of
-  Abs vs b -> Abs vs <$> kcTerm b
-  Let ds b -> Let    <$> mapM kcDecl ds <*> kcTerm b
-  App f xs -> App    <$> kcTerm f       <*> mapM kcTerm xs
-  Local{}  -> return tm
-  Global{} -> return tm
-  Lit{}    -> return tm
-  Prim{}   -> return tm
+  Abs vs b    -> Abs vs <$> kcTerm b
+  Let ts us b -> Let    <$> mapM kcTypedDecl ts <*> mapM kcUntypedDecl us
+                        <*> kcTerm b
+  App f xs    -> App    <$> kcTerm f <*> mapM kcTerm xs
+  Local{}     -> return tm
+  Global{}    -> return tm
+  Lit{}       -> return tm
+  Prim{}      -> return tm
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
 inferKind :: Type -> TC (Kind,Type)
