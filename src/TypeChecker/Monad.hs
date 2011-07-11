@@ -4,10 +4,8 @@
 
 module TypeChecker.Monad where
 
-import Dang.IO (logDebug)
 import Dang.Monad
 import Interface
-import Pretty (pretty)
 import QualName
 import TypeChecker.Types
 import TypeChecker.Unify
@@ -173,9 +171,11 @@ findKind :: QualName -> TC Kind
 findKind  = applySubst <=< lookupRO roFindKind
 
 findType :: QualName -> TC Type
-findType qn = do
-  Forall ps ty <- lookupRO roFindScheme qn
-  vars         <- mapM (freshVar . paramKind) ps
+findType qn = freshInst =<< lookupRO roFindScheme qn
+
+freshInst :: Forall Type -> TC Type
+freshInst (Forall ps ty) = do
+  vars <- mapM freshVarFromTParam ps
   applySubst =<< inst vars ty
 
 modifyRO :: (RO -> RO) -> TC a -> TC a

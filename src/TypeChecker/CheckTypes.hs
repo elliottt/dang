@@ -2,8 +2,6 @@
 
 module TypeChecker.CheckTypes where
 
-import Dang.IO
-import Pretty (pretty)
 import QualName
 import Syntax.AST
 import TypeChecker.Monad
@@ -12,7 +10,6 @@ import TypeChecker.Unify
 
 import Control.Arrow (second)
 import Control.Monad (mapAndUnzipM)
-import qualified Data.Set as Set
 
 
 -- Variable Utilities ----------------------------------------------------------
@@ -27,56 +24,47 @@ fullyInst (Forall ps ty) = do
   vars <- mapM freshVarFromTParam ps
   inst vars ty
 
-introDecl :: Namespace -> Decl -> TC (QualName,Type)
-introDecl ns d = do
+introUntypedDecl :: Namespace -> UntypedDecl -> TC (QualName,Type)
+introUntypedDecl ns u = do
   ty <- freshVar kstar
-  return (qualName ns (declName d), ty)
+  return (qualName ns (untypedName u), ty)
 
 
 -- Type Checking ---------------------------------------------------------------
 
 tcModule :: Module -> TC Module
-tcModule m = addSchemeBindings (map primTermBinding (modPrimTerms m)) $ do
-
-  let ns = qualNamespace (modName m)
-  decls' <- tcDecls ns (modDecls m)
-
-  return m
-    { modDecls = decls'
-    }
+tcModule m = do
+  let ns           = qualNamespace (modName m)
+      primSchemes  = map primTermBinding (modPrimTerms m)
+      typedSchemes = map (typedDeclBinding ns) (modTyped m)
+  addSchemeBindings (primSchemes ++ typedSchemes) $ do
+    ts' <- mapM (tcTypedDecl ns) (modTyped m)
+    us' <- tcUntypedDecls ns (modUntyped m)
+    return m
+      { modTyped   = ts' ++ us'
+      , modUntyped = []
+      }
 
 primTermBinding :: PrimTerm -> (QualName,Forall Type)
 primTermBinding pt = (primName (primTermName pt), primTermType pt)
 
-tcDecls :: Namespace -> [Decl] -> TC [Decl]
-tcDecls ns ds = do
-  binds <- mapM (introDecl ns) ds
-  addTypeBindings binds (mapM (fmap snd . tcDecl ns) ds)
+typedDeclBinding :: Namespace -> TypedDecl -> (QualName,Forall Type)
+typedDeclBinding ns t = (qualName ns (typedName t), typedType t)
 
+tcTypedDecl :: Namespace -> TypedDecl -> TC TypedDecl
+tcTypedDecl ns t = do
+  tySig       <- freshInst (typedType t)
+  let name = qualName ns (typedName t)
+  vars        <- mapM introVar (typedVars t)
+  (tyBody,b') <- addTypeBindings ((name,tySig):vars) (tcTerm (typedBody t))
+  unify tySig tyBody
+  return t { typedBody = b' }
 
-tcDecl :: Namespace -> Decl -> TC (Type,Decl)
-tcDecl ns d = do
-  let qn = qualName ns (declName d)
-  var <- findType qn
+tcUntypedDecls :: Namespace -> [UntypedDecl] -> TC [TypedDecl]
+tcUntypedDecls ns = mapM (tcUntypedDecl ns)
 
-  ty <- case declType d of
-    Nothing     -> return var
-    Just scheme -> do
-      ty <- fullyInst scheme
-      unify var ty
-      return ty
-
-  binds    <- mapM introVar (declVars d)
-  (dty,b') <- addTypeBindings binds (tcTerm (declBody d))
-  let declType = foldr tarrow dty (map snd binds)
-  unify ty declType
-  x <- applySubst declType
-  logInfo (pretty qn ++ " :: " ++ pretty x)
-
-  var' <- applySubst var
-  let scheme = quantify (Set.toList (typeVars var')) var'
-  logDebug (declName d ++ " :: " ++ pretty scheme)
-  return (var', d { declType = Just scheme, declBody = b' })
+tcUntypedDecl :: Namespace -> UntypedDecl -> TC TypedDecl
+tcUntypedDecl _ns _u = fail "tcUntypedDecl"
 
 tcTerm :: Term -> TC (Type,Term)
 tcTerm tm = case tm of
@@ -87,12 +75,14 @@ tcTerm tm = case tm of
     let step (_,l) r = l `tarrow` r
     return (foldr step ty binds, Abs vs b')
 
-  Let ds e -> do
-    binds <- mapM (introDecl []) ds
-    addTypeBindings binds $ do
-      (_dtys,ds') <- mapAndUnzipM (tcDecl []) ds
-      (ety,e')    <- tcTerm e
-      return (ety, Let ds' e')
+  Let ts us e -> do
+    let typedSchemes = [ (simpleName (typedName t), typedType t) | t <- ts ]
+    binds <- mapM (introUntypedDecl []) us
+    addSchemeBindings typedSchemes $ addTypeBindings binds $ do
+      ts'      <- mapM (tcTypedDecl []) ts
+      us'      <- tcUntypedDecls [] us
+      (ety,e') <- tcTerm e
+      return (ety, Let (ts' ++ us') [] e')
 
   App f xs -> do
     (xtys,xs') <- mapAndUnzipM tcTerm xs
@@ -107,7 +97,7 @@ tcTerm tm = case tm of
 
   Lit lit -> second Lit `fmap` tcLit lit
 
-  Prim v -> undefined
+  Prim _v -> fail "primitive"
 
 tcLit :: Literal -> TC (Type,Literal)
 tcLit l@LInt{} = return (TCon (primName "Int"), l)

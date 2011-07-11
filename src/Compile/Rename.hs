@@ -3,11 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Compile.Rename (
-    Rename()
-  , runRename
-  , renameModule
-  , renameDecls
-  , rename
+    rename
   ) where
 
 import Dang.IO (logInfo,logStage,logDebug)
@@ -116,34 +112,34 @@ findFresh  = loop []
 -- Term Renaming ---------------------------------------------------------------
 
 renameModule :: Monad m => Module -> Rename m Module
-renameModule m = fullyQualify (modNamespace m) (modDecls m) $ do
-  ds' <- renameDecls (modDecls m)
-  return m { modDecls = ds' }
+renameModule m = do
+  ts' <- mapM renameTypedDecl (modTyped m)
+  return m { modTyped = ts' }
 
+{-
 -- | Introduce term variable mappings between unqualified and qualified versions
 -- of the same name.
-fullyQualify :: Monad m => Namespace -> [Decl] -> Rename m a -> Rename m a
+fullyQualify :: Monad m => Namespace -> [TypedDecl] -> Rename m a -> Rename m a
 fullyQualify ps ds m = do
   ro <- ask
-  let step i d = addSubst (declName d) (qualName ps (declName d)) i
+  let step i d = addSubst (typedName d) (qualName ps (typedName d)) i
   local (foldl step ro ds) m
-
--- | Rename declarations, assuming that names are already present in the
--- environment.
-renameDecls :: Monad m => [Decl] -> Rename m [Decl]
-renameDecls  = mapM renameDecl
+  -}
 
 -- | Rename a declaration, assuming a fresh name is already in the environment.
-renameDecl :: Monad m => Decl -> Rename m Decl
-renameDecl d = do
-  n' <- subst (declName d)
-  fresh (declVars d) $ do
-    vs' <- mapM subst (declVars d)
-    b'  <- renameTerm (declBody d)
+renameTypedDecl :: Monad m => TypedDecl -> Rename m TypedDecl
+renameTypedDecl d = do
+  n' <- subst (typedName d)
+  let (fs,tys) = unzip (typedFree d)
+  fresh (fs ++ typedVars d) $ do
+    vs' <- mapM subst (typedVars d)
+    fs' <- mapM subst fs
+    b'  <- renameTerm (typedBody d)
     return d
-      { declName = n'
-      , declVars = vs'
-      , declBody = b'
+      { typedName = n'
+      , typedFree = zip fs' tys
+      , typedVars = vs'
+      , typedBody = b'
       }
 
 -- | Rename variable occurrences and bindings in terms.
@@ -155,21 +151,24 @@ renameTerm t =
     Lit l    -> Lit    <$> renameLiteral l
     Global n -> renameGlobal n
     Prim _   -> return t
-    Let ds e ->
-      fresh (map declName ds) (Let <$> mapM renameDecl ds <*> renameTerm e)
+    Let ts [] e -> fresh (map typedName ts)
+                 $ Let <$> mapM renameTypedDecl ts <*> pure [] <*> renameTerm e
+    Let _  _  _ ->
+      fail "Unexpected untyped declarations in Let"
     Abs vs b -> intro $ \name -> fresh vs $ do
       vs' <- mapM subst vs
       b'  <- renameTerm b
-      return (Let [freshBinding name vs' b'] (Local name))
+      return (Let [freshBinding name vs' b'] [] (Local name))
 
 -- | Create a fresh declaration for the body of an abstraction.
-freshBinding :: Name -> [String] -> Term -> Decl
-freshBinding n vs body = Decl
-  { declName   = n
-  , declType   = Nothing
-  , declVars   = vs
-  , declBody   = body
-  , declExport = Private
+freshBinding :: Name -> [Var] -> Term -> TypedDecl
+freshBinding n vs body = TypedDecl
+  { typedName   = n
+  , typedType   = error "Unknown abstraction type"
+  , typedFree   = []
+  , typedVars   = vs
+  , typedBody   = body
+  , typedExport = Private
   }
 
 renameGlobal :: Monad m => QualName -> Rename m Term
