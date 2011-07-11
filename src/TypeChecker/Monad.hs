@@ -16,6 +16,7 @@ import Control.Monad.Fix (MonadFix)
 import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 
 newtype TC a = TC { unTC :: ReaderT RO (StateT RW Dang) a }
@@ -143,6 +144,16 @@ nextIndex  = do
   rw <- TC get
   TC (set rw { rwIndex = rwIndex rw + 1 })
   return (rwIndex rw)
+
+freshName :: String -> Set.Set QualName -> TC String
+freshName pfx fvs = loop
+  where
+  loop = do
+    i <- nextIndex
+    let name = pfx ++ show i
+    if simpleName name `Set.member` fvs
+       then loop
+       else return name
 
 -- | Generate fresh type variables, with the given kind.
 freshVar :: Kind -> TC Type

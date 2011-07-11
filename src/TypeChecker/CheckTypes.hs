@@ -7,9 +7,11 @@ import Syntax.AST
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify
+import Variables (freeVars)
 
 import Control.Arrow (second)
 import Control.Monad (mapAndUnzipM)
+import qualified Data.Set as Set
 
 
 -- Variable Utilities ----------------------------------------------------------
@@ -28,6 +30,13 @@ introUntypedDecl :: Namespace -> UntypedDecl -> TC (QualName,Type)
 introUntypedDecl ns u = do
   ty <- freshVar kstar
   return (qualName ns (untypedName u), ty)
+
+
+-- Generalization --------------------------------------------------------------
+
+-- | Simple for now: just turn all variables into quantified ones.
+generalize :: Type -> TC (Forall Type)
+generalize ty = return (quantify (Set.toList (typeVars ty)) ty)
 
 
 -- Type Checking ---------------------------------------------------------------
@@ -53,15 +62,20 @@ typedDeclBinding ns t = (qualName ns (typedName t), typedType t)
 
 tcTypedDecl :: Namespace -> TypedDecl -> TC TypedDecl
 tcTypedDecl ns t = do
-  tySig       <- freshInst (typedType t)
+  vars  <- mapM introVar (typedVars t)
+  tySig <- freshInst (typedType t)
   let name = qualName ns (typedName t)
-  vars        <- mapM introVar (typedVars t)
-  (tyBody,b') <- addTypeBindings ((name,tySig):vars) (tcTerm (typedBody t))
-  unify tySig tyBody
-  return t { typedBody = b' }
+  addTypeBindings ((name,tySig):vars) $ do
+    (tyBody,b') <- tcTerm (typedBody t)
+    unify tySig tyBody
+    fvs <- tcFreeVars b'
+    return t
+      { typedFree = fvs
+      , typedBody = b'
+      }
 
 tcUntypedDecls :: Namespace -> [UntypedDecl] -> TC [TypedDecl]
-tcUntypedDecls ns = mapM (tcUntypedDecl ns)
+tcUntypedDecls ns = mapM (tcUntypedDecl ns) -- this really needs to do SCC
 
 tcUntypedDecl :: Namespace -> UntypedDecl -> TC TypedDecl
 tcUntypedDecl _ns _u = fail "tcUntypedDecl"
@@ -72,8 +86,19 @@ tcTerm tm = case tm of
   Abs vs b -> do
     binds   <- mapM introVar vs
     (ty,b') <- addTypeBindings binds (tcTerm b)
+    name    <- freshName "lambda" (freeVars b')
     let step (_,l) r = l `tarrow` r
-    return (foldr step ty binds, Abs vs b')
+        funTy        = foldr step ty binds
+    scheme  <- generalize funTy
+    let decl = TypedDecl
+          { typedName   = name
+          , typedExport = Private
+          , typedType   = scheme
+          , typedFree   = Set.empty
+          , typedVars   = vs
+          , typedBody   = b'
+          }
+    return (funTy, Let [decl] [] (Local name))
 
   Let ts us e -> do
     let typedSchemes = [ (simpleName (typedName t), typedType t) | t <- ts ]
@@ -101,3 +126,14 @@ tcTerm tm = case tm of
 
 tcLit :: Literal -> TC (Type,Literal)
 tcLit l@LInt{} = return (TCon (primName "Int"), l)
+
+tcFreeVars :: Term -> TC (Set.Set (Var,Type))
+tcFreeVars  = loop Set.empty . Set.toList . freeVars
+  where
+  loop tvs []              = return tvs
+  loop tvs (v:vs)
+    | not (isSimpleName v) = loop tvs vs
+    | otherwise            = do
+      let n = qualSymbol v
+      (ty,_) <- tcTerm (Local n)
+      loop (Set.insert (n,ty) tvs) vs

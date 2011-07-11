@@ -72,7 +72,7 @@ data TypedDecl = TypedDecl
   { typedExport :: Export
   , typedType   :: Forall Type
   , typedName   :: Name
-  , typedFree   :: [(Var,Type)] -- ^ Free variables with types
+  , typedFree   :: Set.Set (Var,Type) -- ^ Free variables with types
   , typedVars   :: [Var]
   , typedBody   :: Term
   } deriving (Eq,Show,Ord)
@@ -99,7 +99,7 @@ mkTypedDecl u ty = TypedDecl
   { typedExport = untypedExport u
   , typedType   = ty
   , typedName   = untypedName u
-  , typedFree   = []
+  , typedFree   = Set.empty
   , typedVars   = untypedVars u
   , typedBody   = untypedBody u
   }
