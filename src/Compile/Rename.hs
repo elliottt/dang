@@ -15,6 +15,7 @@ import Syntax.AST
 import Control.Applicative (Applicative(..),(<$>))
 import MonadLib
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 
 -- External Interface ----------------------------------------------------------
@@ -76,15 +77,6 @@ subst v = do
   x <- subst' v
   return (qualSymbol x)
 
--- | Introduce a fresh name into a renaming context.
-intro :: Monad m => (Var -> Rename m a) -> Rename m a
-intro k = do
-  i  <- get
-  ro <- ask
-  let (ro',i',[v]) = findFresh ro i [""]
-  set i'
-  local ro' (k v)
-
 -- | Give fresh names to all that are passed, in the context of the given
 -- action.
 fresh :: Monad m => [Var] -> Rename m a -> Rename m a
@@ -120,14 +112,14 @@ renameModule m = do
 renameTypedDecl :: Monad m => TypedDecl -> Rename m TypedDecl
 renameTypedDecl d = do
   n' <- subst (typedName d)
-  let (fs,tys) = unzip (typedFree d)
+  let (fs,tys) = unzip (Set.toList (typedFree d))
   fresh (fs ++ typedVars d) $ do
     vs' <- mapM subst (typedVars d)
     fs' <- mapM subst fs
     b'  <- renameTerm (typedBody d)
     return d
       { typedName = n'
-      , typedFree = zip fs' tys
+      , typedFree = Set.fromList (zip fs' tys)
       , typedVars = vs'
       , typedBody = b'
       }
@@ -145,21 +137,9 @@ renameTerm t =
                  $ Let <$> mapM renameTypedDecl ts <*> pure [] <*> renameTerm e
     Let _  _  _ ->
       fail "Unexpected untyped declarations in Let"
-    Abs vs b -> intro $ \name -> fresh vs $ do
-      vs' <- mapM subst vs
-      b'  <- renameTerm b
-      return (Let [freshBinding name vs' b'] [] (Local name))
 
--- | Create a fresh declaration for the body of an abstraction.
-freshBinding :: Name -> [Var] -> Term -> TypedDecl
-freshBinding n vs body = TypedDecl
-  { typedName   = n
-  , typedType   = error "Unknown abstraction type"
-  , typedFree   = []
-  , typedVars   = vs
-  , typedBody   = body
-  , typedExport = Private
-  }
+    Abs _ _ ->
+      fail "Unexpected abstraction"
 
 renameGlobal :: Monad m => QualName -> Rename m Term
 renameGlobal qn
