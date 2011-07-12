@@ -2,12 +2,13 @@
 
 module TypeChecker.CheckTypes where
 
+import Dang.IO
 import QualName
 import Syntax.AST
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify
-import Variables (freeVars)
+import Variables (FreeVars,freeVars)
 
 import Control.Arrow (second)
 import Control.Monad (mapAndUnzipM)
@@ -68,11 +69,10 @@ tcTypedDecl ns t = do
   addTypeBindings ((name,tySig):vars) $ do
     (tyBody,b') <- tcTerm (typedBody t)
     unify tySig tyBody
-    fvs <- tcFreeVars b'
-    return t
-      { typedFree = fvs
-      , typedBody = b'
-      }
+    let t' = t { typedBody = b' }
+    fvs <- tcFreeVars t'
+    logDebug ("Free vars in ``" ++ typedName t ++ "'' = " ++ show fvs)
+    return t' { typedFree = fvs }
 
 tcUntypedDecls :: Namespace -> [UntypedDecl] -> TC [TypedDecl]
 tcUntypedDecls ns = mapM (tcUntypedDecl ns) -- this really needs to do SCC
@@ -98,7 +98,8 @@ tcTerm tm = case tm of
           , typedVars   = vs
           , typedBody   = b'
           }
-    return (funTy, Let [decl] [] (Local name))
+    fvs <- tcFreeVars decl
+    return (funTy, Let [decl { typedFree = fvs }] [] (Local name))
 
   Let ts us e -> do
     let typedSchemes = [ (simpleName (typedName t), typedType t) | t <- ts ]
@@ -127,7 +128,7 @@ tcTerm tm = case tm of
 tcLit :: Literal -> TC (Type,Literal)
 tcLit l@LInt{} = return (TCon (primName "Int"), l)
 
-tcFreeVars :: Term -> TC (Set.Set (Var,Type))
+tcFreeVars :: FreeVars a => a -> TC (Set.Set (Var,Type))
 tcFreeVars  = loop Set.empty . Set.toList . freeVars
   where
   loop tvs []              = return tvs
