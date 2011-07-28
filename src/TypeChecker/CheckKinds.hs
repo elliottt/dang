@@ -2,7 +2,9 @@
 
 module TypeChecker.CheckKinds where
 
+import Dang.IO
 import Dang.Monad
+import Pretty
 import QualName
 import Syntax.AST
 import TypeChecker.Monad
@@ -10,6 +12,7 @@ import TypeChecker.Types
 import TypeChecker.Unify as Types
 
 import Control.Applicative ((<$>),(<*>))
+import Control.Arrow (second)
 import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
@@ -77,6 +80,8 @@ kcUntypedDecl d = do
 -- signature.
 kcTypeSig :: Forall Type -> TC (Forall Type)
 kcTypeSig qt = introType qt $ \ ty -> do
+  logInfo ("Introducd Type: " ++ pretty ty)
+  logDebug (show (typeVars ty))
   (tyk,ty') <- inferKind ty
   unify kstar tyk
   return (quantifyAll ty')
@@ -159,8 +164,7 @@ freshTParam p = do
 quantifyAll :: Type -> Forall Type
 quantifyAll ty = Forall ps (Types.apply s ty)
   where
-  (is,vs)     = unzip (Set.toList (typeVars ty))
-  ps          = map fixKind vs
+  (is,ps)     = unzip (Set.toList (Set.map (second fixKind) (typeVars ty)))
   step i n p' = (i, TGen n p')
   s           = Subst (zipWith3 step is [0 ..] ps)
 
