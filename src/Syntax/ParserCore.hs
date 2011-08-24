@@ -11,7 +11,6 @@ import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
-import Data.Int (Int64)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
@@ -55,7 +54,7 @@ data Token
   | TConIdent String
   | TSymIdent String
   | TOperIdent String
-  | TInt Int64
+  | TInt Integer
   | TEof
     deriving (Eq,Show)
 

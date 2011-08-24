@@ -11,7 +11,6 @@ import qualified Compile.LambdaLift as LL
 import qualified Syntax.AST as AST
 
 import Control.Monad (foldM)
-import Data.Int (Int64)
 import Text.LLVM
 
 
@@ -141,7 +140,7 @@ cgArgument env i = case lookupArgument i env of
 cgLiteral :: AST.Literal -> BB (Typed Value)
 cgLiteral (AST.LInt i) = cgBoxInt i
 
-cgBoxInt :: Int64 -> BB (Typed Value)
+cgBoxInt :: Integer -> BB (Typed Value)
 cgBoxInt i = do
   obj     <- allocData (ptrT dataT -: Symbol "Int_info")
   payload <- heapObjPayloadPtr obj

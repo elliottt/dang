@@ -10,7 +10,6 @@ import Variables
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
-import Data.Int (Int64)
 import qualified Data.Set as Set
 
 
@@ -225,7 +224,7 @@ apply f xs = App f xs
 -- Literals --------------------------------------------------------------------
 
 data Literal
-  = LInt Int64
+  = LInt Integer
     deriving (Eq,Show,Ord)
 
 instance FreeVars Literal where
