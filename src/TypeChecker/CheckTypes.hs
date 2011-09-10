@@ -1,140 +1,153 @@
-{-# LANGUAGE TupleSections #-}
-
 module TypeChecker.CheckTypes where
 
 import Dang.IO
+import Pretty
 import QualName
-import Syntax.AST
+import TypeChecker.AST
+import TypeChecker.Env
 import TypeChecker.Monad
-import TypeChecker.Types
-import TypeChecker.Unify
-import Variables (FreeVars,freeVars)
+import TypeChecker.Types (Type(..),tarrow,kstar,Scheme,toScheme)
+import qualified Syntax.AST as Syn
 
-import Control.Arrow (second)
-import Control.Monad (mapAndUnzipM)
-import qualified Data.Set as Set
-
-
--- Variable Utilities ----------------------------------------------------------
-
-introVar :: Var -> TC (QualName,Type)
-introVar v = do
-  ty <- freshVar kstar
-  return (simpleName v, ty)
-
-fullyInst :: Forall Type -> TC Type
-fullyInst (Forall ps ty) = do
-  vars <- mapM freshVarFromTParam ps
-  inst vars ty
-
-introUntypedDecl :: Namespace -> UntypedDecl -> TC (QualName,Type)
-introUntypedDecl ns u = do
-  ty <- freshVar kstar
-  return (qualName ns (untypedName u), ty)
-
-
--- Generalization --------------------------------------------------------------
-
--- | Simple for now: just turn all variables into quantified ones.
-generalize :: Type -> TC (Forall Type)
-generalize ty = return (quantify (Set.toList (typeVars ty)) ty)
+import Control.Applicative ((<$>))
+import Control.Monad (mapAndUnzipM,forM,unless,foldM)
+import Data.List (intersperse)
+import qualified Data.Foldable as F
 
 
 -- Type Checking ---------------------------------------------------------------
 
-tcModule :: Module -> TC Module
+tcModule :: Syn.Module -> TC [Decl]
 tcModule m = do
-  let ns           = qualNamespace (modName m)
-      primSchemes  = map primTermBinding (modPrimTerms m)
-      typedSchemes = map (typedDeclBinding ns) (modTyped m)
-  addSchemeBindings (primSchemes ++ typedSchemes) $ do
-    ts' <- mapM (tcTypedDecl ns) (modTyped m)
-    us' <- tcUntypedDecls ns (modUntyped m)
-    return m
-      { modTyped   = ts' ++ us'
-      , modUntyped = []
-      }
+  let ns    = Syn.modNamespace m
+      binds = map primTermSchemeBinding (Syn.modPrimTerms m)
+           ++ map (typedDeclSchemeBinding ns) (Syn.modTyped m)
+  env <- addPrimBinds emptyAssumps (Syn.modPrimTerms m)
+  addSchemeBindings binds $ do
+    mapM (tcTopTypedDecl env) (Syn.modTyped m)
 
-primTermBinding :: PrimTerm -> (QualName,Forall Type)
-primTermBinding pt = (primName (primTermName pt), primTermType pt)
+addPrimBinds :: Assumps -> [Syn.PrimTerm] -> TC Assumps
+addPrimBinds  = foldM addPrimBind
 
-typedDeclBinding :: Namespace -> TypedDecl -> (QualName,Forall Type)
-typedDeclBinding ns t = (qualName ns (typedName t), typedType t)
+addPrimBind :: Assumps -> Syn.PrimTerm -> TC Assumps
+addPrimBind env ptd = do
+  let n = primName (Syn.primTermName ptd)
+      a = Assump Nothing (Syn.primTermType ptd)
 
-tcTypedDecl :: Namespace -> TypedDecl -> TC TypedDecl
-tcTypedDecl ns t = do
-  vars  <- mapM introVar (typedVars t)
-  tySig <- freshInst (typedType t)
-  let name = qualName ns (typedName t)
-  addTypeBindings ((name,tySig):vars) $ do
-    (tyBody,b') <- tcTerm (typedBody t)
-    unify tySig tyBody
-    let t' = t { typedBody = b' }
-    fvs <- tcFreeVars t'
-    logDebug ("Free vars in ``" ++ typedName t ++ "'' = " ++ show fvs)
-    return t' { typedFree = fvs }
+  logInfo $ concat
+    [ "Introduced Type: ", Syn.primTermName ptd
+    , " :: ", pretty (Syn.primTermType ptd) ]
 
-tcUntypedDecls :: Namespace -> [UntypedDecl] -> TC [TypedDecl]
-tcUntypedDecls ns = mapM (tcUntypedDecl ns) -- this really needs to do SCC
+  return (addAssump n a env)
 
-tcUntypedDecl :: Namespace -> UntypedDecl -> TC TypedDecl
-tcUntypedDecl _ns _u = fail "tcUntypedDecl"
+tcTopTypedDecl :: Assumps -> Syn.TypedDecl -> TC Decl
+tcTopTypedDecl env td = do
+  ((ty,m),vs) <- collectVars (tcMatch env (Syn.typedBody td))
 
-tcTerm :: Term -> TC (Type,Term)
-tcTerm tm = case tm of
+  -- there should be no variables showing up here.
+  unless (null vs) $ fail $ concat
+    $ "type variables escaping from the definition of ``"
+    : Syn.typedName td : "''\n\t"
+    : intersperse ", " (map pretty vs)
 
-  Abs vs b -> do
-    binds   <- mapM introVar vs
-    (ty,b') <- addTypeBindings binds (tcTerm b)
-    name    <- freshName "lambda" (freeVars b')
-    let step (_,l) r = l `tarrow` r
-        funTy        = foldr step ty binds
-    scheme  <- generalize funTy
-    let decl = TypedDecl
-          { typedName   = name
-          , typedExport = Private
-          , typedType   = scheme
-          , typedFree   = Set.empty
-          , typedVars   = vs
-          , typedBody   = b'
-          }
-    fvs <- tcFreeVars decl
-    return (funTy, Let [decl { typedFree = fvs }] [] (Local name))
+  -- fix the inferred type, given information from the signature
+  oty <- freshInst (Syn.typedType td)
+  unify oty ty
+  ty' <- applySubst ty
 
-  Let ts us e -> do
-    let typedSchemes = [ (simpleName (typedName t), typedType t) | t <- ts ]
-    binds <- mapM (introUntypedDecl []) us
-    addSchemeBindings typedSchemes $ addTypeBindings binds $ do
-      ts'      <- mapM (tcTypedDecl []) ts
-      us'      <- tcUntypedDecls [] us
-      (ety,e') <- tcTerm e
-      return (ety, Let (ts' ++ us') [] e')
+  -- dump some information about the checked declaration
+  logInfo (Syn.typedName td ++ " :: " ++ pretty ty')
+  logInfo (Syn.typedName td ++ "  = " ++ pretty m)
 
-  App f xs -> do
-    (xtys,xs') <- mapAndUnzipM tcTerm xs
-    (fty,f')   <- tcTerm f
-    res        <- freshVar kstar
-    unify fty (foldr tarrow res xtys)
-    return (res, App f' xs')
 
-  Local n -> (,tm) `fmap` findType (simpleName n)
+{-
+  dty <- inferredType (Syn.typedVars td) ty
+  oty <- freshInst (Syn.typedType td)
+  unify oty dty
+  dty' <- applySubst dty
+  logInfo (Syn.typedName td ++ " :: " ++ pretty dty') -}
+  fail "typechecker borked"
 
-  Global qn -> (,tm) `fmap` findType qn
+tcMatch :: Assumps -> Syn.Match -> TC (Type,Match)
+tcMatch env m = case m of
 
-  Lit lit -> second Lit `fmap` tcLit lit
+  Syn.MTerm t -> do
+    (ty,t') <- tcTerm env t
+    return (ty,MTerm t')
 
-  Prim _v -> fail "primitive"
+  Syn.MPat p m' -> tcPat env p $ \ env' pty p' -> do
+    (ty,m'') <- tcMatch env' m'
+    pty'     <- applySubst pty
+    return (pty' `tarrow` ty, MPat p' m'')
 
-tcLit :: Literal -> TC (Type,Literal)
-tcLit l@LInt{} = return (TCon (primName "Int"), l)
+tcPat :: Assumps -> Syn.Pat -> (Assumps -> Type -> Pat -> TC a) -> TC a
+tcPat env p k = case p of
 
-tcFreeVars :: FreeVars a => a -> TC (Set.Set (Var,Type))
-tcFreeVars  = loop Set.empty . Set.toList . freeVars
-  where
-  loop tvs []              = return tvs
-  loop tvs (v:vs)
-    | not (isSimpleName v) = loop tvs vs
-    | otherwise            = do
-      let n = qualSymbol v
-      (ty,_) <- tcTerm (Local n)
-      loop (Set.insert (n,ty) tvs) vs
+  Syn.PWildcard -> do
+    v <- freshVar kstar
+    k env v PWildcard
+
+  Syn.PVar n -> do
+    v <- freshVar kstar
+    k (addAssump (simpleName n) (Assump Nothing (toScheme v)) env) v (PVar n)
+
+-- | Type-check terms in the syntax into system-f like terms.
+tcTerm :: Assumps -> Syn.Term -> TC (Type,Term)
+tcTerm env tm = case tm of
+
+  Syn.App f xs -> do
+    (xtys,xs') <- mapAndUnzipM (tcTerm env) xs
+
+    (fty,f') <- tcTerm env f
+    res      <- freshVar kstar
+    let inferred = foldr tarrow res xtys
+    unify fty inferred
+    return (res, App f' [] xs')
+
+  Syn.Let{} -> fail "let"
+
+  Syn.Abs m -> tcAbs m
+
+  Syn.Local n -> do
+    ty <- findType (simpleName n)
+    emitFreeType ty
+    return (ty,Local n)
+
+  Syn.Global qn -> do
+    ty <- findType qn
+    return (ty,Global qn)
+
+  Syn.Prim{} -> fail "prim"
+
+  Syn.Lit l -> do
+    (ty,l') <- tcLit l
+    return (ty,Lit l')
+
+-- | Type-check a literal.
+tcLit :: Syn.Literal -> TC (Type,Syn.Literal)
+tcLit l = case l of
+  Syn.LInt{} -> return (TCon (primName "Int"), l)
+
+-- | Translate an abstraction, into a let expression with a fresh name.
+tcAbs :: Syn.Match -> TC (Type,Term)
+tcAbs m = case m of
+
+  Syn.MTerm b -> undefined
+
+  Syn.MPat p m' -> undefined
+
+
+-- Environment Helpers ---------------------------------------------------------
+
+introVar :: Syn.Var -> TC (Syn.Var,Type)
+introVar v = do
+  ty <- freshVar kstar
+  return (v,ty)
+
+primTermSchemeBinding :: Syn.PrimTerm -> (QualName,Scheme)
+primTermSchemeBinding pt =
+  (primName (Syn.primTermName pt), Syn.primTermType pt)
+
+typedDeclSchemeBinding :: Namespace -> Syn.TypedDecl -> (QualName,Scheme)
+typedDeclSchemeBinding ns td =
+  (qualName ns (Syn.typedName td), Syn.typedType td)

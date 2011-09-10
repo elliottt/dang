@@ -11,9 +11,12 @@ import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
+import Control.Monad.ST.Strict (runST)
+import Data.STRef.Strict (newSTRef,readSTRef,writeSTRef)
 import MonadLib
 import qualified Data.ByteString as S
 import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 
@@ -78,6 +81,7 @@ data ParserState = ParserState
   , psChar    :: !Char
   , psPos     :: !Position
   , psLexCode :: !Int
+  , psIndex   :: !Index
   } deriving Show
 
 initParserState :: FilePath -> S.ByteString -> ParserState
@@ -86,6 +90,7 @@ initParserState path bs = ParserState
   , psChar    = '\n'
   , psPos     = initPosition path
   , psLexCode = 0
+  , psIndex   = 0
   }
 
 newtype Parser a = Parser
@@ -201,7 +206,31 @@ mkTypeDecl n t = emptyPDecls { parsedPDecls = singleton n (DeclType t) }
 
 -- | Quantify all free variables in a parsed type.
 mkForall :: Type -> Forall Type
-mkForall ty = quantify (Set.toList (typeVars ty)) ty
+mkForall ty = quantify (Set.toList (typeVars ty')) ty'
+  where
+  ty' = numberTypeVars ty
+
+-- | Syntactic numbering of type variables.
+numberTypeVars :: Type -> Type
+numberTypeVars ty = runST body
+  where
+  body = do
+    ref <- newSTRef (0,Map.empty)
+    loop ref ty
+
+  loop ref (TApp l r)      = TApp      `fmap` loop ref l `ap` loop ref r
+  loop ref (TInfix op l r) = TInfix op `fmap` loop ref l `ap` loop ref r
+  loop _   t@TCon{}        = return t
+  loop _   t@TGen{}        = return t
+  loop ref (TVar _ p)      = do
+    (n,m) <- readSTRef ref
+    let var = paramName p
+    case Map.lookup var m of
+      Just ix -> return (TVar ix p)
+      Nothing -> do
+        writeSTRef ref (n+1,Map.insert var n m)
+        return (TVar n p)
+
 
 addDecl :: UntypedDecl -> PDecls -> PDecls
 addDecl d ds = ds

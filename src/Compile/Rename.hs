@@ -15,7 +15,6 @@ import Syntax.AST
 import Control.Applicative (Applicative(..),(<$>))
 import MonadLib
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
 
 -- External Interface ----------------------------------------------------------
@@ -112,17 +111,22 @@ renameModule m = do
 renameTypedDecl :: Monad m => TypedDecl -> Rename m TypedDecl
 renameTypedDecl d = do
   n' <- subst (typedName d)
-  let (fs,tys) = unzip (Set.toList (typedFree d))
-  fresh (fs ++ typedVars d) $ do
-    vs' <- mapM subst (typedVars d)
-    fs' <- mapM subst fs
-    b'  <- renameTerm (typedBody d)
-    return d
-      { typedName = n'
-      , typedFree = Set.fromList (zip fs' tys)
-      , typedVars = vs'
-      , typedBody = b'
-      }
+  m' <- renameMatch (typedBody d)
+  return d
+    { typedName = n'
+    , typedBody = m'
+    }
+
+-- | Rename variable introductions.
+renameMatch :: Monad m => Match -> Rename m Match
+renameMatch m = case m of
+  MTerm t   -> MTerm <$> renameTerm t
+  MPat p m' -> fresh (patVars p) (MPat <$> renamePat p <*> renameMatch m')
+
+-- | Rename the variables introduced by a pattern.
+renamePat :: Monad m => Pat -> Rename m Pat
+renamePat (PVar v)  = PVar <$> subst v
+renamePat PWildcard = return PWildcard
 
 -- | Rename variable occurrences and bindings in terms.
 renameTerm :: Monad m => Term -> Rename m Term
@@ -138,7 +142,7 @@ renameTerm t =
     Let _  _  _ ->
       fail "Unexpected untyped declarations in Let"
 
-    Abs _ _ ->
+    Abs _ ->
       fail "Unexpected abstraction"
 
 renameGlobal :: Monad m => QualName -> Rename m Term

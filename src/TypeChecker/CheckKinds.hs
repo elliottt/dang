@@ -63,7 +63,7 @@ kcPrimTerm pt = do
 kcTypedDecl :: TypedDecl -> TC TypedDecl
 kcTypedDecl d = do
   qt <- kcTypeSig (typedType d)
-  b  <- kcTerm (typedBody d)
+  b  <- kcMatch (typedBody d)
   return d
     { typedType = qt
     , typedBody = b
@@ -73,14 +73,14 @@ kcTypedDecl d = do
 -- declaration.
 kcUntypedDecl :: UntypedDecl -> TC UntypedDecl
 kcUntypedDecl d = do
-  b <- kcTerm (untypedBody d)
+  b <- kcMatch (untypedBody d)
   return d { untypedBody = b }
 
 -- | Introduce kind variables for all type variables, and kind check a type
 -- signature.
 kcTypeSig :: Forall Type -> TC (Forall Type)
 kcTypeSig qt = introType qt $ \ ty -> do
-  logInfo ("Introducd Type: " ++ pretty ty)
+  logInfo ("Introduced Type: " ++ pretty ty)
   logDebug (show (typeVars ty))
   (tyk,ty') <- inferKind ty
   unify kstar tyk
@@ -89,14 +89,20 @@ kcTypeSig qt = introType qt $ \ ty -> do
 -- | Check the kind structure of any types that show up in terms.
 kcTerm :: Term -> TC Term
 kcTerm tm = case tm of
-  Abs vs b    -> Abs vs <$> kcTerm b
-  Let ts us b -> Let    <$> mapM kcTypedDecl ts <*> mapM kcUntypedDecl us
-                        <*> kcTerm b
-  App f xs    -> App    <$> kcTerm f <*> mapM kcTerm xs
+  Abs m       -> Abs <$> kcMatch m
+  Let ts us b -> Let <$> mapM kcTypedDecl ts <*> mapM kcUntypedDecl us
+                     <*> kcTerm b
+  App f xs    -> App <$> kcTerm f <*> mapM kcTerm xs
   Local{}     -> return tm
   Global{}    -> return tm
   Lit{}       -> return tm
   Prim{}      -> return tm
+
+-- | Check the kind structure of any types hiding under a binder.
+kcMatch :: Match -> TC Match
+kcMatch m = case m of
+  MTerm t   -> MTerm  <$> kcTerm t
+  MPat p m' -> MPat p <$> kcMatch m'
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
 inferKind :: Type -> TC (Kind,Type)

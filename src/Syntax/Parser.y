@@ -135,7 +135,7 @@ type_bind :: { PDecls }
 : IDENT '::' qual_type { mkTypeDecl $1 $3 }
 
 fun_bind :: { UntypedDecl }
-: IDENT arg_list '=' exp { UntypedDecl Private $1 (reverse $2) $4 }
+: IDENT arg_list '=' exp { UntypedDecl Private $1 ($2 (MTerm $4)) }
 
 open :: { Open }
 : 'open' mod_name open_body { $3 $2 }
@@ -153,20 +153,23 @@ mod_names :: { [Name] }
 : IDENT               { [$1] }
 | mod_names ',' IDENT { $3:$1 }
 
-arg_list :: { [String] }
-: arg_list IDENT { $2 : $1 }
-| {- empty -}    { [] }
+arg_list :: { Match -> Match }
+: arg_list pat { $1 . MPat $2 }
+| {- empty -}  { id }
 
 
 -- Terms -----------------------------------------------------------------------
 
 exp :: { Term }
-: '\\' abs_args '->' lexp { Abs (reverse $2) $4 }
+: '\\' abs_args '->' lexp { Abs ($2 (MTerm $4)) }
 | lexp                    { $1 }
 
-abs_args :: { [String] }
-: abs_args IDENT { $2 : $1 }
-| IDENT          { [$1] }
+abs_args :: { Match -> Match  }
+: abs_args pat { $1 . MPat $2 }
+| pat          { MPat $1  }
+
+pat :: { Pat }
+: IDENT { PVar $1 }
 
 lexp :: { Term }
 : 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
@@ -189,12 +192,15 @@ aexp :: { Term }
 -- Types -----------------------------------------------------------------------
 
 type :: { Type }
-  : atype type_tail { $2 $1 }
+  : apptype type_tail { $2 (foldl1 (flip tapp) $1) }
 
 type_tail :: { Type -> Type }
   : {- empty -} { id }
   | '->' type   { \a -> tarrow a $2 }
-  | type        { \a -> tapp a $1 }
+
+apptype :: { [Type] }
+  : apptype atype { $2 : $1 }
+  | atype         { [$1] }
 
 atype :: { Type }
   : IDENT        { TVar 0 (TParam $1 setSort) }

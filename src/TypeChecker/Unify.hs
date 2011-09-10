@@ -14,6 +14,8 @@ import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
 import qualified Data.Set as Set
 
+import Debug.Trace
+
 
 newtype Subst = Subst { unSubst :: [(Index,Type)] }
     deriving (Show)
@@ -26,6 +28,10 @@ instance Pretty Subst where
 class Types a where
   apply    :: Subst -> a -> a
   typeVars :: a -> Set.Set (Index,TParam)
+
+instance Types a => Types [a] where
+  apply u  = map (apply u)
+  typeVars = Set.unions . map typeVars
 
 instance Types Type where
   apply s ty = case ty of
@@ -86,7 +92,6 @@ mgu a b = case (a,b) of
     sr <- mgu r y
     return (sl @@ sr)
 
-  -- variables
   (TVar i p, r) -> varBind i p r
   (l, TVar i p) -> varBind i p l
 
@@ -103,9 +108,13 @@ mgu a b = case (a,b) of
 -- XXX should this do a kind check in addition to an occurs check?
 varBind :: ExceptionM m SomeException => Index -> TParam -> Type -> m Subst
 varBind i p ty
-  | isTVar ty                      = return emptySubst
-  | (i,p) `Set.member` typeVars ty = raiseE (UnifyOccursCheck p ty)
-  | otherwise                      = return (i +-> ty)
+  | isTVar ty          = return emptySubst
+  | occursCheck i p ty = raiseE (UnifyOccursCheck p ty)
+  | otherwise          = return (i +-> ty)
+
+
+occursCheck :: Index -> TParam -> Type -> Bool
+occursCheck i p = Set.member (i,p) . typeVars
 
 
 -- Instantiation ---------------------------------------------------------------

@@ -123,13 +123,17 @@ instance Imports UntypedDecl where
   imports = imports . untypedBody
 
 instance Imports Term where
-  imports (Abs _ b)     = imports b
+  imports (Abs m)       = imports m
   imports (Let ts us b) = Set.unions [imports ts, imports us, imports b]
   imports (App f xs)    = imports f `Set.union` imports xs
   imports (Local _)     = Set.empty
   imports (Global qn)   = maybe Set.empty Set.singleton (qualModule qn)
   imports (Prim _)      = Set.empty
   imports (Lit l)       = imports l
+
+instance Imports Match where
+  imports (MPat _ m) = imports m
+  imports (MTerm b)  = imports b
 
 instance Imports Literal where
   imports (LInt _) = Set.empty
@@ -327,9 +331,9 @@ bindVars vs m = do
 
 -- | Check all identifiers used in a declaration.
 scopeCheckTypedDecl :: TypedDecl -> Scope TypedDecl
-scopeCheckTypedDecl d = bindVars (typedVars d) $ do
+scopeCheckTypedDecl d = do
   qt <- scopeCheckForall (typedType d)
-  b  <- scopeCheckTerm   (typedBody d)
+  b  <- scopeCheckMatch  (typedBody d)
   return d
     { typedType = qt
     , typedBody = b
@@ -337,8 +341,8 @@ scopeCheckTypedDecl d = bindVars (typedVars d) $ do
 
 -- | Check all identifiers used in a declaration.
 scopeCheckUntypedDecl :: UntypedDecl -> Scope UntypedDecl
-scopeCheckUntypedDecl d = bindVars (untypedVars d) $ do
-  b  <- scopeCheckTerm (untypedBody d)
+scopeCheckUntypedDecl d = do
+  b  <- scopeCheckMatch (untypedBody d)
   return d { untypedBody = b }
 
 -- | Check the type associated with a primitive term.
@@ -352,7 +356,7 @@ scopeCheckTerm :: Term -> Scope Term
 scopeCheckTerm t = case t of
   Lit _       -> return t
   Prim _      -> return t
-  Abs vs b    -> Abs vs <$> bindVars vs (scopeCheckTerm b)
+  Abs m       -> Abs <$> scopeCheckMatch m
   Let ts us b -> bindVars (letBinds ts us)
                $ Let <$> mapM scopeCheckTypedDecl ts
                      <*> mapM scopeCheckUntypedDecl us
@@ -360,6 +364,12 @@ scopeCheckTerm t = case t of
   App f xs    -> App <$> scopeCheckTerm f <*> mapM scopeCheckTerm xs
   Global n    -> resolveTerm n
   Local n     -> resolveTerm (simpleName n) -- the parser doesn't parse these
+
+-- | Check all identifiers introduced by a @Match@.
+scopeCheckMatch :: Match -> Scope Match
+scopeCheckMatch m = case m of
+  MTerm t   -> MTerm  <$> scopeCheckTerm t
+  MPat p m' -> MPat p <$> bindVars (patVars p) (scopeCheckMatch m')
 
 -- | Check the underlying type in a quantified type.
 scopeCheckForall :: Forall Type -> Scope (Forall Type)

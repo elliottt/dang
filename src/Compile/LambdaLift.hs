@@ -135,7 +135,9 @@ subst args n = do
     Nothing -> raiseLL ("Unbound variable: " ++ n)
 
 extendTypedDeclVars :: [AST.Var] -> AST.TypedDecl -> AST.TypedDecl
-extendTypedDeclVars vs d = d { AST.typedVars = vs ++ AST.typedVars d }
+extendTypedDeclVars vs d = d { AST.typedBody = body }
+  where
+  body = foldr (AST.MPat . AST.PVar) (AST.typedBody d) vs
 
 bindVars :: Set.Set QualName -> LL a -> LL a
 bindVars vs m = do
@@ -273,8 +275,8 @@ rewriteFreeVars fvs ds m = do
 -- the free variables have been performed already.
 llTypedDecl :: AST.TypedDecl -> LL Decl
 llTypedDecl d = do
-  let args = AST.typedVars d
-  b' <- llTerm args (AST.typedBody d)
+  let args = [] -- what is this for?
+  b' <- llMatch args (AST.typedBody d)
   ps <- prefix
   let ex = AST.typedExport d
   let name | null args && isPrivate ex = simpleName  (AST.typedName d)
@@ -285,6 +287,9 @@ llTypedDecl d = do
     , declVars   = args
     , declBody   = b'
     }
+
+llMatch :: [AST.Var] -> AST.Match -> LL Term
+llMatch  = fail "llMatch"
 
 -- | Translate from a top-level declaration to a let declaration, which
 -- shouldn't introduce new variables to its body.

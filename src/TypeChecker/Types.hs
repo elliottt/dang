@@ -54,7 +54,7 @@ instance Pretty Type where
   pp _ (TVar _ m)     = ppr m
   pp _ (TGen _ m)     = ppr m
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
-  pp p (TInfix c a b) = optParens (p > 0) (pp 2 a <+> ppr c <+> pp 2 b)
+  pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
 
 data TParam = TParam
   { paramName :: String
@@ -120,6 +120,11 @@ type Sort = Type
 setSort :: Sort
 setSort = TCon (primName "Set")
 
+type Scheme = Forall Type
+
+-- | Produce a type scheme that quantifies no variables.
+toScheme :: Type -> Scheme
+toScheme  = Forall []
 
 -- | Things with quantified variables.
 data Forall a = Forall [TParam] a

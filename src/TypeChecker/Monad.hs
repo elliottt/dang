@@ -7,23 +7,28 @@ module TypeChecker.Monad where
 import Dang.Monad
 import Interface
 import QualName
+import Syntax.AST (Var)
 import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
 import Control.Arrow (second)
 import Control.Monad.Fix (MonadFix)
+import Data.Monoid (Monoid(..))
 import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 
-newtype TC a = TC { unTC :: ReaderT RO (StateT RW Dang) a }
+newtype TC a = TC { unTC :: ReaderT RO (WriterT WO (StateT RW Dang)) a }
     deriving (Functor,Applicative,Monad,MonadFix)
 
 runTC :: InterfaceSet -> TC a -> Dang a
-runTC iset (TC m) = fst `fmap` runStateT emptyRW (runReaderT (emptyRO iset) m)
+runTC iset (TC m) = fmap (fst . fst)
+                  $ runStateT emptyRW
+                  $ runWriterT
+                  $ runReaderT (emptyRO iset) m
 
 instance BaseM TC Dang where
   inBase = TC . inBase
@@ -34,21 +39,12 @@ instance ExceptionM TC SomeException where
 instance RunExceptionM TC SomeException where
   try = TC . try . unTC
 
-data RW = RW
-  { rwSubst :: Subst
-  , rwIndex :: !Index
-  }
 
-emptyRW :: RW
-emptyRW  = RW
-  { rwSubst = emptySubst
-  , rwIndex = 0
-  }
-
-type Assumps = Map.Map QualName Type
+-- Read-only Environment -------------------------------------------------------
 
 data RO = RO
-  { roInterfaceSet :: InterfaceSet
+  { roBoundVars    :: Set.Set Var
+  , roInterfaceSet :: InterfaceSet
   , roTypeBindings :: Map.Map QualName TypeBinding
   , roKindBindings :: Map.Map QualName Kind
   }
@@ -63,7 +59,8 @@ bindingScheme (TypeBinding ty)    = Forall [] ty
 
 emptyRO :: InterfaceSet -> RO
 emptyRO iset = RO
-  { roInterfaceSet = iset
+  { roBoundVars    = Set.empty
+  , roInterfaceSet = iset
   , roTypeBindings = Map.empty
   , roKindBindings = Map.empty
   }
@@ -106,6 +103,46 @@ roFindScheme qn ro = fromISet `mplus` fromBinding
   fromBinding = bindingScheme `fmap` Map.lookup qn (roTypeBindings ro)
 
 
+-- Write-only Output -----------------------------------------------------------
+
+type FreeVars = [Type]
+
+data WO = WO
+  { woVars :: FreeVars
+  }
+
+instance Monoid WO where
+  mempty = WO
+    { woVars = mempty
+    }
+
+  mappend wa wb = WO
+    { woVars = woVars wa `mappend` woVars wb
+    }
+
+collectVars :: TC a -> TC (a,FreeVars)
+collectVars (TC m) = TC $ do
+  (a,wo) <- collect m
+  return (a,woVars wo)
+
+emitFreeType :: Type -> TC ()
+emitFreeType ty = TC (put mempty { woVars = [ty] })
+
+
+-- Read/Write State ------------------------------------------------------------
+
+data RW = RW
+  { rwSubst :: Subst
+  , rwIndex :: !Index
+  }
+
+emptyRW :: RW
+emptyRW  = RW
+  { rwSubst = emptySubst
+  , rwIndex = 0
+  }
+
+
 -- Primitive Operations --------------------------------------------------------
 
 -- | Unify two types, modifying the internal substitution.
@@ -125,7 +162,7 @@ extSubst u = do
   TC (set rw { rwSubst = u @@ rwSubst rw })
 
 -- | Apply the substitution to a type.
-applySubst :: Type -> TC Type
+applySubst :: Types t => t -> TC t
 applySubst ty = do
   rw <- TC get
   return (apply (rwSubst rw) ty)
@@ -182,7 +219,7 @@ findKind :: QualName -> TC Kind
 findKind  = applySubst <=< lookupRO roFindKind
 
 findType :: QualName -> TC Type
-findType qn = freshInst =<< lookupRO roFindScheme qn
+findType  = freshInst <=< lookupRO roFindScheme
 
 freshInst :: Forall Type -> TC Type
 freshInst (Forall ps ty) = do

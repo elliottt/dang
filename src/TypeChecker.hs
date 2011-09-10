@@ -27,4 +27,4 @@ typeCheckModule iset m = do
   logInfo "Type checking output:"
   logDebug (show tcm)
   logInfo (pretty tcm)
-  return tcm
+  return m

@@ -34,13 +34,18 @@ optBraces True = braces
 optBraces _    = id
 
 semis :: [Doc] -> Doc
-semis  = foldr1 step
+semis [] = empty
+semis ds = foldr1 step ds
   where
-  step d r = d <> semi <+> r
+  step d r = d $+$ semi <> space <> r
+
+vcat' :: [Doc] -> Doc
+vcat'  = foldr ($+$) empty
 
 declBlock :: [Doc] -> Doc
 declBlock []     = text "{}"
-declBlock (d:ds) = vcat (char '{' <+> d : map (semi <+>) ds) $+$ char '}'
+declBlock [d]    = braces d
+declBlock (d:ds) = vcat' (char '{' <+> d : map (semi <+>) ds) $+$ char '}'
 
 class Pretty a where
   pp     :: Int -> a -> Doc
@@ -79,6 +84,9 @@ instance Pretty Int32 where
 
 instance Pretty Int64 where
   pp _ i = integer (fromIntegral i)
+
+instance Pretty Integer where
+  pp _ = integer
 
 instance Pretty Float where
   pp _ = float
