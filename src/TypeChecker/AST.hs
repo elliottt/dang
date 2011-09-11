@@ -1,9 +1,12 @@
 module TypeChecker.AST where
 
 import Pretty
-import QualName (QualName)
-import TypeChecker.Types (Type,Forall(..))
+import QualName (QualName,simpleName)
+import TypeChecker.Types (Type,Forall(..),forallData)
 import Syntax.AST (Var,Literal)
+import Variables (FreeVars(freeVars))
+
+import qualified Data.Set as Set
 
 
 -- | Pretty print a list of type parameters for a type application/definition.
@@ -16,6 +19,9 @@ data Decl = Decl
   { declName   :: QualName
   , declBody   :: Forall Match
   } deriving (Show)
+
+instance FreeVars Decl where
+  freeVars d = Set.delete (declName d) (freeVars (forallData (declBody d)))
 
 instance Pretty Decl where
   pp _ d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
@@ -30,6 +36,10 @@ data Match
  = MTerm Term
  | MPat Pat Match
    deriving (Show)
+
+instance FreeVars Match where
+  freeVars (MTerm t)  = freeVars t
+  freeVars (MPat p m) = freeVars m Set.\\ freeVars p
 
 instance Pretty Match where
   pp _ (MTerm t)  = ppr t
@@ -46,10 +56,13 @@ data Pat
   | PWildcard
     deriving (Show)
 
+instance FreeVars Pat where
+  freeVars (PVar v)  = Set.singleton (simpleName v)
+  freeVars PWildcard = Set.empty
+
 instance Pretty Pat where
   pp _ (PVar v)  = text v
   pp _ PWildcard = char '_'
-
 
 data Term
   = App Term [Type] [Term]
@@ -58,6 +71,14 @@ data Term
   | Global QualName
   | Lit Literal
     deriving (Show)
+
+instance FreeVars Term where
+  freeVars (App t _ as) = freeVars (t:as)
+  freeVars (Let ds t)   = (freeVars t `Set.union` freeVars ds)
+                             Set.\\ Set.fromList (map declName ds)
+  freeVars (Local v)    = Set.singleton (simpleName v)
+  freeVars (Global n)   = Set.singleton n
+  freeVars (Lit l)      = freeVars l
 
 instance Pretty Term where
   pp p (App f ts xs) = optParens (p > 0) (pp 1 f <> ppTyApp ts <+> ppList 1 xs)

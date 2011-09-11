@@ -155,3 +155,6 @@ quantify ps ty = Forall (map snd vs) (apply s ty)
   where
   vs = [ v | v <- Set.toList (typeVars ty), v `elem` ps ]
   s  = Subst (zipWith (\n (i,p) -> (i,TGen n p)) [0 ..] vs)
+
+quantifyAll :: Type -> Forall Type
+quantifyAll ty = quantify (Set.toList (typeVars ty)) ty

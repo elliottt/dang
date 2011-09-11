@@ -6,30 +6,26 @@ import QualName
 import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
-import TypeChecker.Types (Type(..),tarrow,kstar,Scheme,toScheme)
+import TypeChecker.Types (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..))
+import TypeChecker.Unify (quantifyAll)
+import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
-import Control.Applicative ((<$>))
-import Control.Monad (mapAndUnzipM,forM,unless,foldM)
+import Control.Monad (mapAndUnzipM,unless,foldM)
 import Data.List (intersperse)
-import qualified Data.Foldable as F
+import Data.Maybe (fromMaybe)
 
+
+type TypeAssumps = Assumps Scheme
 
 -- Type Checking ---------------------------------------------------------------
 
-tcModule :: Syn.Module -> TC [Decl]
-tcModule m = do
-  let ns    = Syn.modNamespace m
-      binds = map primTermSchemeBinding (Syn.modPrimTerms m)
-           ++ map (typedDeclSchemeBinding ns) (Syn.modTyped m)
-  env <- addPrimBinds emptyAssumps (Syn.modPrimTerms m)
-  addSchemeBindings binds $ do
-    mapM (tcTopTypedDecl env) (Syn.modTyped m)
-
-addPrimBinds :: Assumps -> [Syn.PrimTerm] -> TC Assumps
+-- | Add a series of primitive bindings to an environment.
+addPrimBinds :: TypeAssumps -> [Syn.PrimTerm] -> TC TypeAssumps
 addPrimBinds  = foldM addPrimBind
 
-addPrimBind :: Assumps -> Syn.PrimTerm -> TC Assumps
+-- | Add a primitive term binding to the environment.
+addPrimBind :: TypeAssumps -> Syn.PrimTerm -> TC TypeAssumps
 addPrimBind env ptd = do
   let n = primName (Syn.primTermName ptd)
       a = Assump Nothing (Syn.primTermType ptd)
@@ -40,7 +36,18 @@ addPrimBind env ptd = do
 
   return (addAssump n a env)
 
-tcTopTypedDecl :: Assumps -> Syn.TypedDecl -> TC Decl
+-- | Type-check a module.
+tcModule :: Syn.Module -> TC [Decl]
+tcModule m = do
+  let ns    = Syn.modNamespace m
+      binds = map primTermSchemeBinding (Syn.modPrimTerms m)
+           ++ map (typedDeclSchemeBinding ns) (Syn.modTyped m)
+  env <- addPrimBinds emptyAssumps (Syn.modPrimTerms m)
+  addSchemeBindings binds $ do
+    mapM (tcTopTypedDecl env) (Syn.modTyped m)
+
+-- | Type-check a top-level, typed declaration.
+tcTopTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl env td = do
   ((ty,m),vs) <- collectVars (tcMatch env (Syn.typedBody td))
 
@@ -56,19 +63,12 @@ tcTopTypedDecl env td = do
   ty' <- applySubst ty
 
   -- dump some information about the checked declaration
-  logInfo (Syn.typedName td ++ " :: " ++ pretty ty')
+  logInfo (Syn.typedName td ++ " :: " ++ pretty (quantifyAll ty'))
   logInfo (Syn.typedName td ++ "  = " ++ pretty m)
 
-
-{-
-  dty <- inferredType (Syn.typedVars td) ty
-  oty <- freshInst (Syn.typedType td)
-  unify oty dty
-  dty' <- applySubst dty
-  logInfo (Syn.typedName td ++ " :: " ++ pretty dty') -}
   fail "typechecker borked"
 
-tcMatch :: Assumps -> Syn.Match -> TC (Type,Match)
+tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
 
   Syn.MTerm t -> do
@@ -80,7 +80,7 @@ tcMatch env m = case m of
     pty'     <- applySubst pty
     return (pty' `tarrow` ty, MPat p' m'')
 
-tcPat :: Assumps -> Syn.Pat -> (Assumps -> Type -> Pat -> TC a) -> TC a
+tcPat :: TypeAssumps -> Syn.Pat -> (TypeAssumps -> Type -> Pat -> TC a) -> TC a
 tcPat env p k = case p of
 
   Syn.PWildcard -> do
@@ -92,7 +92,7 @@ tcPat env p k = case p of
     k (addAssump (simpleName n) (Assump Nothing (toScheme v)) env) v (PVar n)
 
 -- | Type-check terms in the syntax into system-f like terms.
-tcTerm :: Assumps -> Syn.Term -> TC (Type,Term)
+tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
 tcTerm env tm = case tm of
 
   Syn.App f xs -> do
@@ -106,12 +106,15 @@ tcTerm env tm = case tm of
 
   Syn.Let{} -> fail "let"
 
-  Syn.Abs m -> tcAbs m
+  Syn.Abs m -> tcAbs env m
 
-  Syn.Local n -> do
-    ty <- findType (simpleName n)
-    emitFreeType ty
-    return (ty,Local n)
+  Syn.Local n -> case lookupAssump (simpleName n) env of
+
+    Just a -> do
+      ty <- freshInst (aData a)
+      return (ty, fromMaybe (Local n) (aBody a))
+
+    Nothing -> fail "unbound identifier"
 
   Syn.Global qn -> do
     ty <- findType qn
@@ -129,20 +132,15 @@ tcLit l = case l of
   Syn.LInt{} -> return (TCon (primName "Int"), l)
 
 -- | Translate an abstraction, into a let expression with a fresh name.
-tcAbs :: Syn.Match -> TC (Type,Term)
-tcAbs m = case m of
-
-  Syn.MTerm b -> undefined
-
-  Syn.MPat p m' -> undefined
+tcAbs :: TypeAssumps -> Syn.Match -> TC (Type,Term)
+tcAbs env m = do
+  (ty,m') <- tcMatch env m
+  lam     <- freshName "_lam" (freeVars m')
+  let decl = Decl (simpleName lam) (Forall [] m')
+  return (ty, Let [decl] (Local lam))
 
 
 -- Environment Helpers ---------------------------------------------------------
-
-introVar :: Syn.Var -> TC (Syn.Var,Type)
-introVar v = do
-  ty <- freshVar kstar
-  return (v,ty)
 
 primTermSchemeBinding :: Syn.PrimTerm -> (QualName,Scheme)
 primTermSchemeBinding pt =

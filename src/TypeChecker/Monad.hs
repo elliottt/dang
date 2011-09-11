@@ -208,15 +208,15 @@ data UnboundIdentifier = UnboundIdentifier QualName
 
 instance Exception UnboundIdentifier
 
+unboundIdentifier :: QualName -> TC a
+unboundIdentifier  = raiseE . UnboundIdentifier
+
 lookupRO :: (QualName -> RO -> Maybe a) -> QualName -> TC a
 lookupRO find qn = do
   ro <- TC ask
   case find qn ro of
     Nothing -> raiseE (UnboundIdentifier qn)
     Just a  -> return a
-
-findKind :: QualName -> TC Kind
-findKind  = applySubst <=< lookupRO roFindKind
 
 findType :: QualName -> TC Type
 findType  = freshInst <=< lookupRO roFindScheme

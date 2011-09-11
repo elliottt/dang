@@ -2,22 +2,21 @@ module TypeChecker.Env where
 
 import QualName (QualName)
 import TypeChecker.AST (Term)
-import TypeChecker.Types (Scheme)
 
 import qualified Data.Map as Map
 
-type Assumps = Map.Map QualName Assump
+type Assumps ty = Map.Map QualName (Assump ty)
 
-data Assump = Assump
-  { aBody   :: Maybe Term
-  , aScheme :: Scheme
+data Assump ty = Assump
+  { aBody :: Maybe Term
+  , aData :: ty
   } deriving (Show)
 
-emptyAssumps :: Assumps
+emptyAssumps :: Assumps ty
 emptyAssumps  = Map.empty
 
-lookupAssump :: QualName -> Assumps -> Maybe Assump
+lookupAssump :: QualName -> Assumps ty -> Maybe (Assump ty)
 lookupAssump  = Map.lookup
 
-addAssump :: QualName -> Assump -> Assumps -> Assumps
+addAssump :: QualName -> Assump ty -> Assumps ty -> Assumps ty
 addAssump  = Map.insert

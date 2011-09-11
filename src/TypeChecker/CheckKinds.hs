@@ -7,12 +7,13 @@ import Dang.Monad
 import Pretty
 import QualName
 import Syntax.AST
+import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify as Types
 
 import Control.Applicative ((<$>),(<*>))
-import Control.Arrow (second)
+import Control.Monad (foldM)
 import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
@@ -30,17 +31,40 @@ instance Exception KindError
 kindError :: String -> TC a
 kindError  = raiseE . KindError
 
+type KindAssumps = Assumps Kind
+
+findKind :: QualName -> KindAssumps -> TC Kind
+findKind qn env = case lookupAssump qn env of
+  Just a  -> return (aData a)
+  Nothing -> unboundIdentifier qn
+
+addKindAssump :: KindAssumps -> QualName -> Kind -> TC KindAssumps
+addKindAssump env qn k = do
+  logInfo ("  Assuming: " ++ pretty qn ++ " :: " ++ pretty k)
+  return (addAssump qn (Assump Nothing k) env)
+
+addPrimTypes :: KindAssumps -> [PrimType] -> TC KindAssumps
+addPrimTypes  = foldM addPrimType
+
+addPrimType :: KindAssumps -> PrimType -> TC KindAssumps
+addPrimType env pty = addKindAssump env name kind
+  where
+  name = primName (primTypeName pty)
+  kind = primTypeKind pty
+
 
 -- Kind Checking ---------------------------------------------------------------
 
 -- | Check the kinds of all type usages in a Module.  Return a Module that
 -- contains all it's declarations with fixed kinds.
 kcModule :: Module -> TC Module
-kcModule m = addKindBindings (map primTypeBinding (modPrimTypes m)) $ do
+kcModule m = do
+  logInfo ("Checking module: " ++ pretty (modName m))
+  env <- addPrimTypes emptyAssumps (modPrimTypes m)
 
-  pts' <- mapM kcPrimTerm (modPrimTerms m)
-  ts'  <- mapM kcTypedDecl (modTyped m)
-  us'  <- mapM kcUntypedDecl (modUntyped m)
+  pts' <- mapM (kcPrimTerm env)    (modPrimTerms m)
+  ts'  <- mapM (kcTypedDecl env)   (modTyped m)
+  us'  <- mapM (kcUntypedDecl env) (modUntyped m)
 
   return m
     { modPrimTerms = pts'
@@ -53,17 +77,17 @@ primTypeBinding pt = (primName (primTypeName pt), primTypeKind pt)
 
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
-kcPrimTerm :: PrimTerm -> TC PrimTerm
-kcPrimTerm pt = do
-  qt <- kcTypeSig (primTermType pt)
+kcPrimTerm :: KindAssumps -> PrimTerm -> TC PrimTerm
+kcPrimTerm env pt = do
+  qt <- kcTypeSig env (primTermType pt)
   return pt { primTermType = qt }
 
 -- | Check the kind of the type of a declaration, then the kinds of any type
 -- usages inside the term structure.
-kcTypedDecl :: TypedDecl -> TC TypedDecl
-kcTypedDecl d = do
-  qt <- kcTypeSig (typedType d)
-  b  <- kcMatch (typedBody d)
+kcTypedDecl :: KindAssumps -> TypedDecl -> TC TypedDecl
+kcTypedDecl env d = do
+  qt <- kcTypeSig env (typedType d)
+  b  <- kcMatch env (typedBody d)
   return d
     { typedType = qt
     , typedBody = b
@@ -71,46 +95,47 @@ kcTypedDecl d = do
 
 -- | Check the kinds of any types used within the body of an untyped
 -- declaration.
-kcUntypedDecl :: UntypedDecl -> TC UntypedDecl
-kcUntypedDecl d = do
-  b <- kcMatch (untypedBody d)
+kcUntypedDecl :: KindAssumps -> UntypedDecl -> TC UntypedDecl
+kcUntypedDecl env d = do
+  b <- kcMatch env (untypedBody d)
   return d { untypedBody = b }
 
 -- | Introduce kind variables for all type variables, and kind check a type
 -- signature.
-kcTypeSig :: Forall Type -> TC (Forall Type)
-kcTypeSig qt = introType qt $ \ ty -> do
-  logInfo ("Introduced Type: " ++ pretty ty)
+kcTypeSig :: KindAssumps -> Scheme -> TC Scheme
+kcTypeSig env qt = introType env qt $ \ env' ty -> do
+  logInfo ("Checking Type: " ++ pretty ty)
   logDebug (show (typeVars ty))
-  (tyk,ty') <- inferKind ty
+  (tyk,ty') <- inferKind env' ty
   unify kstar tyk
-  return (quantifyAll ty')
+  return (quantifyAndFixKinds ty')
 
 -- | Check the kind structure of any types that show up in terms.
-kcTerm :: Term -> TC Term
-kcTerm tm = case tm of
-  Abs m       -> Abs <$> kcMatch m
-  Let ts us b -> Let <$> mapM kcTypedDecl ts <*> mapM kcUntypedDecl us
-                     <*> kcTerm b
-  App f xs    -> App <$> kcTerm f <*> mapM kcTerm xs
+kcTerm :: KindAssumps -> Term -> TC Term
+kcTerm env tm = case tm of
+  Abs m       -> Abs <$> kcMatch env m
+  Let ts us b -> Let <$> mapM (kcTypedDecl env) ts
+                     <*> mapM (kcUntypedDecl env) us
+                     <*> kcTerm env b
+  App f xs    -> App <$> kcTerm env f <*> mapM (kcTerm env) xs
   Local{}     -> return tm
   Global{}    -> return tm
   Lit{}       -> return tm
   Prim{}      -> return tm
 
 -- | Check the kind structure of any types hiding under a binder.
-kcMatch :: Match -> TC Match
-kcMatch m = case m of
-  MTerm t   -> MTerm  <$> kcTerm t
-  MPat p m' -> MPat p <$> kcMatch m'
+kcMatch :: KindAssumps -> Match -> TC Match
+kcMatch env m = case m of
+  MTerm t   -> MTerm  <$> kcTerm env t
+  MPat p m' -> MPat p <$> kcMatch env m'
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
-inferKind :: Type -> TC (Kind,Type)
-inferKind ty = case ty of
+inferKind :: KindAssumps -> Type -> TC (Kind,Type)
+inferKind env ty = case ty of
 
   TApp l r -> do
-    (lk,l') <- inferKind l
-    (rk,r') <- inferKind r
+    (lk,l') <- inferKind env l
+    (rk,r') <- inferKind env r
     a       <- freshKindVar
     unify (rk `karrow` a) lk
     a'      <- applySubst a
@@ -120,9 +145,9 @@ inferKind ty = case ty of
   -- it's just a case of unifying the arguments and the kind of the constructor
   -- produce a result.
   TInfix n l r -> do
-    (lk,l') <- inferKind l
-    (rk,r') <- inferKind r
-    nk      <- findKind n
+    (lk,l') <- inferKind env l
+    (rk,r') <- inferKind env r
+    nk      <- findKind n env
     res     <- freshKindVar
     unify nk (lk `karrow` rk `karrow` res)
     res'    <- applySubst res
@@ -132,14 +157,14 @@ inferKind ty = case ty of
   -- environment.  There's no need to check them, as they should only be
   -- constructed by the compiler.
   TCon n -> do
-    k <- findKind n
+    k <- findKind n env
     return (k,ty)
 
   -- The idea here is that a variable might already have a kind associated with
   -- it through the environment, or that if it's a variable, that it might
   -- already have been unified with something concrete.
   TVar i p -> do
-    k' <- findKind (simpleName (paramName p))
+    k' <- findKind (simpleName (paramName p)) env
     return (k', TVar i p { paramKind = k' })
 
   -- All generic variables should disappear through instantiation, so this
@@ -152,12 +177,13 @@ inferKind ty = case ty of
 -- | Introduce new kind variables for each quantified type variable.  Give to a
 -- continuation, an environment that contains those variables, and a type with
 -- them instantiated.
-introType :: Forall Type -> (Type -> TC a) -> TC a
-introType (Forall ps ty) k = withVarIndex (length ps) $ do
-  ps' <- mapM freshTParam ps
-  ty' <- inst (zipWith TVar [0..] ps') ty
-  let binds = [ (simpleName (paramName p), paramKind p) | p <- ps' ]
-  addKindBindings binds (k ty')
+introType :: KindAssumps -> Scheme -> (KindAssumps -> Type -> TC a) -> TC a
+introType env (Forall ps ty) k = withVarIndex (length ps) $ do
+  ps'  <- mapM freshTParam ps
+  ty'  <- inst (zipWith TVar [0..] ps') ty
+  env' <- foldM (\e (q,t) -> addKindAssump e q t) env
+      [ (simpleName (paramName p), paramKind p) | p <- ps' ]
+  k env' ty'
 
 -- | Given a type parameter, assign it a fresh kind variable.
 freshTParam :: TParam -> TC TParam
@@ -167,12 +193,10 @@ freshTParam p = do
 
 -- | Quantify all variables in a type, fixing their kind variables to stars on
 -- the way.
-quantifyAll :: Type -> Forall Type
-quantifyAll ty = Forall ps (Types.apply s ty)
+quantifyAndFixKinds :: Type -> Forall Type
+quantifyAndFixKinds ty = Forall (map fixKind ps) ty'
   where
-  (is,ps)     = unzip (Set.toList (Set.map (second fixKind) (typeVars ty)))
-  step i n p' = (i, TGen n p')
-  s           = Subst (zipWith3 step is [0 ..] ps)
+  Forall ps ty' = quantifyAll ty
 
 -- | Turn kind variables into stars.
 fixKind :: TParam -> TParam
