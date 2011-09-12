@@ -39,16 +39,13 @@ addPrimBind env ptd = do
 -- | Type-check a module.
 tcModule :: Syn.Module -> TC [Decl]
 tcModule m = do
-  let ns    = Syn.modNamespace m
-      binds = map primTermSchemeBinding (Syn.modPrimTerms m)
-           ++ map (typedDeclSchemeBinding ns) (Syn.modTyped m)
+  let ns = Syn.modNamespace m
   env <- addPrimBinds emptyAssumps (Syn.modPrimTerms m)
-  addSchemeBindings binds $ do
-    mapM (tcTopTypedDecl env) (Syn.modTyped m)
+  mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
 
 -- | Type-check a top-level, typed declaration.
-tcTopTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC Decl
-tcTopTypedDecl env td = do
+tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
+tcTopTypedDecl ns env td = do
   ((ty,m),vs) <- collectVars (tcMatch env (Syn.typedBody td))
 
   -- there should be no variables showing up here.
@@ -66,7 +63,10 @@ tcTopTypedDecl env td = do
   logInfo (Syn.typedName td ++ " :: " ++ pretty (quantifyAll ty'))
   logInfo (Syn.typedName td ++ "  = " ++ pretty m)
 
-  fail "typechecker borked"
+  return Decl
+    { declName = qualName ns (Syn.typedName td)
+    , declBody = Forall [] m
+    }
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
@@ -114,11 +114,15 @@ tcTerm env tm = case tm of
       ty <- freshInst (aData a)
       return (ty, fromMaybe (Local n) (aBody a))
 
-    Nothing -> fail "unbound identifier"
+    Nothing -> unboundIdentifier (simpleName n)
 
-  Syn.Global qn -> do
-    ty <- findType qn
-    return (ty,Global qn)
+  Syn.Global qn -> case lookupAssump qn env of
+
+    Just a -> do
+      ty <- freshInst (aData a)
+      return (ty, fromMaybe (Global qn) (aBody a))
+
+    Nothing -> unboundIdentifier qn
 
   Syn.Prim{} -> fail "prim"
 
