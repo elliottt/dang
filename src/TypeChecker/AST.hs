@@ -33,38 +33,38 @@ instance Pretty Decl where
 
 -- | Typed variable introduction.
 data Match
- = MTerm Term
+ = MTerm Term Type
  | MPat Pat Match
    deriving (Show)
 
 instance FreeVars Match where
-  freeVars (MTerm t)  = freeVars t
-  freeVars (MPat p m) = freeVars m Set.\\ freeVars p
+  freeVars (MTerm t _) = freeVars t
+  freeVars (MPat p m)  = freeVars m Set.\\ freeVars p
 
 instance Pretty Match where
-  pp _ (MTerm t)  = ppr t
+  pp _ (MTerm t ty)  = ppr t <+> text "::" <+> ppr ty
   pp _ (MPat p m) = char '\\' <+> pp 1 p <+> text "->" <+> pp 0 m
 
 -- | Pretty-print the arguments with precedence 1, and the body with precedence
 -- 0.
 ppMatch :: Match -> ([Doc],Doc)
-ppMatch (MTerm t)  = ([],ppr t)
-ppMatch (MPat p m) = (pp 1 p:as,b)
+ppMatch (MTerm t ty) = ([],ppr t <+> text "::" <+> ppr ty)
+ppMatch (MPat p m)   = (pp 1 p:as,b)
   where
   (as,b) = ppMatch m
 
 data Pat
-  = PVar Var
-  | PWildcard
+  = PVar Var Type
+  | PWildcard Type
     deriving (Show)
 
 instance FreeVars Pat where
-  freeVars (PVar v)  = Set.singleton (simpleName v)
-  freeVars PWildcard = Set.empty
+  freeVars (PVar v _)    = Set.singleton (simpleName v)
+  freeVars (PWildcard _) = Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar v)  = text v
-  pp _ PWildcard = char '_'
+  pp _ (PVar v ty)    = parens (text v   <+> text "::" <+> ppr ty)
+  pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
 
 data Term
   = App Term [Type] [Term]

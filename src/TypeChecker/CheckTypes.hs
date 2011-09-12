@@ -77,18 +77,17 @@ tcTopTypedDecl ns env td = do
   unify oty ty
   ty' <- applySubst ty
 
-  -- dump some information about the checked declaration
-  logInfo (Syn.typedName td ++ " :: " ++ pretty (quantifyAll ty'))
-  logInfo (Syn.typedName td ++ "  = " ++ pretty m)
-
   -- generate the type-variables needed for this declaration
   let tvars = map snd (Set.toList (typeVars ty'))
+      name  = qualName ns (Syn.typedName td)
       decl  = Decl
-        { declName = qualName ns (Syn.typedName td)
+        { declName = name
         , declBody = Forall tvars m
         }
 
-  logDebug (pretty decl)
+  -- dump some information about the checked declaration
+  logInfo (pretty name ++ " :: " ++ pretty (quantifyAll ty'))
+  logInfo (pretty decl)
   return decl
 
 -- | Type-check a variable introduction.
@@ -97,12 +96,14 @@ tcMatch env m = case m of
 
   Syn.MTerm t -> do
     (ty,t') <- tcTerm env t
-    return (ty,MTerm t')
+    ty'     <- applySubst ty
+    return (ty',MTerm t' ty')
 
   Syn.MPat p m' -> tcPat env p $ \ env' pty p' -> do
     (ty,m'') <- tcMatch env' m'
     pty'     <- applySubst pty
-    return (pty' `tarrow` ty, MPat p' m'')
+    p''      <- applySubst p'
+    return (pty' `tarrow` ty, MPat p'' m'')
 
 -- | Type-check a pattern.
 tcPat :: TypeAssumps -> Syn.Pat -> (TypeAssumps -> Type -> Pat -> TC a) -> TC a
@@ -110,11 +111,11 @@ tcPat env p k = case p of
 
   Syn.PWildcard -> do
     v <- freshVar kstar
-    k env v PWildcard
+    k env v (PWildcard v)
 
   Syn.PVar n -> do
     v <- freshVar kstar
-    k (addAssump (simpleName n) (Assump Nothing (toScheme v)) env) v (PVar n)
+    k (addAssump (simpleName n) (Assump Nothing (toScheme v)) env) v (PVar n v)
 
 -- | Type-check terms in the syntax into system-f like terms.
 tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)

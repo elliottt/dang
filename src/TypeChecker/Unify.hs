@@ -5,6 +5,7 @@ module TypeChecker.Unify where
 
 import Dang.Monad
 import Pretty
+import TypeChecker.AST
 import TypeChecker.Types
 import Utils ((!!?))
 
@@ -47,6 +48,15 @@ instance Types Type where
     TVar i p     -> Set.singleton (i,p)
     TGen{}       -> Set.empty
     TCon{}       -> Set.empty
+
+instance Types Pat where
+  apply s p = case p of
+    PWildcard ty -> PWildcard (apply s ty)
+    PVar v ty    -> PVar v (apply s ty)
+
+  typeVars p = case p of
+    PWildcard ty -> typeVars ty
+    PVar _ ty    -> typeVars ty
 
 lookupSubst :: Index -> Subst -> Maybe Type
 lookupSubst p (Subst u) = lookup p u
