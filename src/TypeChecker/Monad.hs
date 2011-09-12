@@ -14,8 +14,7 @@ module TypeChecker.Monad (
   , freshName
   , freshVar
   , freshVarFromTParam
-  , emitFreeVar
-  , collectVars
+  , FreeVars, emitFreeVar, collectVars
   , UnboundIdentifier(..)
   , unboundIdentifier
   , withVarIndex
@@ -77,7 +76,7 @@ bindVars vs m = TC $ do
 
 -- Write-only Output -----------------------------------------------------------
 
-type FreeVars = Set.Set Var
+type FreeVars = Set.Set (Var,Type)
 
 data WO = WO
   { woVars :: FreeVars
@@ -97,8 +96,8 @@ collectVars (TC m) = TC $ do
   (a,wo) <- collect m
   return (a,woVars wo)
 
-emitFreeVar :: Var -> TC ()
-emitFreeVar v = TC (put mempty { woVars = Set.singleton v })
+emitFreeVar :: Var -> Type -> TC ()
+emitFreeVar v ty = TC (put mempty { woVars = Set.singleton (v,ty) })
 
 
 -- Read/Write State ------------------------------------------------------------

@@ -1,6 +1,9 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module TypeChecker.CheckTypes where
 
 import Dang.IO
+import Dang.Monad
 import Interface (IsInterface,funSymbols,funType)
 import Pretty
 import QualName
@@ -12,8 +15,9 @@ import TypeChecker.Unify (quantifyAll,typeVars)
 import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
-import Control.Monad (mapAndUnzipM,foldM)
+import Control.Monad (mapAndUnzipM,foldM,unless)
 import Data.Maybe (fromMaybe)
+import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
 
@@ -63,7 +67,10 @@ tcModule iset m = do
 -- | Type-check a top-level, typed declaration.
 tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl ns env td = do
-  ((ty,m),vs) <- collectVars (tcMatch env (Syn.typedBody td))
+  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+
+  -- this should be caught by the module system, but if not, catch it here.
+  unless (Set.null fvs) (unexpectedFreeVars fvs)
 
   -- fix the inferred type, given information from the signature
   oty <- freshInst (Syn.typedType td)
@@ -75,10 +82,10 @@ tcTopTypedDecl ns env td = do
   logInfo (Syn.typedName td ++ "  = " ++ pretty m)
 
   -- generate the type-variables needed for this declaration
-  let vars = map snd (Set.toList (typeVars ty'))
-      decl = Decl
+  let tvars = map snd (Set.toList (typeVars ty'))
+      decl  = Decl
         { declName = qualName ns (Syn.typedName td)
-        , declBody = Forall vars m
+        , declBody = Forall tvars m
         }
 
   logDebug (pretty decl)
@@ -152,3 +159,15 @@ tcAbs env m = do
   lam     <- freshName "_lam" (freeVars m')
   let decl = Decl (simpleName lam) (Forall [] m')
   return (ty, Let [decl] (Local lam))
+
+
+-- Errors ----------------------------------------------------------------------
+
+data TypeCheckingError
+  = UnexpectedFreeVars FreeVars
+    deriving (Show,Typeable)
+
+instance Exception TypeCheckingError
+
+unexpectedFreeVars :: FreeVars -> TC a
+unexpectedFreeVars  = raiseE . UnexpectedFreeVars
