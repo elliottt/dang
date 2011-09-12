@@ -4,6 +4,7 @@ module TypeChecker.CheckKinds where
 
 import Dang.IO
 import Dang.Monad
+import Interface (IsInterface,kinds)
 import Pretty
 import QualName
 import Syntax.AST
@@ -33,8 +34,13 @@ kindError  = raiseE . KindError
 
 type KindAssumps = Assumps Kind
 
-findKind :: QualName -> KindAssumps -> TC Kind
-findKind qn env = case lookupAssump qn env of
+interfaceAssumps :: IsInterface iset => iset -> KindAssumps
+interfaceAssumps  = foldl step emptyAssumps . kinds
+  where
+  step env (qa,k) = addAssump qa (Assump Nothing k) env
+
+kindAssump :: QualName -> KindAssumps -> TC Kind
+kindAssump qn env = case lookupAssump qn env of
   Just a  -> return (aData a)
   Nothing -> unboundIdentifier qn
 
@@ -57,10 +63,10 @@ addPrimType env pty = addKindAssump env name kind
 
 -- | Check the kinds of all type usages in a Module.  Return a Module that
 -- contains all it's declarations with fixed kinds.
-kcModule :: Module -> TC Module
-kcModule m = do
+kcModule :: IsInterface iset => iset -> Module -> TC Module
+kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
-  env <- addPrimTypes emptyAssumps (modPrimTypes m)
+  env <- addPrimTypes (interfaceAssumps iset) (modPrimTypes m)
 
   pts' <- mapM (kcPrimTerm env)    (modPrimTerms m)
   ts'  <- mapM (kcTypedDecl env)   (modTyped m)
@@ -147,7 +153,7 @@ inferKind env ty = case ty of
   TInfix n l r -> do
     (lk,l') <- inferKind env l
     (rk,r') <- inferKind env r
-    nk      <- findKind n env
+    nk      <- kindAssump n env
     res     <- freshKindVar
     unify nk (lk `karrow` rk `karrow` res)
     res'    <- applySubst res
@@ -157,14 +163,14 @@ inferKind env ty = case ty of
   -- environment.  There's no need to check them, as they should only be
   -- constructed by the compiler.
   TCon n -> do
-    k <- findKind n env
+    k <- kindAssump n env
     return (k,ty)
 
   -- The idea here is that a variable might already have a kind associated with
   -- it through the environment, or that if it's a variable, that it might
   -- already have been unified with something concrete.
   TVar i p -> do
-    k' <- findKind (simpleName (paramName p)) env
+    k' <- kindAssump (simpleName (paramName p)) env
     return (k', TVar i p { paramKind = k' })
 
   -- All generic variables should disappear through instantiation, so this

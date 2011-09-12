@@ -2,33 +2,51 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module TypeChecker.Monad where
+module TypeChecker.Monad (
+    TC()
+  , runTC
+
+    -- Unification
+  , unify
+  , applySubst
+
+    -- Variables
+  , freshName
+  , freshVar
+  , freshVarFromTParam
+  , emitFreeVar
+  , collectVars
+  , UnboundIdentifier(..)
+  , unboundIdentifier
+  , withVarIndex
+  , bindVars
+
+    -- Types
+  , freshInst
+  ) where
 
 import Dang.Monad
-import Interface
 import QualName
 import Syntax.AST (Var)
 import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
-import Control.Arrow (second)
 import Control.Monad.Fix (MonadFix)
 import Data.Monoid (Monoid(..))
 import Data.Typeable (Typeable)
 import MonadLib
-import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 
 newtype TC a = TC { unTC :: ReaderT RO (WriterT WO (StateT RW Dang)) a }
     deriving (Functor,Applicative,Monad,MonadFix)
 
-runTC :: InterfaceSet -> TC a -> Dang a
-runTC iset (TC m) = fmap (fst . fst)
-                  $ runStateT emptyRW
-                  $ runWriterT
-                  $ runReaderT (emptyRO iset) m
+runTC :: TC a -> Dang a
+runTC (TC m) = fmap (fst . fst)
+             $ runStateT emptyRW
+             $ runWriterT
+             $ runReaderT emptyRO m
 
 instance BaseM TC Dang where
   inBase = TC . inBase
@@ -43,69 +61,23 @@ instance RunExceptionM TC SomeException where
 -- Read-only Environment -------------------------------------------------------
 
 data RO = RO
-  { roBoundVars    :: Set.Set Var
-  , roInterfaceSet :: InterfaceSet
-  , roTypeBindings :: Map.Map QualName TypeBinding
-  , roKindBindings :: Map.Map QualName Kind
+  { roBoundVars :: Set.Set Var
   }
 
-data TypeBinding
-  = Quantified (Forall Type)
-  | TypeBinding Type
-
-bindingScheme :: TypeBinding -> Forall Type
-bindingScheme (Quantified scheme) = scheme
-bindingScheme (TypeBinding ty)    = Forall [] ty
-
-emptyRO :: InterfaceSet -> RO
-emptyRO iset = RO
+emptyRO :: RO
+emptyRO  = RO
   { roBoundVars    = Set.empty
-  , roInterfaceSet = iset
-  , roTypeBindings = Map.empty
-  , roKindBindings = Map.empty
   }
 
-roBindKind :: QualName -> Kind -> RO -> RO
-roBindKind qn k ro = ro { roKindBindings = Map.insert qn k (roKindBindings ro) }
-
-roBindKinds :: [(QualName,Kind)] -> RO -> RO
-roBindKinds binds ro =
-  ro { roKindBindings = Map.union (Map.fromList binds) (roKindBindings ro) }
-
-roFindKind :: QualName -> RO -> Maybe Kind
-roFindKind qn ro = fromISet `mplus` fromBinding
-  where
-  fromISet    = lookupKind qn (roInterfaceSet ro)
-  fromBinding = Map.lookup qn (roKindBindings ro)
-
-roBindType :: QualName -> Type -> RO -> RO
-roBindType qn ty ro =
-  ro { roTypeBindings = Map.insert qn (TypeBinding ty) (roTypeBindings ro) }
-
-roBindTypes :: [(QualName,Type)] -> RO -> RO
-roBindTypes ts ro =
-  ro { roTypeBindings = Map.union (Map.fromList (map (second TypeBinding) ts))
-                            (roTypeBindings ro) }
-
-roBindScheme :: QualName -> Forall Type -> RO -> RO
-roBindScheme qn scheme ro =
-  ro { roTypeBindings = Map.insert qn (Quantified scheme) (roTypeBindings ro) }
-
-roBindSchemes :: [(QualName,Forall Type)] -> RO -> RO
-roBindSchemes ts ro =
-  ro { roTypeBindings = Map.union (Map.fromList (map (second Quantified) ts))
-                            (roTypeBindings ro) }
-
-roFindScheme :: QualName -> RO -> Maybe (Forall Type)
-roFindScheme qn ro = fromISet `mplus` fromBinding
-  where
-  fromISet    = funType `fmap` lookupFunSymbol qn (roInterfaceSet ro)
-  fromBinding = bindingScheme `fmap` Map.lookup qn (roTypeBindings ro)
+bindVars :: [Var] -> TC a -> TC a
+bindVars vs m = TC $ do
+  ro <- ask
+  local (ro { roBoundVars = roBoundVars ro `mappend` Set.fromList vs }) (unTC m)
 
 
 -- Write-only Output -----------------------------------------------------------
 
-type FreeVars = [Type]
+type FreeVars = Set.Set Var
 
 data WO = WO
   { woVars :: FreeVars
@@ -125,8 +97,8 @@ collectVars (TC m) = TC $ do
   (a,wo) <- collect m
   return (a,woVars wo)
 
-emitFreeType :: Type -> TC ()
-emitFreeType ty = TC (put mempty { woVars = [ty] })
+emitFreeVar :: Var -> TC ()
+emitFreeVar v = TC (put mempty { woVars = Set.singleton v })
 
 
 -- Read/Write State ------------------------------------------------------------
@@ -211,40 +183,7 @@ instance Exception UnboundIdentifier
 unboundIdentifier :: QualName -> TC a
 unboundIdentifier  = raiseE . UnboundIdentifier
 
-lookupRO :: (QualName -> RO -> Maybe a) -> QualName -> TC a
-lookupRO find qn = do
-  ro <- TC ask
-  case find qn ro of
-    Nothing -> raiseE (UnboundIdentifier qn)
-    Just a  -> return a
-
-findType :: QualName -> TC Type
-findType  = freshInst <=< lookupRO roFindScheme
-
 freshInst :: Forall Type -> TC Type
 freshInst (Forall ps ty) = do
   vars <- mapM freshVarFromTParam ps
   applySubst =<< inst vars ty
-
-modifyRO :: (RO -> RO) -> TC a -> TC a
-modifyRO f m = TC $ do
-  ro <- ask
-  local (f ro) (unTC m)
-
-addKindBinding :: QualName -> Kind -> TC a -> TC a
-addKindBinding qn k = modifyRO (roBindKind qn k)
-
-addKindBindings :: [(QualName,Kind)] -> TC a -> TC a
-addKindBindings  = modifyRO . roBindKinds
-
-addTypeBinding :: QualName -> Type -> TC a -> TC a
-addTypeBinding qn ty = modifyRO (roBindType qn ty)
-
-addTypeBindings :: [(QualName,Type)] -> TC a -> TC a
-addTypeBindings  = modifyRO . roBindTypes
-
-addSchemeBinding :: QualName -> Forall Type -> TC a -> TC a
-addSchemeBinding qn scheme = modifyRO (roBindScheme qn scheme)
-
-addSchemeBindings :: [(QualName, Forall Type)] -> TC a -> TC a
-addSchemeBindings  = modifyRO . roBindSchemes

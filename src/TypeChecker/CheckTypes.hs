@@ -1,22 +1,38 @@
 module TypeChecker.CheckTypes where
 
 import Dang.IO
+import Interface (IsInterface,funSymbols,funType)
 import Pretty
 import QualName
 import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..))
-import TypeChecker.Unify (quantifyAll)
+import TypeChecker.Unify (quantifyAll,typeVars)
 import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
-import Control.Monad (mapAndUnzipM,unless,foldM)
-import Data.List (intersperse)
+import Control.Monad (mapAndUnzipM,foldM)
 import Data.Maybe (fromMaybe)
+import qualified Data.Set as Set
 
 
 type TypeAssumps = Assumps Scheme
+
+-- | Turn an interface into an initial set of assumptions.
+interfaceAssumps :: IsInterface iset => iset -> TypeAssumps
+interfaceAssumps  = foldl step emptyAssumps . funSymbols
+  where
+  step env (qn,sym) = addAssump qn (Assump Nothing (funType sym)) env
+
+-- | Lookup a type assumption in the environment.
+typeAssump :: QualName -> TypeAssumps -> TC (Assump Type)
+typeAssump qn env = case lookupAssump qn env of
+  Just a  -> do
+    ty <- applySubst =<< freshInst (aData a)
+    return a { aData = ty }
+  Nothing -> unboundIdentifier qn
+
 
 -- Type Checking ---------------------------------------------------------------
 
@@ -37,22 +53,16 @@ addPrimBind env ptd = do
   return (addAssump n a env)
 
 -- | Type-check a module.
-tcModule :: Syn.Module -> TC [Decl]
-tcModule m = do
+tcModule :: IsInterface iset => iset -> Syn.Module -> TC [Decl]
+tcModule iset m = do
   let ns = Syn.modNamespace m
-  env <- addPrimBinds emptyAssumps (Syn.modPrimTerms m)
+  env <- addPrimBinds (interfaceAssumps iset) (Syn.modPrimTerms m)
   mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
 
 -- | Type-check a top-level, typed declaration.
 tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl ns env td = do
   ((ty,m),vs) <- collectVars (tcMatch env (Syn.typedBody td))
-
-  -- there should be no variables showing up here.
-  unless (null vs) $ fail $ concat
-    $ "type variables escaping from the definition of ``"
-    : Syn.typedName td : "''\n\t"
-    : intersperse ", " (map pretty vs)
 
   -- fix the inferred type, given information from the signature
   oty <- freshInst (Syn.typedType td)
@@ -63,10 +73,15 @@ tcTopTypedDecl ns env td = do
   logInfo (Syn.typedName td ++ " :: " ++ pretty (quantifyAll ty'))
   logInfo (Syn.typedName td ++ "  = " ++ pretty m)
 
-  return Decl
-    { declName = qualName ns (Syn.typedName td)
-    , declBody = Forall [] m
-    }
+  -- generate the type-variables needed for this declaration
+  let vars = map snd (Set.toList (typeVars ty'))
+      decl = Decl
+        { declName = qualName ns (Syn.typedName td)
+        , declBody = Forall vars m
+        }
+
+  logDebug (pretty decl)
+  return decl
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
@@ -108,21 +123,13 @@ tcTerm env tm = case tm of
 
   Syn.Abs m -> tcAbs env m
 
-  Syn.Local n -> case lookupAssump (simpleName n) env of
+  Syn.Local n -> do
+    a  <- typeAssump (simpleName n) env
+    return (aData a, fromMaybe (Local n) (aBody a))
 
-    Just a -> do
-      ty <- freshInst (aData a)
-      return (ty, fromMaybe (Local n) (aBody a))
-
-    Nothing -> unboundIdentifier (simpleName n)
-
-  Syn.Global qn -> case lookupAssump qn env of
-
-    Just a -> do
-      ty <- freshInst (aData a)
-      return (ty, fromMaybe (Global qn) (aBody a))
-
-    Nothing -> unboundIdentifier qn
+  Syn.Global qn -> do
+    a  <- typeAssump qn env
+    return (aData a, fromMaybe (Global qn) (aBody a))
 
   Syn.Prim{} -> fail "prim"
 

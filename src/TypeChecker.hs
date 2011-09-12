@@ -14,7 +14,7 @@ import TypeChecker.Monad (runTC)
 kindCheckModule :: InterfaceSet -> Module -> Dang Module
 kindCheckModule iset m = do
   logStage "kind-checker"
-  kcm <- runTC iset (kcModule m)
+  kcm <- runTC (kcModule iset m)
   logInfo "Kind checking output:"
   logDebug (show kcm)
   logInfo (pretty kcm)
@@ -23,7 +23,7 @@ kindCheckModule iset m = do
 typeCheckModule :: InterfaceSet -> Module -> Dang Module
 typeCheckModule iset m = do
   logStage "type-checker"
-  tcm <- runTC iset (tcModule m)
+  tcm <- runTC (tcModule iset m)
   logInfo "Type checking output:"
   logDebug (show tcm)
   logInfo (pretty tcm)
