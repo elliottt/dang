@@ -45,6 +45,8 @@ instance Pretty Match where
   pp _ (MTerm t)  = ppr t
   pp _ (MPat p m) = char '\\' <+> pp 1 p <+> text "->" <+> pp 0 m
 
+-- | Pretty-print the arguments with precedence 1, and the body with precedence
+-- 0.
 ppMatch :: Match -> ([Doc],Doc)
 ppMatch (MTerm t)  = ([],ppr t)
 ppMatch (MPat p m) = (pp 1 p:as,b)
