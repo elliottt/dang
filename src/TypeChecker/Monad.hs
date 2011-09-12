@@ -154,6 +154,7 @@ nextIndex  = do
   TC (set rw { rwIndex = rwIndex rw + 1 })
   return (rwIndex rw)
 
+-- | Generate a fresh name, given a prefix and a set of taken names to avoid.
 freshName :: String -> Set.Set QualName -> TC String
 freshName pfx fvs = loop
   where
@@ -170,20 +171,23 @@ freshVar k = do
   ix <- nextIndex
   return (TVar ix (TParam ('t':show ix) k))
 
+-- | Generate a new type variable, given a @TParam@ as a template.
 freshVarFromTParam :: TParam -> TC Type
 freshVarFromTParam p = do
   ix <- nextIndex
   return (TVar ix p)
+
+-- | Freshly instantiate a @Scheme@.
+freshInst :: Scheme -> TC Type
+freshInst (Forall ps ty) = do
+  vars <- mapM freshVarFromTParam ps
+  applySubst =<< inst vars ty
 
 data UnboundIdentifier = UnboundIdentifier QualName
     deriving (Show,Typeable)
 
 instance Exception UnboundIdentifier
 
+-- | Generate an @UnboundIdentifier@ exception.
 unboundIdentifier :: QualName -> TC a
 unboundIdentifier  = raiseE . UnboundIdentifier
-
-freshInst :: Forall Type -> TC Type
-freshInst (Forall ps ty) = do
-  vars <- mapM freshVarFromTParam ps
-  applySubst =<< inst vars ty
