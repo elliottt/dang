@@ -29,7 +29,7 @@ instance Pretty Decl where
     Forall ps body = declBody d
     (as,b)         = ppMatch body
 
-  ppList _ = semis . map ppr
+  ppList _ = declBlock . map ppr
 
 -- | Typed variable introduction.
 data Match
