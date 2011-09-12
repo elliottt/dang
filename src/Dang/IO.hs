@@ -127,5 +127,7 @@ logStage :: BaseM m Dang => String -> m ()
 logStage l = whenVerbosity 1 (io (putStrLn msg))
   where
   msg  = concat
-       [ withGraphics [fg blue] "--{", l, withGraphics [fg blue] ('}' : line) ]
+       [ withGraphics [fg blue, bold] "--{"
+       , withGraphics [fg cyan, bold] l
+       , withGraphics [fg blue, bold] ('}' : line) ]
   line = replicate (80 - length l - 4) '-'
