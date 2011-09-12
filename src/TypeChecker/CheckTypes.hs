@@ -83,6 +83,7 @@ tcTopTypedDecl ns env td = do
   logDebug (pretty decl)
   return decl
 
+-- | Type-check a variable introduction.
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
 
@@ -95,6 +96,7 @@ tcMatch env m = case m of
     pty'     <- applySubst pty
     return (pty' `tarrow` ty, MPat p' m'')
 
+-- | Type-check a pattern.
 tcPat :: TypeAssumps -> Syn.Pat -> (TypeAssumps -> Type -> Pat -> TC a) -> TC a
 tcPat env p k = case p of
 
@@ -149,14 +151,3 @@ tcAbs env m = do
   lam     <- freshName "_lam" (freeVars m')
   let decl = Decl (simpleName lam) (Forall [] m')
   return (ty, Let [decl] (Local lam))
-
-
--- Environment Helpers ---------------------------------------------------------
-
-primTermSchemeBinding :: Syn.PrimTerm -> (QualName,Scheme)
-primTermSchemeBinding pt =
-  (primName (Syn.primTermName pt), Syn.primTermType pt)
-
-typedDeclSchemeBinding :: Namespace -> Syn.TypedDecl -> (QualName,Scheme)
-typedDeclSchemeBinding ns td =
-  (qualName ns (Syn.typedName td), Syn.typedType td)
