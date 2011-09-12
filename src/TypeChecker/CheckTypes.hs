@@ -130,7 +130,7 @@ tcTerm env tm = case tm of
     unify fty inferred
     return (res, App f' [] xs')
 
-  Syn.Let{} -> fail "let"
+  Syn.Let ts us e -> tcLet env ts us e
 
   Syn.Abs m -> tcAbs env m
 
@@ -148,10 +148,50 @@ tcTerm env tm = case tm of
     (ty,l') <- tcLit l
     return (ty,Lit l')
 
--- | Type-check a literal.
-tcLit :: Syn.Literal -> TC (Type,Syn.Literal)
-tcLit l = case l of
-  Syn.LInt{} -> return (TCon (primName "Int"), l)
+-- | Type-check a let expression.
+tcLet :: TypeAssumps -> [Syn.TypedDecl] -> [Syn.UntypedDecl] -> Syn.Term
+      -> TC (Type,Term)
+tcLet env ts us e = do
+  env0       <- addNameVars env (map Syn.typedName ts ++ map Syn.untypedName us)
+  (env1,ts') <- tcTypedDecls env0 ts
+  us'        <- tcUntypedDecls env0 us
+  (ty,e')    <- tcTerm env0 e
+  return (ty, Let (reverse ts' ++ us') e')
+
+-- | Introduce fresh type variables for all names in a block of bindings.
+addNameVars :: TypeAssumps -> [Name] -> TC TypeAssumps
+addNameVars = foldM $ \ env n -> do
+  v <- freshVar kstar
+  return (addAssump (simpleName n) (Assump Nothing (toScheme v)) env)
+
+tcTypedDecls :: TypeAssumps -> [Syn.TypedDecl] -> TC (TypeAssumps,[Decl])
+tcTypedDecls env0 = foldM step (env0,[])
+  where
+  step (env,tds) td = do
+    (env',td') <- tcTypedDecl env td
+    return (env',td':tds)
+
+-- | Type-check a typed declaration that shows up in a let-expression.
+tcTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC (TypeAssumps,Decl)
+tcTypedDecl env td = do
+  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+  let vars = map snd (Set.toList (typeVars ty))
+      name = simpleName (Syn.typedName td)
+      decl = Decl
+        { declName = name
+        , declBody = Forall vars m
+        }
+
+      env' = addAssump name (Assump Nothing (quantifyAll ty)) env
+
+  return (env, decl)
+
+-- | Type-check a block of untyped declarations that show up in a
+-- let-expression.
+tcUntypedDecls :: TypeAssumps -> [Syn.UntypedDecl] -> TC [Decl]
+tcUntypedDecls _env _us = do
+  logError "tcUntypedDecls not implemented"
+  return []
 
 -- | Translate an abstraction, into a let expression with a fresh name.
 tcAbs :: TypeAssumps -> Syn.Match -> TC (Type,Term)
@@ -160,6 +200,11 @@ tcAbs env m = do
   lam     <- freshName "_lam" (freeVars m')
   let decl = Decl (simpleName lam) (Forall [] m')
   return (ty, Let [decl] (Local lam))
+
+-- | Type-check a literal.
+tcLit :: Syn.Literal -> TC (Type,Syn.Literal)
+tcLit l = case l of
+  Syn.LInt{} -> return (TCon (primName "Int"), l)
 
 
 -- Errors ----------------------------------------------------------------------
