@@ -47,7 +47,7 @@ addPrimBind env ptd = do
       a = Assump Nothing (Syn.primTermType ptd)
 
   logInfo $ concat
-    [ "Introduced Type: ", Syn.primTermName ptd
+    [ "  Assuming: ", Syn.primTermName ptd
     , " :: ", pretty (Syn.primTermType ptd) ]
 
   return (addAssump n a env)
@@ -55,6 +55,7 @@ addPrimBind env ptd = do
 -- | Type-check a module.
 tcModule :: IsInterface iset => iset -> Syn.Module -> TC [Decl]
 tcModule iset m = do
+  logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
   env <- addPrimBinds (interfaceAssumps iset) (Syn.modPrimTerms m)
   mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
