@@ -15,8 +15,10 @@ module Dang.IO (
   , whenVerbosity
   , logInfo, logStage
   , logDebug
+  , logError
   ) where
 
+import Colors
 import Dang.Monad
 
 import MonadLib
@@ -105,17 +107,25 @@ whenVerbosity v m = do
   opts <- getOptions
   when (optVerbosity opts >= v) m
 
-logString :: BaseM m Dang => String -> String -> m ()
-logString label str =
-  io $ putStrLn $ showChar '[' $ showString label $ showString "]\t" str
+logString :: BaseM m Dang => (String -> String) -> String -> String -> m ()
+logString mode label str =
+  io $ putStrLn $ showString (mode ('[' : label ++ "]")) $ showChar '\t' str
+
+logError :: BaseM m Dang => String -> m ()
+logError  = whenVerbosity 0
+          . logString (withGraphics [fg red, bold]) "ERROR"
 
 logInfo :: BaseM m Dang => String -> m ()
-logInfo  = whenVerbosity 1 . logString "INFO"
+logInfo  = whenVerbosity 1
+         . logString (withGraphics [fg cyan, bold]) "INFO"
 
 logDebug :: BaseM m Dang => String -> m ()
-logDebug  = whenVerbosity 2 . logString "DEBUG"
+logDebug  = whenVerbosity 2
+          . logString (withGraphics [fg blue, bold]) "DEBUG"
 
 logStage :: BaseM m Dang => String -> m ()
-logStage l = whenVerbosity 1 (io (putStrLn ("--{" ++ l ++ "}" ++ line)))
+logStage l = whenVerbosity 1 (io (putStrLn msg))
   where
+  msg  = concat
+       [ withGraphics [fg blue] "--{", l, withGraphics [fg blue] ('}' : line) ]
   line = replicate (80 - length l - 4) '-'
