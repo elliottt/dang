@@ -83,7 +83,10 @@ tcModule iset m = do
 -- | Type-check a top-level, typed declaration.
 tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl ns env td = do
-  ((vs,ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+  let name = qualName ns (Syn.typedName td)
+  logInfo ("Checking typed decl: " ++ pretty name)
+
+  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
 
   -- this should be caught by the module system, but if not, catch it here.
   unless (Set.null fvs) (unexpectedFreeVars fvs)
@@ -96,7 +99,6 @@ tcTopTypedDecl ns env td = do
 
   -- generate the type-variables needed for this declaration
   let vars = Set.toList (typeVars ty')
-      name = qualName ns (Syn.typedName td)
       decl = Decl
         { declName = name
         , declBody = quantify vars m'
@@ -108,19 +110,19 @@ tcTopTypedDecl ns env td = do
   return decl
 
 -- | Type-check a variable introduction.
-tcMatch :: TypeAssumps -> Syn.Match -> TC ([TParam],Type,Match)
+tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
 
   Syn.MTerm t -> do
-    (Forall vs ty,t') <- tcTerm env t
-    ty'     <- applySubst ty
-    return (vs, ty', MTerm t' ty')
+    (qt,t') <- tcTerm env t
+    ty      <- freshInst qt
+    return (ty, MTerm t' ty)
 
   Syn.MPat p m' -> tcPat env p $ \ env' pty p' -> do
-    (vs,ty,m'') <- tcMatch env' m'
-    pty'        <- applySubst pty
-    p''         <- applySubst p'
-    return (vs, pty' `tarrow` ty, MPat p'' m'')
+    (ty,m'') <- tcMatch env' m'
+    pty'     <- applySubst pty
+    p''      <- applySubst p'
+    return (pty' `tarrow` ty, MPat p'' m'')
 
 -- | Type-check a pattern.
 tcPat :: TypeAssumps -> Syn.Pat -> (TypeAssumps -> Type -> Pat -> TC a) -> TC a
@@ -160,15 +162,14 @@ tcTerm env tm = case tm of
 
 tcApp :: TypeAssumps -> Syn.Term -> [Syn.Term] -> TC (Scheme,Term)
 tcApp env f xs = do
-  (xtys,xs')           <- mapAndUnzipM (tcTerm env) xs
-  (qt@(Forall vars fty),f') <- tcTerm env f
-  logInfo (pretty vars)
-  logInfo (pretty fty)
-  fty' <- freshInst qt
-  assigns <- genAssigns (destArgs fty') xtys
-  logInfo (show assigns)
+  (xqts,xs')           <- mapAndUnzipM (tcTerm env) xs
+  (qt,f') <- tcTerm env f
+  fty     <- freshInst qt
+  xtys    <- mapM freshInst xqts
 
-  (as,qs) <- genTypeApp (Set.toList (typeVars fty')) assigns
+  -- generate variable assignments, and use that to produce variable bindings
+  assigns <- genAssigns (destArgs fty) xtys
+  (as,qs) <- genTypeApp (Set.toList (typeVars fty)) assigns
   let app | null as   = App       f'     xs'
           | otherwise = App (AppT f' as) xs'
       tm  | null qs   = app
@@ -176,15 +177,20 @@ tcApp env f xs = do
             let Forall qs' app' = quantify qs app
              in AbsT qs' app'
 
-  logInfo (pretty tm)
-  fail "thingy"
+  -- unify the function type and the inferred type
+  res <- freshVar kstar
+  let inferred = foldr tarrow res xtys
+  unify inferred fty
+  fty' <- applySubst fty
 
-genAssigns :: [Type] -> [Scheme] -> TC [(TParam,Type)]
-genAssigns vs qts = sequence . upd =<< zipWithM mk vs qts
+  logInfo (pretty tm)
+
+  aty <- applySubst res
+  return (quantify qs res, tm)
+
+genAssigns :: [Type] -> [Type] -> TC [(TParam,Type)]
+genAssigns vs ts = sequence (upd (zip vs ts))
   where
-  mk v qt = do
-    ty <- freshInst qt
-    return (v,ty)
   upd = CM.foldClashMap f []
       . CM.fromList
       . mapMaybe guardTypeVars
@@ -237,7 +243,7 @@ tcTypedDecls env0 = foldM step (env0,[])
 -- | Type-check a typed declaration that shows up in a let-expression.
 tcTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC (TypeAssumps,Decl)
 tcTypedDecl env td = do
-  ((vs,ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
 
   oty <- freshInst (Syn.typedType td)
   unify oty ty
@@ -265,10 +271,11 @@ tcUntypedDecls _env _us = do
 -- | Translate an abstraction, into a let expression with a fresh name.
 tcAbs :: TypeAssumps -> Syn.Match -> TC (Scheme,Term)
 tcAbs env m = do
-  (vs,ty,m') <- tcMatch env m
-  lam        <- freshName "_lam" (freeVars m')
-  let decl = Decl (simpleName lam) (Forall vs m')
-  return (Forall vs ty, Let [decl] (Local lam))
+  (ty,m') <- tcMatch env m
+  lam     <- freshName "_lam" (freeVars m')
+  let vs   = Set.toList (typeVars ty)
+      decl = Decl (simpleName lam) (quantify vs m')
+  return (quantify vs ty, Let [decl] (Local lam))
 
 -- | Type-check a literal.
 tcLit :: Syn.Literal -> TC (Scheme,Syn.Literal)
