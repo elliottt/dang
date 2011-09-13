@@ -33,11 +33,9 @@ interfaceAssumps  = foldl step emptyAssumps . funSymbols
   step env (qn,sym) = addAssump qn (Assump Nothing (funType sym)) env
 
 -- | Lookup a type assumption in the environment.
-typeAssump :: QualName -> TypeAssumps -> TC (Assump Type)
+typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
 typeAssump qn env = case lookupAssump qn env of
-  Just a  -> do
-    ty <- applySubst =<< freshInst (aData a)
-    return a { aData = ty }
+  Just a  -> return a
   Nothing -> unboundIdentifier qn
 
 
@@ -84,7 +82,7 @@ tcModule iset m = do
 -- | Type-check a top-level, typed declaration.
 tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl ns env td = do
-  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+  ((vs,ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
 
   -- this should be caught by the module system, but if not, catch it here.
   unless (Set.null fvs) (unexpectedFreeVars fvs)
@@ -109,19 +107,19 @@ tcTopTypedDecl ns env td = do
   return decl
 
 -- | Type-check a variable introduction.
-tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
+tcMatch :: TypeAssumps -> Syn.Match -> TC ([TParam],Type,Match)
 tcMatch env m = case m of
 
   Syn.MTerm t -> do
-    (ty,t') <- tcTerm env t
+    (Forall vs ty,t') <- tcTerm env t
     ty'     <- applySubst ty
-    return (ty',MTerm t' ty')
+    return (vs, ty', MTerm t' ty')
 
   Syn.MPat p m' -> tcPat env p $ \ env' pty p' -> do
-    (ty,m'') <- tcMatch env' m'
-    pty'     <- applySubst pty
-    p''      <- applySubst p'
-    return (pty' `tarrow` ty, MPat p'' m'')
+    (vs,ty,m'') <- tcMatch env' m'
+    pty'        <- applySubst pty
+    p''         <- applySubst p'
+    return (vs, pty' `tarrow` ty, MPat p'' m'')
 
 -- | Type-check a pattern.
 tcPat :: TypeAssumps -> Syn.Pat -> (TypeAssumps -> Type -> Pat -> TC a) -> TC a
@@ -136,7 +134,7 @@ tcPat env p k = case p of
     k (addAssump (simpleName n) (Assump Nothing (toScheme v)) env) v (PVar n v)
 
 -- | Type-check terms in the syntax into system-f like terms.
-tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
+tcTerm :: TypeAssumps -> Syn.Term -> TC (Scheme,Term)
 tcTerm env tm = case tm of
 
   Syn.App f xs -> tcApp env f xs
@@ -159,29 +157,18 @@ tcTerm env tm = case tm of
     (ty,l') <- tcLit l
     return (ty,Lit l')
 
-tcApp :: TypeAssumps -> Syn.Term -> [Syn.Term] -> TC (Type,Term)
+tcApp :: TypeAssumps -> Syn.Term -> [Syn.Term] -> TC (Scheme,Term)
 tcApp env f xs = do
-  (xtys,xs') <- mapAndUnzipM (tcTerm env) xs
-  (fty,f')   <- tcTerm env f
-  let vars    = typeVars fty
-      args    = destArgs fty
-      assigns = typeAssignments args xtys
-  logInfo (show assigns)
-
+  (xtys,xs')           <- mapAndUnzipM (tcTerm env) xs
+  (Forall vars fty,f') <- tcTerm env f
+  logInfo (pretty vars)
+  logInfo (pretty fty)
   fail "thingy"
-
-typeAssignments :: [Type] -> [Type] -> [(TParam,[Type])]
-typeAssignments as bs = CM.foldClashMap step []
-                      $ CM.fromList (zip as bs)
-  where
-  step k c ts = case k of
-    TVar _ p -> (p,nub (CM.clashElems c)):ts
-    _        -> ts
 
 
 -- | Type-check a let expression.
 tcLet :: TypeAssumps -> [Syn.TypedDecl] -> [Syn.UntypedDecl] -> Syn.Term
-      -> TC (Type,Term)
+      -> TC (Scheme,Term)
 tcLet env ts us e = do
   env0       <- addNameVars env (map Syn.typedName ts ++ map Syn.untypedName us)
   (env1,ts') <- tcTypedDecls env0 ts
@@ -206,7 +193,7 @@ tcTypedDecls env0 = foldM step (env0,[])
 -- | Type-check a typed declaration that shows up in a let-expression.
 tcTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC (TypeAssumps,Decl)
 tcTypedDecl env td = do
-  ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
+  ((vs,ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
 
   oty <- freshInst (Syn.typedType td)
   unify oty ty
@@ -232,17 +219,17 @@ tcUntypedDecls _env _us = do
   return []
 
 -- | Translate an abstraction, into a let expression with a fresh name.
-tcAbs :: TypeAssumps -> Syn.Match -> TC (Type,Term)
+tcAbs :: TypeAssumps -> Syn.Match -> TC (Scheme,Term)
 tcAbs env m = do
-  (ty,m') <- tcMatch env m
-  lam     <- freshName "_lam" (freeVars m')
-  let decl = Decl (simpleName lam) (Forall [] m')
-  return (ty, Let [decl] (Local lam))
+  (vs,ty,m') <- tcMatch env m
+  lam        <- freshName "_lam" (freeVars m')
+  let decl = Decl (simpleName lam) (Forall vs m')
+  return (Forall vs ty, Let [decl] (Local lam))
 
 -- | Type-check a literal.
-tcLit :: Syn.Literal -> TC (Type,Syn.Literal)
+tcLit :: Syn.Literal -> TC (Scheme,Syn.Literal)
 tcLit l = case l of
-  Syn.LInt{} -> return (TCon (primName "Int"), l)
+  Syn.LInt{} -> return (toScheme (TCon (primName "Int")), l)
 
 
 -- Errors ----------------------------------------------------------------------
