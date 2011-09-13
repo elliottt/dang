@@ -58,9 +58,10 @@ instance Pretty Type where
   pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
 
 data TParam = TParam
-  { paramIndex :: Index
-  , paramName  :: String
-  , paramKind  :: Kind
+  { paramIndex      :: Index
+  , paramFromSource :: Bool
+  , paramName       :: String
+  , paramKind       :: Kind
   } deriving (Eq,Show,Ord)
 
 instance Pretty TParam where
@@ -71,11 +72,12 @@ setTParamIndex ix p = p { paramIndex = ix }
 
 putTParam :: Putter TParam
 putTParam p = putIndex (paramIndex p)
+           >> put (paramFromSource p)
            >> put (paramName p)
            >> putKind (paramKind p)
 
 getTParam :: Get TParam
-getTParam  = TParam <$> getIndex <*> get <*> getKind
+getTParam  = TParam <$> getIndex <*> get <*> get <*> getKind
 
 -- | Type-application introduction.
 tapp :: Type -> Type -> Type
@@ -103,6 +105,10 @@ destArgs :: Type -> [Type]
 destArgs ty = fromMaybe [ty] $ do
   (l,r) <- destArrow ty
   return (l:destArgs r)
+
+destTVar :: Type -> Maybe TParam
+destTVar (TVar p) = return p
+destTVar _        = Nothing
 
 -- | Count the number of arguments to a function.
 typeArity :: Type -> Int

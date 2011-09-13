@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternGuards #-}
 
 module TypeChecker.Unify where
 
@@ -152,10 +153,16 @@ mgu a b = case (a,b) of
 -- XXX should this do a kind check in addition to an occurs check?
 varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
 varBind p ty
-  | isTVar ty        = return emptySubst
-  | occursCheck p ty = raiseE (UnifyOccursCheck p ty)
-  | otherwise        = return (paramIndex p +-> ty)
+  | Just p' <- destTVar ty = unifyVars p p'
+  | occursCheck p ty       = raiseE (UnifyOccursCheck p ty)
+  | otherwise              = return (paramIndex p +-> ty)
 
+unifyVars :: ExceptionM m SomeException => TParam -> TParam -> m Subst
+unifyVars p p'
+  | paramFromSource p && paramFromSource p' = return emptySubst
+  | paramFromSource p                       = return (paramIndex p' +-> TVar p )
+  | paramFromSource p'                      = return (paramIndex p  +-> TVar p')
+  | otherwise                               = return emptySubst
 
 occursCheck :: TParam -> Type -> Bool
 occursCheck p = Set.member p . typeVars

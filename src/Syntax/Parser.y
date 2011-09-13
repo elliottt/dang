@@ -203,7 +203,7 @@ apptype :: { [Type] }
   | atype         { [$1] }
 
 atype :: { Type }
-  : IDENT        { TVar (TParam 0 $1 setSort) }
+  : IDENT        { TVar (TParam 0 True $1 setSort) }
   | CONIDENT     { TCon (simpleName $1) }
   | '(' type ')' { $2 }
 
@@ -216,7 +216,7 @@ tparams :: { [TParam] }
   | tparam         { [$1] }
 
 tparam :: { TParam }
-  : IDENT { TParam 0 $1 setSort }
+  : IDENT { TParam 0 True $1 setSort }
 
 tycon :: { String }
   : CONIDENT     { $1 }

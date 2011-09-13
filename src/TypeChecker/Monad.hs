@@ -168,7 +168,7 @@ freshName pfx fvs = loop
 freshVar :: Kind -> TC Type
 freshVar k = do
   ix <- nextIndex
-  return (TVar (TParam ix ('t':show ix) k))
+  return (TVar (TParam ix False ('t':show ix) k))
 
 -- | Generate a new type variable, given a @TParam@ as a template.
 freshVarFromTParam :: TParam -> TC Type
