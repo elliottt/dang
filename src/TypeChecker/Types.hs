@@ -25,16 +25,16 @@ data Type
   = TApp Type Type
   | TInfix QualName Type Type
   | TCon QualName
-  | TVar Index TParam
-  | TGen Index TParam
+  | TVar TParam
+  | TGen TParam
     deriving (Eq,Show,Ord)
 
 putType :: Putter Type
 putType (TApp l r)     = putWord8 0 >> putType l     >> putType r
 putType (TInfix n l r) = putWord8 1 >> putQualName n >> putType l >> putType r
 putType (TCon n)       = putWord8 2 >> putQualName n
-putType (TVar i p)     = putWord8 3 >> putIndex i    >> putTParam p
-putType (TGen i p)     = putWord8 4 >> putIndex i    >> putTParam p
+putType (TVar p)       = putWord8 3 >> putTParam p
+putType (TGen p)       = putWord8 4 >> putTParam p
 
 getType :: Get Type
 getType  = getWord8 >>= \ tag ->
@@ -42,8 +42,8 @@ getType  = getWord8 >>= \ tag ->
     0 -> TApp   <$> getType     <*> getType
     1 -> TInfix <$> getQualName <*> getType <*> getType
     2 -> TCon   <$> getQualName
-    3 -> TVar   <$> getIndex    <*> getTParam
-    4 -> TGen   <$> getIndex    <*> getTParam
+    3 -> TVar   <$> getTParam
+    4 -> TGen   <$> getTParam
     _ -> fail ("Invalid tag: " ++ show tag)
 
 isTVar :: Type -> Bool
@@ -52,24 +52,30 @@ isTVar _      = False
 
 instance Pretty Type where
   pp _ (TCon n)       = ppr n
-  pp _ (TVar _ m)     = ppr m
-  pp _ (TGen _ m)     = ppr m
+  pp _ (TVar m)       = ppr m
+  pp _ (TGen m)       = ppr m
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
   pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
 
 data TParam = TParam
-  { paramName :: String
-  , paramKind :: Kind
+  { paramIndex :: Index
+  , paramName  :: String
+  , paramKind  :: Kind
   } deriving (Eq,Show,Ord)
 
 instance Pretty TParam where
   pp _ p = text (paramName p)
 
+setTParamIndex :: Index -> TParam -> TParam
+setTParamIndex ix p = p { paramIndex = ix }
+
 putTParam :: Putter TParam
-putTParam p = put (paramName p) >> putKind (paramKind p)
+putTParam p = putIndex (paramIndex p)
+           >> put (paramName p)
+           >> putKind (paramKind p)
 
 getTParam :: Get TParam
-getTParam  = TParam <$> get <*> getKind
+getTParam  = TParam <$> getIndex <*> get <*> getKind
 
 -- | Type-application introduction.
 tapp :: Type -> Type -> Type

@@ -222,14 +222,14 @@ numberTypeVars ty = runST body
   loop ref (TInfix op l r) = TInfix op `fmap` loop ref l `ap` loop ref r
   loop _   t@TCon{}        = return t
   loop _   t@TGen{}        = return t
-  loop ref (TVar _ p)      = do
+  loop ref (TVar p)        = do
     (n,m) <- readSTRef ref
     let var = paramName p
     case Map.lookup var m of
-      Just ix -> return (TVar ix p)
+      Just ix -> return (TVar p { paramIndex = ix })
       Nothing -> do
         writeSTRef ref (n+1,Map.insert var n m)
-        return (TVar n p)
+        return (TVar p { paramIndex = n })
 
 
 addDecl :: UntypedDecl -> PDecls -> PDecls

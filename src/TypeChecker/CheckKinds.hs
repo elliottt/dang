@@ -169,9 +169,9 @@ inferKind env ty = case ty of
   -- The idea here is that a variable might already have a kind associated with
   -- it through the environment, or that if it's a variable, that it might
   -- already have been unified with something concrete.
-  TVar i p -> do
+  TVar p -> do
     k' <- kindAssump (simpleName (paramName p)) env
-    return (k', TVar i p { paramKind = k' })
+    return (k', TVar p { paramKind = k' })
 
   -- All generic variables should disappear through instantiation, so this
   -- shouldn't happen.
@@ -186,7 +186,7 @@ inferKind env ty = case ty of
 introType :: KindAssumps -> Scheme -> (KindAssumps -> Type -> TC a) -> TC a
 introType env (Forall ps ty) k = withVarIndex (length ps) $ do
   ps'  <- mapM freshTParam ps
-  ty'  <- inst (zipWith TVar [0..] ps') ty
+  ty'  <- freshInst (Forall ps' ty)
   env' <- foldM (\e (q,t) -> addKindAssump e q t) env
       [ (simpleName (paramName p), paramKind p) | p <- ps' ]
   k env' ty'
@@ -209,4 +209,4 @@ fixKind :: TParam -> TParam
 fixKind p = p { paramKind = Types.apply s k }
   where
   k = paramKind p
-  s = Subst [ (i,kstar) | (i,_) <- Set.toList (typeVars k) ]
+  s = Subst [ (paramIndex v,kstar) | v <- Set.toList (typeVars k) ]

@@ -168,13 +168,13 @@ freshName pfx fvs = loop
 freshVar :: Kind -> TC Type
 freshVar k = do
   ix <- nextIndex
-  return (TVar ix (TParam ('t':show ix) k))
+  return (TVar (TParam ix ('t':show ix) k))
 
 -- | Generate a new type variable, given a @TParam@ as a template.
 freshVarFromTParam :: TParam -> TC Type
 freshVarFromTParam p = do
   ix <- nextIndex
-  return (TVar ix p)
+  return (TVar p { paramIndex = ix })
 
 -- | Freshly instantiate a @Scheme@.
 freshInst :: Scheme -> TC Type

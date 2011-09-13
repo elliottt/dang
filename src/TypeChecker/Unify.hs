@@ -26,7 +26,7 @@ instance Pretty Subst where
 
 class Types a where
   apply    :: Subst -> a -> a
-  typeVars :: a -> Set.Set (Index,TParam)
+  typeVars :: a -> Set.Set TParam
 
 instance Types a => Types [a] where
   apply u  = map (apply u)
@@ -36,14 +36,14 @@ instance Types Type where
   apply s ty = case ty of
     TApp f x     -> TApp (apply s f) (apply s x)
     TInfix n l r -> TInfix n (apply s l) (apply s r)
-    TVar i _     -> fromMaybe ty (lookupSubst i s)
+    TVar p       -> fromMaybe ty (lookupSubst (paramIndex p) s)
     TGen{}       -> ty
     TCon{}       -> ty
 
   typeVars ty = case ty of
     TApp f x     -> typeVars f `Set.union` typeVars x
     TInfix _ l r -> typeVars l `Set.union` typeVars r
-    TVar i p     -> Set.singleton (i,p)
+    TVar p       -> Set.singleton p
     TGen{}       -> Set.empty
     TCon{}       -> Set.empty
 
@@ -136,8 +136,8 @@ mgu a b = case (a,b) of
     sr <- mgu r y
     return (sl @@ sr)
 
-  (TVar i p, r) -> varBind i p r
-  (l, TVar i p) -> varBind i p l
+  (TVar p, r) -> varBind p r
+  (l, TVar p) -> varBind p l
 
   -- constructors
   (TCon l, TCon r) | l == r -> return emptySubst
@@ -150,15 +150,15 @@ mgu a b = case (a,b) of
 -- | Generate a substitution that unifies a variable with a type.
 --
 -- XXX should this do a kind check in addition to an occurs check?
-varBind :: ExceptionM m SomeException => Index -> TParam -> Type -> m Subst
-varBind i p ty
-  | isTVar ty          = return emptySubst
-  | occursCheck i p ty = raiseE (UnifyOccursCheck p ty)
-  | otherwise          = return (i +-> ty)
+varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
+varBind p ty
+  | isTVar ty        = return emptySubst
+  | occursCheck p ty = raiseE (UnifyOccursCheck p ty)
+  | otherwise        = return (paramIndex p +-> ty)
 
 
-occursCheck :: Index -> TParam -> Type -> Bool
-occursCheck i p = Set.member (i,p) . typeVars
+occursCheck :: TParam -> Type -> Bool
+occursCheck p = Set.member p . typeVars
 
 
 -- Instantiation ---------------------------------------------------------------
@@ -185,7 +185,7 @@ instance Instantiate Type where
     r' <- inst ts r
     return (TInfix n l' r')
 
-  inst ts (TGen n p) = case ts !!? n of
+  inst ts (TGen p) = case ts !!? paramIndex p of
     Nothing -> raiseE (InstError p)
     Just ty -> return ty
 
@@ -194,11 +194,12 @@ instance Instantiate Type where
 
 -- Quantification --------------------------------------------------------------
 
-quantify :: Types t => [(Index,TParam)] -> t -> Forall t
-quantify ps t = Forall (map snd vs) (apply s t)
+quantify :: Types t => [TParam] -> t -> Forall t
+quantify ps t = Forall vs (apply s t)
   where
-  vs = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
-  s  = Subst (zipWith (\n (i,p) -> (i,TGen n p)) [0 ..] vs)
+  vs        = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
+  s         = Subst (zipWith mkGen [0 ..] vs)
+  mkGen n p = (n, TGen p { paramIndex = n })
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
