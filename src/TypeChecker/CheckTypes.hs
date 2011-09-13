@@ -11,16 +11,17 @@ import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
-    (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..),destArgs,TParam)
+    (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..),destArgs,TParam,destTVar)
 import TypeChecker.Unify (quantify,quantifyAll,typeVars)
 import Variables (freeVars)
 import qualified Data.ClashMap as CM
 import qualified Syntax.AST as Syn
 
-import Control.Monad (mapAndUnzipM,foldM,unless)
+import Control.Monad (mapAndUnzipM,foldM,unless,zipWithM)
 import Data.List (nub)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe,mapMaybe)
 import Data.Typeable (Typeable)
+import qualified Data.Foldable as F
 import qualified Data.Set as Set
 
 
@@ -160,10 +161,53 @@ tcTerm env tm = case tm of
 tcApp :: TypeAssumps -> Syn.Term -> [Syn.Term] -> TC (Scheme,Term)
 tcApp env f xs = do
   (xtys,xs')           <- mapAndUnzipM (tcTerm env) xs
-  (Forall vars fty,f') <- tcTerm env f
+  (qt@(Forall vars fty),f') <- tcTerm env f
   logInfo (pretty vars)
   logInfo (pretty fty)
+  fty' <- freshInst qt
+  assigns <- genAssigns (destArgs fty') xtys
+  logInfo (show assigns)
+
+  (as,qs) <- genTypeApp (Set.toList (typeVars fty')) assigns
+  let app | null as   = App       f'     xs'
+          | otherwise = App (AppT f' as) xs'
+      tm  | null qs   = app
+          | otherwise =
+            let Forall qs' app' = quantify qs app
+             in AbsT qs' app'
+
+  logInfo (pretty tm)
   fail "thingy"
+
+genAssigns :: [Type] -> [Scheme] -> TC [(TParam,Type)]
+genAssigns vs qts = sequence . upd =<< zipWithM mk vs qts
+  where
+  mk v qt = do
+    ty <- freshInst qt
+    return (v,ty)
+  upd = CM.foldClashMap f []
+      . CM.fromList
+      . mapMaybe guardTypeVars
+
+  guardTypeVars (v,ty) = do
+    p <- destTVar v
+    return (p,ty)
+
+  f k c as = case nub (CM.clashElems c) of
+    [ty] -> (return (k,ty)):as
+    _    -> (fail ("too many assignments for: " ++ pretty k)):as
+
+genTypeApp :: [TParam] -> [(TParam,Type)] -> TC ([Type],[TParam])
+genTypeApp ps env = F.foldrM step ([],[]) ps
+  where
+  step p (as,qs) = case lookup p env of
+
+    Just ty -> return (ty:as,qs)
+
+    Nothing -> do
+      v@(TVar p') <- freshVarFromTParam p
+      return (v:as,p':qs)
+
 
 
 -- | Type-check a let expression.

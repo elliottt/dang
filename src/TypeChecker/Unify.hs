@@ -10,6 +10,7 @@ import TypeChecker.AST
 import TypeChecker.Types
 import Utils ((!!?))
 
+import Control.Arrow (second)
 import Control.Monad (unless)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
@@ -202,11 +203,13 @@ instance Instantiate Type where
 -- Quantification --------------------------------------------------------------
 
 quantify :: Types t => [TParam] -> t -> Forall t
-quantify ps t = Forall vs (apply s t)
+quantify ps t = Forall vs' (apply s t)
   where
   vs        = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
-  s         = Subst (zipWith mkGen [0 ..] vs)
-  mkGen n p = (n, TGen p { paramIndex = n })
+  u         = zipWith mkGen [0 ..] vs
+  mkGen n p = (paramIndex p, p { paramIndex = n })
+  (_,vs')   = unzip u
+  s         = Subst (map (second TGen) u)
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
