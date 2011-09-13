@@ -15,8 +15,6 @@ import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
 import qualified Data.Set as Set
 
-import Debug.Trace
-
 
 newtype Subst = Subst { unSubst :: [(Index,Type)] }
     deriving (Show)
@@ -49,6 +47,23 @@ instance Types Type where
     TGen{}       -> Set.empty
     TCon{}       -> Set.empty
 
+instance Types Decl where
+  apply s d  = d { declBody = apply s (declBody d) }
+  typeVars d = typeVars (declBody d)
+
+instance Types a => Types (Forall a) where
+  apply s (Forall ps a) = Forall ps (apply s a)
+  typeVars (Forall _ a) = typeVars a
+
+instance Types Match where
+  apply s m = case m of
+    MTerm t ty -> MTerm t (apply s ty)
+    MPat p m'  -> MPat (apply s p) m'
+
+  typeVars m = case m of
+    MTerm t ty -> typeVars t `Set.union` typeVars ty
+    MPat p m'  -> typeVars p `Set.union` typeVars m'
+
 instance Types Pat where
   apply s p = case p of
     PWildcard ty -> PWildcard (apply s ty)
@@ -57,6 +72,25 @@ instance Types Pat where
   typeVars p = case p of
     PWildcard ty -> typeVars ty
     PVar _ ty    -> typeVars ty
+
+instance Types Term where
+  apply s tm = case tm of
+    AbsT vs b -> AbsT vs (apply s b)
+    AppT f ts -> AppT (apply s f) (apply s ts)
+    App t ts  -> App (apply s t)  (apply s ts)
+    Let ds e  -> Let (apply s ds) (apply s e)
+    Local v   -> Local v
+    Global qn -> Global qn
+    Lit lit   -> Lit lit
+
+  typeVars tm = case tm of
+    AbsT _ b  -> typeVars b
+    AppT f ts -> typeVars f `Set.union` typeVars ts
+    App t ts  -> typeVars t `Set.union` typeVars ts
+    Let ds e  -> typeVars ds `Set.union` typeVars e
+    Local _   -> Set.empty
+    Global _  -> Set.empty
+    Lit _     -> Set.empty
 
 lookupSubst :: Index -> Subst -> Maybe Type
 lookupSubst p (Subst u) = lookup p u
@@ -160,11 +194,11 @@ instance Instantiate Type where
 
 -- Quantification --------------------------------------------------------------
 
-quantify :: [(Index,TParam)] -> Type -> Forall Type
-quantify ps ty = Forall (map snd vs) (apply s ty)
+quantify :: Types t => [(Index,TParam)] -> t -> Forall t
+quantify ps t = Forall (map snd vs) (apply s t)
   where
-  vs = [ v | v <- Set.toList (typeVars ty), v `elem` ps ]
+  vs = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
   s  = Subst (zipWith (\n (i,p) -> (i,TGen n p)) [0 ..] vs)
 
-quantifyAll :: Type -> Forall Type
+quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty

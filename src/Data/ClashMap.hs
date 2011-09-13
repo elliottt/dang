@@ -19,6 +19,7 @@ module Data.ClashMap (
 
     -- * Update/Delete
   , delete
+  , filterWithKey
 
     -- * Combine
   , union, unionWith
@@ -188,6 +189,13 @@ insertWith strat k a (ClashMap m) =
 
 delete :: Ord k => k -> ClashMap k a -> ClashMap k a
 delete k (ClashMap m) = ClashMap (Map.delete k m)
+
+-- | Filter the @ClashMap@ with a predicate over keys and values.
+filterWithKey :: Ord k => (k -> a -> Bool) -> ClashMap k a -> ClashMap k a
+filterWithKey p (ClashMap m) = ClashMap (Map.filterWithKey p' m)
+  where
+  p' k (Ok a)     =      p k  a
+  p' k (Clash as) = any (p k) as
 
 
 -- Combine ---------------------------------------------------------------------

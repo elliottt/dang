@@ -10,12 +10,15 @@ import QualName
 import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
-import TypeChecker.Types (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..))
-import TypeChecker.Unify (quantifyAll,typeVars)
+import TypeChecker.Types
+    (Type(..),tarrow,kstar,Scheme,toScheme,Forall(..),destArgs,TParam)
+import TypeChecker.Unify (quantify,quantifyAll,typeVars)
 import Variables (freeVars)
+import qualified Data.ClashMap as CM
 import qualified Syntax.AST as Syn
 
 import Control.Monad (mapAndUnzipM,foldM,unless)
+import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import qualified Data.Set as Set
@@ -41,8 +44,8 @@ typeAssump qn env = case lookupAssump qn env of
 -- Type Checking ---------------------------------------------------------------
 
 -- | Add a series of primitive bindings to an environment.
-addPrimBinds :: TypeAssumps -> [Syn.PrimTerm] -> TC TypeAssumps
-addPrimBinds  = foldM addPrimBind
+addPrimBinds :: [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
+addPrimBinds  = flip (foldM addPrimBind)
 
 -- | Add a primitive term binding to the environment.
 addPrimBind :: TypeAssumps -> Syn.PrimTerm -> TC TypeAssumps
@@ -51,8 +54,21 @@ addPrimBind env ptd = do
       a = Assump Nothing (Syn.primTermType ptd)
 
   logInfo $ concat
-    [ "  Assuming: ", Syn.primTermName ptd
+    [ "  Assuming: ", pretty n
     , " :: ", pretty (Syn.primTermType ptd) ]
+
+  return (addAssump n a env)
+
+addTypeSigs :: Namespace -> [Syn.TypedDecl] -> TypeAssumps -> TC TypeAssumps
+addTypeSigs ns = flip (foldM (addTypeSig ns))
+
+addTypeSig :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC TypeAssumps
+addTypeSig ns env td = do
+  let n = qualName ns (Syn.typedName td)
+      a = Assump Nothing (Syn.typedType td)
+  logInfo $ concat
+    [ "  Assuming: ", pretty n
+    , " :: ", pretty (Syn.typedType td) ]
 
   return (addAssump n a env)
 
@@ -61,7 +77,8 @@ tcModule :: IsInterface iset => iset -> Syn.Module -> TC [Decl]
 tcModule iset m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
-  env <- addPrimBinds (interfaceAssumps iset) (Syn.modPrimTerms m)
+  env <- addTypeSigs ns (Syn.modTyped m)
+         =<< addPrimBinds (Syn.modPrimTerms m) (interfaceAssumps iset)
   mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
 
 -- | Type-check a top-level, typed declaration.
@@ -76,13 +93,14 @@ tcTopTypedDecl ns env td = do
   oty <- freshInst (Syn.typedType td)
   unify oty ty
   ty' <- applySubst ty
+  m'  <- applySubst m
 
   -- generate the type-variables needed for this declaration
-  let tvars = map snd (Set.toList (typeVars ty'))
-      name  = qualName ns (Syn.typedName td)
-      decl  = Decl
+  let vars = Set.toList (typeVars ty')
+      name = qualName ns (Syn.typedName td)
+      decl = Decl
         { declName = name
-        , declBody = Forall tvars m
+        , declBody = quantify vars m'
         }
 
   -- dump some information about the checked declaration
@@ -121,25 +139,18 @@ tcPat env p k = case p of
 tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
 tcTerm env tm = case tm of
 
-  Syn.App f xs -> do
-    (xtys,xs') <- mapAndUnzipM (tcTerm env) xs
-
-    (fty,f') <- tcTerm env f
-    res      <- freshVar kstar
-    let inferred = foldr tarrow res xtys
-    unify fty inferred
-    return (res, App f' [] xs')
+  Syn.App f xs -> tcApp env f xs
 
   Syn.Let ts us e -> tcLet env ts us e
 
   Syn.Abs m -> tcAbs env m
 
   Syn.Local n -> do
-    a  <- typeAssump (simpleName n) env
+    a <- typeAssump (simpleName n) env
     return (aData a, fromMaybe (Local n) (aBody a))
 
   Syn.Global qn -> do
-    a  <- typeAssump qn env
+    a <- typeAssump qn env
     return (aData a, fromMaybe (Global qn) (aBody a))
 
   Syn.Prim{} -> fail "prim"
@@ -147,6 +158,26 @@ tcTerm env tm = case tm of
   Syn.Lit l -> do
     (ty,l') <- tcLit l
     return (ty,Lit l')
+
+tcApp :: TypeAssumps -> Syn.Term -> [Syn.Term] -> TC (Type,Term)
+tcApp env f xs = do
+  (xtys,xs') <- mapAndUnzipM (tcTerm env) xs
+  (fty,f')   <- tcTerm env f
+  let vars    = typeVars fty
+      args    = destArgs fty
+      assigns = typeAssignments args xtys
+  logInfo (show assigns)
+
+  fail "thingy"
+
+typeAssignments :: [Type] -> [Type] -> [(TParam,[Type])]
+typeAssignments as bs = CM.foldClashMap step []
+                      $ CM.fromList (zip as bs)
+  where
+  step k c ts = case k of
+    TVar _ p -> (p,nub (CM.clashElems c)):ts
+    _        -> ts
+
 
 -- | Type-check a let expression.
 tcLet :: TypeAssumps -> [Syn.TypedDecl] -> [Syn.UntypedDecl] -> Syn.Term
@@ -164,6 +195,7 @@ addNameVars = foldM $ \ env n -> do
   v <- freshVar kstar
   return (addAssump (simpleName n) (Assump Nothing (toScheme v)) env)
 
+-- | Type-check a block of typed declarations.
 tcTypedDecls :: TypeAssumps -> [Syn.TypedDecl] -> TC (TypeAssumps,[Decl])
 tcTypedDecls env0 = foldM step (env0,[])
   where
@@ -175,11 +207,17 @@ tcTypedDecls env0 = foldM step (env0,[])
 tcTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC (TypeAssumps,Decl)
 tcTypedDecl env td = do
   ((ty,m),fvs) <- collectVars (tcMatch env (Syn.typedBody td))
-  let vars = map snd (Set.toList (typeVars ty))
+
+  oty <- freshInst (Syn.typedType td)
+  unify oty ty
+  ty' <- applySubst ty
+  m'  <- applySubst m
+
+  let vars = Set.toList (typeVars ty')
       name = simpleName (Syn.typedName td)
       decl = Decl
         { declName = name
-        , declBody = Forall vars m
+        , declBody = quantify vars m'
         }
 
       env' = addAssump name (Assump Nothing (quantifyAll ty)) env

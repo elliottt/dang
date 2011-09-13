@@ -67,7 +67,9 @@ instance Pretty Pat where
   pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
 
 data Term
-  = App Term [Type] [Term]
+  = AbsT [Var] Term
+  | AppT Term [Type]
+  | App Term [Term]
   | Let [Decl] Term
   | Local Var
   | Global QualName
@@ -75,18 +77,24 @@ data Term
     deriving (Show)
 
 instance FreeVars Term where
-  freeVars (App t _ as) = freeVars (t:as)
-  freeVars (Let ds t)   = (freeVars t `Set.union` freeVars ds)
-                             Set.\\ Set.fromList (map declName ds)
-  freeVars (Local v)    = Set.singleton (simpleName v)
-  freeVars (Global n)   = Set.singleton n
-  freeVars (Lit l)      = freeVars l
+  freeVars (AbsT _ b) = freeVars b
+  freeVars (AppT f _) = freeVars f
+  freeVars (App t as) = freeVars (t:as)
+  freeVars (Let ds t) = (freeVars t `Set.union` freeVars ds)
+                           Set.\\ Set.fromList (map declName ds)
+  freeVars (Local v)  = Set.singleton (simpleName v)
+  freeVars (Global n) = Set.singleton n
+  freeVars (Lit l)    = freeVars l
 
 instance Pretty Term where
-  pp p (App f ts xs) = optParens (p > 0) (pp 1 f <> ppTyApp ts <+> ppList 1 xs)
-  pp p (Let ds e)    = optParens (p > 0)
-                     $ text "let" <+> braces (semis (map ppr ds))
-                   <+> text "in"  <+> ppr e
-  pp _ (Local v)     = text v
-  pp _ (Global qn)   = ppr qn
-  pp _ (Lit l)       = ppr l
+  pp p (AbsT vs b) = optParens (p > 0)
+                   $ text "\\@" <> hsep (map text vs) <> char '.' <> ppr b
+  pp p (AppT f vs) = optParens (p > 0)
+                   $ pp 1 f <+> char '@' <+> brackets (commas (map ppr vs))
+  pp p (App f xs)  = optParens (p > 0) (ppr f <+> ppList 1 xs)
+  pp p (Let ds e)  = optParens (p > 0)
+                   $ text "let" <+> braces (semis (map ppr ds))
+                 <+> text "in"  <+> ppr e
+  pp _ (Local v)   = text v
+  pp _ (Global qn) = ppr qn
+  pp _ (Lit l)     = ppr l

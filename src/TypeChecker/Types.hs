@@ -8,6 +8,7 @@ import QualName
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)
+import Data.Maybe (fromMaybe)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
     ,putListOf)
@@ -91,6 +92,11 @@ destArrow ty = do
   (qn,l,r) <- destInfix ty
   guard (qn == arrowConstr)
   return (l,r)
+
+destArgs :: Type -> [Type]
+destArgs ty = fromMaybe [ty] $ do
+  (l,r) <- destArrow ty
+  return (l:destArgs r)
 
 -- | Count the number of arguments to a function.
 typeArity :: Type -> Int
