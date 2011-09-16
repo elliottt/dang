@@ -21,7 +21,7 @@ module TypeChecker.Monad (
   , bindVars
 
     -- Types
-  , freshInst
+  , freshInst, freshInst'
   ) where
 
 import Dang.Monad
@@ -170,17 +170,26 @@ freshVar k = do
   ix <- nextIndex
   return (TVar (TParam ix False ('t':show ix) k))
 
+freshTParam :: TParam -> TC TParam
+freshTParam p = do
+  ix <- nextIndex
+  return (p { paramIndex = ix })
+
 -- | Generate a new type variable, given a @TParam@ as a template.
 freshVarFromTParam :: TParam -> TC Type
 freshVarFromTParam p = do
-  ix <- nextIndex
-  return (TVar p { paramIndex = ix })
+  p' <- freshTParam p
+  return (TVar p')
 
 -- | Freshly instantiate a @Scheme@.
 freshInst :: Scheme -> TC Type
-freshInst (Forall ps ty) = do
-  vars <- mapM freshVarFromTParam ps
-  applySubst =<< inst vars ty
+freshInst qt = snd `fmap` freshInst' qt
+
+freshInst' :: Scheme -> TC ([TParam],Type)
+freshInst' (Forall ps ty) = do
+  ps' <- mapM freshTParam ps
+  ty' <- applySubst =<< inst (map TVar ps') ty
+  return (ps',ty')
 
 data UnboundIdentifier = UnboundIdentifier QualName
     deriving (Show,Typeable)

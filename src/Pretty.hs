@@ -93,3 +93,6 @@ instance Pretty Float where
 
 instance Pretty Double where
   pp _ = double
+
+instance (Pretty a, Pretty b) => Pretty (a,b) where
+  pp _ (a,b) = parens (ppr a <> comma <+> ppr b)
