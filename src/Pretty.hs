@@ -44,7 +44,7 @@ vcat'  = foldr ($+$) empty
 
 declBlock :: [Doc] -> Doc
 declBlock []     = text "{}"
-declBlock [d]    = braces d
+declBlock [d]    = char '{' <+> d <+> char '}'
 declBlock (d:ds) = vcat' (char '{' <+> d : map (semi <+>) ds) $+$ char '}'
 
 class Pretty a where
