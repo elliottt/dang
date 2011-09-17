@@ -129,8 +129,6 @@ tcTerm env tm = case tm of
 
   Syn.Lit lit -> tcLit lit
 
-  Syn.Prim v -> fail "tcTerm: Prim"
-
 appT :: Term -> [Type] -> Term
 appT tm [] = tm
 appT tm ts = AppT tm ts

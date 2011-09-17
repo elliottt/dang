@@ -84,7 +84,6 @@ cgTerm env tm = case tm of
   LL.Var n       -> cgVar env n
   LL.Argument i  -> cgArgument env i
   LL.Lit l       -> cgLiteral l
-  LL.Prim n a ts -> cgPrim env n a ts
 
 cgApply :: CGEnv -> LL.Term -> [LL.Term] -> BB (Typed Value)
 cgApply env (LL.Symbol f) xs = cgApplySym env f xs
@@ -146,6 +145,3 @@ cgBoxInt i = do
   payload <- heapObjPayloadPtr obj
   store i =<< bitcast payload (ptrT (iT 64))
   return obj
-
-cgPrim :: CGEnv -> String -> Int -> [LL.Term] -> BB (Typed Value)
-cgPrim _env _n _arity _args = error "cgPrim"

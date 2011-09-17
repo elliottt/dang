@@ -194,7 +194,6 @@ data Term
   | Var Name
   | Argument Int
   | Lit AST.Literal
-  | Prim String Int [Term]
     deriving Show
 
 instance Pretty Term where
@@ -207,8 +206,6 @@ instance Pretty Term where
   pp _ (Var n)       = pp 0 n
   pp _ (Argument i)  = char '$' <> ppr i
   pp _ (Lit l)       = pp 0 l
-  pp p (Prim n a as) = optParens (p > 0)
-                     $ text n <> brackets (int a) <+> ppList 1 as
 
 
 apply :: Term -> [Term] -> Term
@@ -321,7 +318,6 @@ llTerm :: [AST.Var] -> AST.Term -> LL Term
 llTerm args t =
   case t of
     AST.Abs{}       -> raiseLL "llTerm: unexpected Abs"
-    AST.Prim n      -> llPrim args n []
     AST.App f xs    -> llApp args f xs
     AST.Local n     -> subst args n
     AST.Global n    -> return (Symbol n)
@@ -334,23 +330,7 @@ llTerm args t =
     AST.Let _  _  _ -> raiseLL "llTerm: unexpected untyped declarations"
 
 llApp :: [AST.Var] -> AST.Term -> [AST.Term] -> LL Term
-llApp args t xs =
-  case t of
-    AST.Prim n -> llPrim args n xs
-    _          -> do
-      t'  <- llTerm args t
-      xs' <- mapM (llTerm args) xs
-      return (Apply t' xs')
-
-llPrim :: [AST.Var] -> String -> [AST.Term] -> LL Term
-llPrim args n xs = do
-  arity <- primArity n
-  unless (arity == length xs)
-    (raiseLL ("Not enough arguments for primitive: " ++ n))
-  Prim n arity `fmap` mapM (llTerm args) xs
-
-primArity :: String -> LL Int
-primArity n =
-  case lookup n primitives of
-    Nothing -> raiseLL ("Unknown primitive: " ++ n)
-    Just i  -> return i
+llApp args t xs = do
+  t'  <- llTerm args t
+  xs' <- mapM (llTerm args) xs
+  return (Apply t' xs')

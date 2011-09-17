@@ -128,7 +128,6 @@ instance Imports Term where
   imports (App f xs)    = imports f `Set.union` imports xs
   imports (Local _)     = Set.empty
   imports (Global qn)   = maybe Set.empty Set.singleton (qualModule qn)
-  imports (Prim _)      = Set.empty
   imports (Lit l)       = imports l
 
 instance Imports Match where
@@ -355,7 +354,6 @@ scopeCheckPrimTerm pt = do
 scopeCheckTerm :: Term -> Scope Term
 scopeCheckTerm t = case t of
   Lit _       -> return t
-  Prim _      -> return t
   Abs m       -> Abs <$> scopeCheckMatch m
   Let ts us b -> bindVars (letBinds ts us)
                $ Let <$> mapM scopeCheckTypedDecl ts

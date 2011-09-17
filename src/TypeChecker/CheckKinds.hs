@@ -129,7 +129,6 @@ kcTerm env tm = case tm of
   Local{}     -> return tm
   Global{}    -> return tm
   Lit{}       -> return tm
-  Prim{}      -> return tm
 
 -- | Check the kind structure of any types hiding under a binder.
 kcMatch :: KindAssumps -> Match -> TC Match

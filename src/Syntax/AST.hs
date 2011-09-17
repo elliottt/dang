@@ -208,7 +208,6 @@ data Term
   | Local Name
   | Global QualName
   | Lit Literal
-  | Prim Var
     deriving (Eq,Show,Ord)
 
 instance FreeVars Term where
@@ -219,7 +218,6 @@ instance FreeVars Term where
   freeVars (Lit l)       = freeVars l
   freeVars (Local x)     = Set.singleton (simpleName x)
   freeVars (Global _)    = Set.empty
-  freeVars (Prim _)      = Set.empty
 
 instance Pretty Term where
   pp p t = case t of
@@ -229,7 +227,6 @@ instance Pretty Term where
     Local n     -> ppr n
     Global n    -> ppr n
     Lit l       -> ppr l
-    Prim n      -> char '#' <> text n
 
 ppLet :: [TypedDecl] -> [UntypedDecl] -> Term -> Doc
 ppLet ts us e = text "let" <+> declBlock decls <+> text "in" <+> ppr e

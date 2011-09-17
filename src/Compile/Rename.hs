@@ -136,7 +136,6 @@ renameTerm t =
     Local v  -> Local  <$> subst v
     Lit l    -> Lit    <$> renameLiteral l
     Global n -> renameGlobal n
-    Prim _   -> return t
     Let ts [] e -> fresh (map typedName ts)
                  $ Let <$> mapM renameTypedDecl ts <*> pure [] <*> renameTerm e
     Let _  _  _ ->
