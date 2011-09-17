@@ -10,10 +10,13 @@ import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
+import TypeChecker.Unify (quantifyAll,quantify,typeVars,Types)
+import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
 import Control.Monad (foldM,mapAndUnzipM)
 import Data.Maybe (fromMaybe)
+import qualified Data.Set as Set
 
 
 type TypeAssumps = Assumps Scheme
@@ -65,6 +68,7 @@ tcTopTypedDecl env td = do
 
   fail "tcTopTypedDecl"
 
+-- XXX rework this.  a list of types is the wrong approach.
 tcTypedMatch :: TypeAssumps -> [Type] -> Syn.Match -> TC (Type,Match)
 tcTypedMatch env [] m = fail "tcTypedMatch: invalid type"
 tcTypedMatch env ts m = case (ts,m) of
@@ -82,6 +86,20 @@ tcTypedMatch env ts m = case (ts,m) of
     (ty,tm') <- tcTerm env tm
     return (ty,MTerm tm' ty)
 
+tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
+tcMatch env m = case m of
+
+  Syn.MPat p m' -> do
+    (env',pty,p') <- tcPat env p
+    (ty,m'')      <- tcMatch env' m'
+    pty'          <- applySubst pty
+    p''           <- applySubst p'
+    return (pty' `tarrow` ty, MPat p'' m'')
+
+  Syn.MTerm tm -> do
+    (ty,tm') <- tcTerm env tm
+    return (ty, MTerm tm' ty)
+
 tcPat :: TypeAssumps -> Syn.Pat -> TC (TypeAssumps,Type,Pat)
 tcPat env p = case p of
 
@@ -97,7 +115,18 @@ tcPat env p = case p of
 tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
 tcTerm env tm = case tm of
 
-  Syn.Abs m -> fail "tcTerm: Abs"
+  Syn.Abs m -> do
+    (ty,m') <- tcMatch env m
+    n       <- freshName "_lam" (freeVars m')
+    let qvs  = Set.toList (genVars env m')
+        body = quantify qvs m'
+        qt   = quantify qvs ty
+        name = simpleName n
+        decl = Decl name body
+
+    (vs,ty') <- freshInst' qt
+    let vars = map TVar vs
+    return (ty', Let [decl] (appT (Global name) vars))
 
   Syn.Let ts us e -> fail "tcTerm: Let"
 
@@ -107,7 +136,7 @@ tcTerm env tm = case tm of
 
     res <- freshVar kstar
     let inferred = foldr tarrow res xtys
-    unify fty inferred
+    unify inferred fty
 
     f''  <- applySubst f'
     xs'' <- applySubst xs'
@@ -136,3 +165,14 @@ appT tm ts = AppT tm ts
 tcLit :: Syn.Literal -> TC (Type,Term)
 tcLit l = case l of
   Syn.LInt{} -> return (TCon (primName "Int"), Lit l)
+
+
+-- Generalization --------------------------------------------------------------
+
+-- | Variables from the assumptions.
+assumpVars :: TypeAssumps -> Set.Set TParam
+assumpVars  = typeVars . assumps
+
+-- | Variables that can be generalized.
+genVars :: Types t => TypeAssumps -> t -> Set.Set TParam
+genVars env t = typeVars t Set.\\ assumpVars env
