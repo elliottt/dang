@@ -154,16 +154,19 @@ mgu a b = case (a,b) of
 -- XXX should this do a kind check in addition to an occurs check?
 varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
 varBind p ty
-  | Just p' <- destTVar ty = unifyVars p p'
-  | occursCheck p ty       = raiseE (UnifyOccursCheck p ty)
-  | otherwise              = return (paramIndex p +-> ty)
+  | Just p' <- destTVar ty, p == p' = return emptySubst
+  | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
+  | otherwise                       = return (paramIndex p +-> ty)
 
+-- | Unify two variables, attempting to keep the name from the users program.
 unifyVars :: ExceptionM m SomeException => TParam -> TParam -> m Subst
 unifyVars p p'
-  | paramFromSource p && paramFromSource p' = return emptySubst
-  | paramFromSource p                       = return (paramIndex p' +-> TVar p )
-  | paramFromSource p'                      = return (paramIndex p  +-> TVar p')
-  | otherwise                               = return emptySubst
+  | paramIndex p == paramIndex p'                 = return emptySubst
+  | paramFromSource p && not (paramFromSource p') = return (upd p)
+  | otherwise                                     = return (upd p')
+  where
+  upd v = paramIndex p +-> TVar (v { paramIndex = paramIndex p' })
+
 
 occursCheck :: TParam -> Type -> Bool
 occursCheck p = Set.member p . typeVars
