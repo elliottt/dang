@@ -114,8 +114,6 @@ kcTypeSig env qt = introType env qt $ \ env' ty -> do
   logDebug (show (typeVars ty))
   (tyk,ty') <- inferKind env' ty
   unify kstar tyk
-  logInfo (show ty')
-  logInfo (show (quantifyAndFixKinds ty'))
   return (quantifyAndFixKinds ty')
 
 -- | Check the kind structure of any types that show up in terms.
