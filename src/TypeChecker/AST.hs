@@ -2,7 +2,7 @@ module TypeChecker.AST where
 
 import Pretty
 import QualName (QualName,simpleName)
-import TypeChecker.Types (Type,Forall(..),forallData,TParam)
+import TypeChecker.Types (Type,Forall(..),forallData)
 import Syntax.AST (Var,Literal)
 import Variables (FreeVars(freeVars))
 
@@ -85,8 +85,7 @@ instance FreeVars Term where
   freeVars (Lit l)    = freeVars l
 
 instance Pretty Term where
-  pp p (AppT f vs) = optParens (p > 0)
-                   $ pp 1 f <> char '@' <> brackets (commas (map ppr vs))
+  pp _ (AppT f vs) = pp 1 f <> char '@' <> brackets (commas (map ppr vs))
   pp p (App f xs)  = optParens (p > 0) (ppr f <+> ppList 1 xs)
   pp p (Let ds e)  = optParens (p > 0)
                    $ text "let" <+> braces (semis (map ppr ds))
