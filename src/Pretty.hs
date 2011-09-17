@@ -96,3 +96,6 @@ instance Pretty Double where
 
 instance (Pretty a, Pretty b) => Pretty (a,b) where
   pp _ (a,b) = parens (ppr a <> comma <+> ppr b)
+
+instance (Pretty a, Pretty b, Pretty c) => Pretty (a,b,c) where
+  pp _ (a,b,c) = parens (commas [ppr a, ppr b, ppr c])
