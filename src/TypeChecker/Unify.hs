@@ -59,8 +59,8 @@ instance Types a => Types (Forall a) where
 
 instance Types Match where
   apply s m = case m of
-    MTerm t ty -> MTerm t (apply s ty)
-    MPat p m'  -> MPat (apply s p) m'
+    MTerm t ty -> MTerm (apply s t) (apply s ty)
+    MPat p m'  -> MPat (apply s p) (apply s m')
 
   typeVars m = case m of
     MTerm t ty -> typeVars t `Set.union` typeVars ty
