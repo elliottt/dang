@@ -43,10 +43,21 @@ primAssumps pts env0 = foldM step env0 pts
   step env pt =
     assume (primName (Syn.primTermName pt)) (Syn.primTermType pt) env
 
+-- | Introduce the signatures as the assumed type for a block of typed
+-- declarations.
 typedAssumps :: Namespace -> [Syn.TypedDecl] -> TypeAssumps -> TC TypeAssumps
-typedAssumps ns tds env0 = foldM step env0 tds
+typedAssumps ns ts env0 = foldM step env0 ts
   where
   step env td = assume (qualName ns (Syn.typedName td)) (Syn.typedType td) env
+
+-- | Introduce fresh variables for the types of a block of untyped declarations.
+untypedAssumps :: Namespace -> [Syn.UntypedDecl] -> TypeAssumps
+               -> TC TypeAssumps
+untypedAssumps ns us env0 = foldM step env0 us
+  where
+  step env ud = do
+    var <- freshVar kstar
+    assume (qualName ns (Syn.untypedName ud)) (toScheme var) env
 
 
 -- Type Checking ---------------------------------------------------------------
@@ -56,14 +67,18 @@ tcModule :: IsInterface i => i -> Syn.Module -> TC [Decl]
 tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
-  env <- typedAssumps ns (Syn.modTyped m) =<<
+  env <- typedAssumps   ns (Syn.modTyped m)   =<<
+         untypedAssumps ns (Syn.modUntyped m) =<<
          primAssumps (Syn.modPrimTerms m) (interfaceAssumps i)
 
-  logError "tcModule: only checking typed declarations"
-  mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
+  ts <- mapM (tcTypedDecl ns env) (Syn.modTyped m)
+  us <- tcUntypedDecls ns env (Syn.modUntyped m)
 
-tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
-tcTopTypedDecl ns env td = do
+  return (ts ++ us)
+
+
+tcTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
+tcTypedDecl ns env td = do
   let name = qualName ns (Syn.typedName td)
   logInfo ("Checking: " ++ pretty name)
 
@@ -76,6 +91,10 @@ tcTopTypedDecl ns env td = do
   let ps = Set.toList (genVars env m')
   return (Decl name (quantify ps m'))
 
+tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl] -> TC [Decl]
+tcUntypedDecls _ns _env _us = do
+  logError "tcModule: only checking typed declarations"
+  return []
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
@@ -117,7 +136,12 @@ tcTerm env tm = case tm of
     let vars = map TVar vs
     return (ty', Let [decl] (appT (Global name) vars))
 
-  Syn.Let ts us e -> fail "tcTerm: Let"
+  Syn.Let ts us e -> do
+    env'    <- untypedAssumps [] us =<< typedAssumps [] ts env
+    ts'     <- mapM (tcTypedDecl [] env') ts
+    us'     <- tcUntypedDecls [] env' us
+    (ty,e') <- tcTerm env' e
+    return (ty, Let (ts' ++ us') e')
 
   Syn.App f xs -> do
     (fty,f')   <- tcTerm env f
