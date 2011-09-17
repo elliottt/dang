@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-
 module TypeChecker.CheckTypes where
 
 import Dang.IO
@@ -60,31 +58,16 @@ tcModule i m = do
 
 tcTopTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTopTypedDecl env td = do
-  oty <- freshInst (Syn.typedType td)
-  (ty,m') <- tcTypedMatch env (destArgs oty) (Syn.typedBody td)
+  oty    <- freshInst (Syn.typedType td)
+  (ty,m) <- tcMatch env (Syn.typedBody td)
+
+  unify ty oty
+  m' <- applySubst m
 
   logInfo (pretty ty)
   logInfo (pretty m')
 
   fail "tcTopTypedDecl"
-
--- XXX rework this.  a list of types is the wrong approach.
-tcTypedMatch :: TypeAssumps -> [Type] -> Syn.Match -> TC (Type,Match)
-tcTypedMatch env [] m = fail "tcTypedMatch: invalid type"
-tcTypedMatch env ts m = case (ts,m) of
-
-  (t:ts',Syn.MPat p m') -> do
-    (env',pty,p') <- tcPat env p
-    (ty,m'')      <- tcTypedMatch env' ts' m'
-    unify t pty
-    p''           <- applySubst p'
-    pty'          <- applySubst pty
-    return (pty' `tarrow` ty, MPat p'' m'')
-
-  (ts,Syn.MTerm tm) -> do
-    let oty = foldr1 tarrow ts
-    (ty,tm') <- tcTerm env tm
-    return (ty,MTerm tm' ty)
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
