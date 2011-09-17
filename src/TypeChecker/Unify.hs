@@ -77,7 +77,6 @@ instance Types Pat where
 
 instance Types Term where
   apply s tm = case tm of
-    AbsT vs b -> AbsT vs (apply s b)
     AppT f ts -> AppT (apply s f) (apply s ts)
     App t ts  -> App (apply s t)  (apply s ts)
     Let ds e  -> Let (apply s ds) (apply s e)
@@ -86,7 +85,6 @@ instance Types Term where
     Lit lit   -> Lit lit
 
   typeVars tm = case tm of
-    AbsT _ b  -> typeVars b
     AppT f ts -> typeVars f `Set.union` typeVars ts
     App t ts  -> typeVars t `Set.union` typeVars ts
     Let ds e  -> typeVars ds `Set.union` typeVars e

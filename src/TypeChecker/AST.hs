@@ -67,8 +67,7 @@ instance Pretty Pat where
   pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
 
 data Term
-  = AbsT [TParam] Term
-  | AppT Term [Type]
+  = AppT Term [Type]
   | App Term [Term]
   | Let [Decl] Term
   | Local Var
@@ -77,7 +76,6 @@ data Term
     deriving (Show)
 
 instance FreeVars Term where
-  freeVars (AbsT _ b) = freeVars b
   freeVars (AppT f _) = freeVars f
   freeVars (App t as) = freeVars (t:as)
   freeVars (Let ds t) = (freeVars t `Set.union` freeVars ds)
@@ -87,8 +85,6 @@ instance FreeVars Term where
   freeVars (Lit l)    = freeVars l
 
 instance Pretty Term where
-  pp p (AbsT vs b) = optParens (p > 0)
-                   $ text "\\@" <> hsep (map ppr vs) <+> text "->" <+> ppr b
   pp p (AppT f vs) = optParens (p > 0)
                    $ pp 1 f <> char '@' <> brackets (commas (map ppr vs))
   pp p (App f xs)  = optParens (p > 0) (ppr f <+> ppList 1 xs)
