@@ -8,7 +8,7 @@ import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
-import TypeChecker.Unify (quantifyAll,quantify,typeVars,Types)
+import TypeChecker.Unify (quantify,typeVars,Types)
 import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
@@ -43,6 +43,11 @@ primAssumps pts env0 = foldM step env0 pts
   step env pt =
     assume (primName (Syn.primTermName pt)) (Syn.primTermType pt) env
 
+typedAssumps :: Namespace -> [Syn.TypedDecl] -> TypeAssumps -> TC TypeAssumps
+typedAssumps ns tds env0 = foldM step env0 tds
+  where
+  step env td = assume (qualName ns (Syn.typedName td)) (Syn.typedType td) env
+
 
 -- Type Checking ---------------------------------------------------------------
 
@@ -51,23 +56,26 @@ tcModule :: IsInterface i => i -> Syn.Module -> TC [Decl]
 tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
-  env <- primAssumps (Syn.modPrimTerms m) (interfaceAssumps i)
+  env <- typedAssumps ns (Syn.modTyped m) =<<
+         primAssumps (Syn.modPrimTerms m) (interfaceAssumps i)
 
   logError "tcModule: only checking typed declarations"
-  mapM (tcTopTypedDecl env) (Syn.modTyped m)
+  mapM (tcTopTypedDecl ns env) (Syn.modTyped m)
 
-tcTopTypedDecl :: TypeAssumps -> Syn.TypedDecl -> TC Decl
-tcTopTypedDecl env td = do
-  oty    <- freshInst (Syn.typedType td)
+tcTopTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
+tcTopTypedDecl ns env td = do
+  let name = qualName ns (Syn.typedName td)
+  logInfo ("Checking: " ++ pretty name)
+
+  sig    <- freshInst (Syn.typedType td)
   (ty,m) <- tcMatch env (Syn.typedBody td)
 
-  unify ty oty
+  unify ty sig
   m' <- applySubst m
 
-  logInfo (pretty ty)
-  logInfo (pretty m')
+  let ps = Set.toList (genVars env m')
+  return (Decl name (quantify ps m'))
 
-  fail "tcTopTypedDecl"
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
@@ -75,9 +83,7 @@ tcMatch env m = case m of
   Syn.MPat p m' -> do
     (env',pty,p') <- tcPat env p
     (ty,m'')      <- tcMatch env' m'
-    pty'          <- applySubst pty
-    p''           <- applySubst p'
-    return (pty' `tarrow` ty, MPat p'' m'')
+    return (pty `tarrow` ty, MPat p' m'')
 
   Syn.MTerm tm -> do
     (ty,tm') <- tcTerm env tm
