@@ -154,15 +154,6 @@ varBind p ty
   | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
   | otherwise                       = return (paramIndex p +-> ty)
 
--- | Unify two variables, attempting to keep the name from the users program.
-unifyVars :: ExceptionM m SomeException => TParam -> TParam -> m Subst
-unifyVars p p'
-  | paramIndex p == paramIndex p'                 = return emptySubst
-  | paramFromSource p && not (paramFromSource p') = return (upd p)
-  | otherwise                                     = return (upd p')
-  where
-  upd v = paramIndex p +-> TVar (v { paramIndex = paramIndex p' })
-
 
 occursCheck :: TParam -> Type -> Bool
 occursCheck p = Set.member p . typeVars
