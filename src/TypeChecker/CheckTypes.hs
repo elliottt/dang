@@ -85,7 +85,9 @@ tcTypedDecl ns env td = do
   sig    <- freshInst (Syn.typedType td)
   (ty,m) <- tcMatch env (Syn.typedBody td)
 
+  logInfo ("  Inferred: " ++ pretty ty)
   unify ty sig
+
   m' <- applySubst m
 
   let ps = Set.toList (genVars env m')

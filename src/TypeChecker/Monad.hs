@@ -9,6 +9,7 @@ module TypeChecker.Monad (
     -- Unification
   , unify
   , applySubst
+  , getSubst
 
     -- Variables
   , freshName

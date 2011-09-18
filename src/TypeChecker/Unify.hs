@@ -124,7 +124,7 @@ mgu a b = case (a,b) of
   -- type application
   (TApp f x, TApp g y) -> do
     sf <- mgu f g
-    sx <- mgu x y
+    sx <- mgu (apply sf x) (apply sf y)
     return (sf @@ sx)
 
   -- infix type constructor application
@@ -133,7 +133,7 @@ mgu a b = case (a,b) of
       [ "Expected infix constructor ``", pretty n
       , "'', got ``", pretty m, "''" ]
     sl <- mgu l x
-    sr <- mgu r y
+    sr <- mgu (apply sl r) (apply sl y)
     return (sl @@ sr)
 
   (TVar p, r) -> varBind p r
@@ -141,8 +141,6 @@ mgu a b = case (a,b) of
 
   -- constructors
   (TCon l, TCon r) | l == r -> return emptySubst
-
-  -- how do we handle nats here?
 
   _ -> raiseE (UnifyError a b)
 
