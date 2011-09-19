@@ -3,7 +3,7 @@ module TypeChecker.AST where
 import Pretty
 import QualName (QualName,simpleName)
 import TypeChecker.Types (Type,Forall(..),forallData)
-import Syntax.AST (Var,Literal)
+import Syntax.AST (Var,Literal,Export)
 import Variables (FreeVars(freeVars))
 
 import qualified Data.Set as Set
@@ -17,6 +17,7 @@ ppTyApp ts = brackets (commas (map ppr ts))
 -- | Fully qualified declarations.
 data Decl = Decl
   { declName   :: QualName
+  , declExport :: Export
   , declBody   :: Forall Match
   } deriving (Show)
 
@@ -24,12 +25,15 @@ instance FreeVars Decl where
   freeVars d = Set.delete (declName d) (freeVars (forallData (declBody d)))
 
 instance Pretty Decl where
-  pp _ d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
-    where
-    Forall ps body = declBody d
-    (as,b)         = ppMatch body
-
+  pp _ d   = ppr (declExport d) <+> ppDecl d
   ppList _ = declBlock . map ppr
+
+-- | Pretty-print a declaration without its export annotation.
+ppDecl :: Decl -> Doc
+ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
+  where
+  Forall ps body = declBody d
+  (as,b)         = ppMatch body
 
 -- | Typed variable introduction.
 data Match
@@ -88,7 +92,7 @@ instance Pretty Term where
   pp _ (AppT f vs) = pp 1 f <> char '@' <> brackets (commas (map ppr vs))
   pp p (App f xs)  = optParens (p > 0) (ppr f <+> ppList 1 xs)
   pp p (Let ds e)  = optParens (p > 0)
-                   $ text "let" <+> braces (semis (map ppr ds))
+                   $ text "let" <+> declBlock (map ppDecl ds)
                  <+> text "in"  <+> ppr e
   pp _ (Local v)   = text v
   pp _ (Global qn) = ppr qn

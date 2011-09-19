@@ -91,7 +91,11 @@ tcTypedDecl ns env td = do
   m' <- applySubst m
 
   let ps = Set.toList (genVars env m')
-  return (Decl name (quantify ps m'))
+  return Decl
+    { declName   = name
+    , declExport = Syn.typedExport td
+    , declBody   = quantify ps m'
+    }
 
 tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl] -> TC [Decl]
 tcUntypedDecls _ns _env _us = do
@@ -132,7 +136,11 @@ tcTerm env tm = case tm of
         body = quantify qvs m'
         qt   = quantify qvs ty
         name = simpleName n
-        decl = Decl name body
+        decl = Decl
+          { declName   = name
+          , declExport = Syn.Private
+          , declBody   = body
+          }
 
     (vs,ty') <- freshInst' qt
     let vars = map TVar vs
