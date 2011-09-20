@@ -223,10 +223,6 @@ aexp :: { Term }
 
 -- Types -----------------------------------------------------------------------
 
-atypes :: { [Type] }
-: atypes atype { $2:$1 }
-| atype        { [$1] }
-
 type :: { Type }
   : apptype type_tail { $2 (foldl1 (flip tapp) $1) }
 
@@ -237,6 +233,10 @@ type_tail :: { Type -> Type }
 apptype :: { [Type] }
   : apptype atype { $2 : $1 }
   | atype         { [$1] }
+
+atypes :: { [Type] }
+: atypes atype { $2:$1 }
+|              { [] }
 
 atype :: { Type }
   : IDENT        { TVar (TParam 0 True $1 setSort) }
