@@ -56,7 +56,6 @@ instance Pretty Type where
   pp _ (TGen m)       = ppr m
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
   pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
-  ppList _ = brackets . commas . map ppr
 
 data TParam = TParam
   { paramIndex      :: Index

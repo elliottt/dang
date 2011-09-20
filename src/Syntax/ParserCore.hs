@@ -12,6 +12,7 @@ import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
 import Control.Monad.ST.Strict (runST)
+import Data.Monoid (Monoid(..))
 import Data.STRef.Strict (newSTRef,readSTRef,writeSTRef)
 import MonadLib
 import qualified Data.ByteString as S
@@ -157,26 +158,27 @@ data PDecls = PDecls
   , parsedOpens     :: [Open]
   , parsedPrimTerms :: NameMap PrimTerm
   , parsedPrimTypes :: NameMap PrimType
+  , parsedDataDecls :: [DataDecl]
   } deriving (Show)
 
-emptyPDecls :: PDecls
-emptyPDecls  = PDecls
-  { parsedPDecls    = CM.empty
-  , parsedOpens     = []
-  , parsedPrimTerms = CM.empty
-  , parsedPrimTypes = CM.empty
-  }
+instance Monoid PDecls where
+  mempty = PDecls
+    { parsedPDecls    = CM.empty
+    , parsedOpens     = []
+    , parsedPrimTerms = CM.empty
+    , parsedPrimTypes = CM.empty
+    , parsedDataDecls = []
+    }
 
--- | Merge two sets of parsed declarations.
-combinePDecls :: PDecls -> PDecls -> PDecls
-combinePDecls ds1 ds2 = PDecls
-  { parsedPDecls    = merge resolveTypes parsedPDecls
-  , parsedOpens     = parsedOpens ds1 ++ parsedOpens ds2
-  , parsedPrimTerms = merge clash parsedPrimTerms
-  , parsedPrimTypes = merge clash parsedPrimTypes
-  }
-  where
-  merge strat prj = CM.unionWith strat (prj ds1) (prj ds2)
+  mappend ds1 ds2 = PDecls
+    { parsedPDecls    = merge resolveTypes parsedPDecls
+    , parsedOpens     = parsedOpens ds1 ++ parsedOpens ds2
+    , parsedPrimTerms = merge clash parsedPrimTerms
+    , parsedPrimTypes = merge clash parsedPrimTypes
+    , parsedDataDecls = parsedDataDecls ds1 ++ parsedDataDecls ds2
+    }
+    where
+    merge strat prj = CM.unionWith strat (prj ds1) (prj ds2)
 
 -- | Term declarations can be in three stages during parsing: just a body, just
 -- a type, or both a type and a term.  This type captures those states.
@@ -197,12 +199,11 @@ resolveTypes a b = case (a,b) of
 
 -- | Generate a term declaration that's lacking a type binding.
 mkUntyped :: UntypedDecl -> PDecls
-mkUntyped d =
-  emptyPDecls { parsedPDecls = singleton (untypedName d) (DeclTerm d) }
+mkUntyped d = mempty { parsedPDecls = singleton (untypedName d) (DeclTerm d) }
 
 -- | Generate a declaration of a type for a term.
 mkTypeDecl :: Name -> Forall Type -> PDecls
-mkTypeDecl n t = emptyPDecls { parsedPDecls = singleton n (DeclType t) }
+mkTypeDecl n t = mempty { parsedPDecls = singleton n (DeclType t) }
 
 -- | Quantify all free variables in a parsed type.
 mkForall :: Type -> Forall Type
@@ -239,7 +240,7 @@ addDecl d ds = ds
   }
 
 mkDecls :: [UntypedDecl] -> PDecls
-mkDecls ds = emptyPDecls { parsedPDecls = foldl step CM.empty ds }
+mkDecls ds =  mempty { parsedPDecls = foldl step CM.empty ds }
   where
   step m d = CM.insertWith resolveTypes (untypedName d) (DeclTerm d) m
 
@@ -251,13 +252,16 @@ exportBlock ex pds = pds { parsedPDecls = f `fmap` parsedPDecls pds }
   f e             = e
 
 mkOpen :: Open -> PDecls
-mkOpen o = emptyPDecls { parsedOpens = [o] }
+mkOpen o = mempty { parsedOpens = [o] }
 
 mkPrimTerm :: PrimTerm -> PDecls
-mkPrimTerm d = emptyPDecls { parsedPrimTerms = singleton (primTermName d) d }
+mkPrimTerm d = mempty { parsedPrimTerms = singleton (primTermName d) d }
 
 mkPrimType :: PrimType -> PDecls
-mkPrimType d = emptyPDecls { parsedPrimTypes = singleton (primTypeName d) d }
+mkPrimType d = mempty { parsedPrimTypes = singleton (primTypeName d) d }
+
+mkDataDecl :: DataDecl -> PDecls
+mkDataDecl d = mempty { parsedDataDecls = [d] }
 
 resolveNamed :: NameMap a -> Parser [a]
 resolveNamed nm = do
@@ -292,4 +296,5 @@ mkModule qn pds = do
     , modUntyped   = us
     , modPrimTerms = tms
     , modPrimTypes = tys
+    , modDatas     = parsedDataDecls pds
     }

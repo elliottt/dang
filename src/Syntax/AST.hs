@@ -22,15 +22,17 @@ data Module = Module
   , modUntyped   :: [UntypedDecl]
   , modPrimTerms :: [PrimTerm]
   , modPrimTypes :: [PrimType]
+  , modDatas     :: [DataDecl]
   } deriving (Show)
 
 instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
        $+$ declBlock decls
     where
-    decls = map       ppr         (modPrimTypes m)
+    decls = map       ppr         (modOpens m)
+         ++ map       ppr         (modPrimTypes m)
          ++ map       ppr         (modPrimTerms m)
-         ++ map       ppr         (modOpens m)
+         ++ map       ppr         (modDatas m)
          ++ concatMap ppTypedDecl (modTyped m)
          ++ map       ppr         (modUntyped m)
 
@@ -126,7 +128,7 @@ instance Pretty UntypedDecl where
 -- Primitive Term Declarations -------------------------------------------------
 
 data PrimTerm = PrimTerm
-  { primTermName :: String
+  { primTermName :: Name
   , primTermType :: Forall Type
   } deriving (Eq,Show,Ord)
 
@@ -138,13 +140,44 @@ instance Pretty PrimTerm where
 -- Primitive Type Declarations -------------------------------------------------
 
 data PrimType = PrimType
-  { primTypeName :: String
+  { primTypeName :: Name
   , primTypeKind :: Kind
   } deriving (Eq,Show,Ord)
 
 instance Pretty PrimType where
   pp _ p = text "primitive type" <+> text (primTypeName p)
        <+> text "::" <+> pp 0 (primTypeKind p)
+
+
+-- Data Declarations -----------------------------------------------------------
+
+data DataDecl = DataDecl
+  { dataName    :: Name
+  , dataConstrs :: Forall [Constr]
+  } deriving (Show)
+
+instance Pretty DataDecl where
+  pp _ d = text "data" <+> ppr (dataName d) <+> vcat (map ppr ps)
+       <+> constrBlock cs
+    where
+    Forall ps cs = dataConstrs d
+
+
+-- Data Constructors -----------------------------------------------------------
+
+data Constr = Constr
+  { constrName   :: Name
+  , constrParams :: [Type]
+  } deriving (Show)
+
+constrBlock :: [Constr] -> Doc
+constrBlock []     = empty
+constrBlock (c:cs) = foldl step (char '=' <+> ppr c) cs
+  where
+  step d k = d $+$ char '|' <+> ppr k
+
+instance Pretty Constr where
+  pp _ c = ppr (constrName c) <+> ppList 1 (constrParams c)
 
 
 -- Variable Introduction -------------------------------------------------------

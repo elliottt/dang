@@ -47,7 +47,9 @@ $white+         ;
 ","             { reserved }
 "."             { reserved }
 "=>"            { reserved }
+"|"             { reserved }
 
+"data"          { reserved }
 "module"        { reserved }
 "where"         { reserved }
 "open"          { reserved }

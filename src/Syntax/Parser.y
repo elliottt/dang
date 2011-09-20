@@ -11,6 +11,7 @@ import Syntax.Lexer
 import Syntax.ParserCore
 import TypeChecker.Types
 
+import Data.Monoid (mappend)
 import MonadLib
 import qualified Codec.Binary.UTF8.Generic as UTF8
 
@@ -33,7 +34,7 @@ import Debug.Trace
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
-  '=>' { Lexeme $$ (TReserved "=>") }
+  '|'  { Lexeme $$ (TReserved "|")  }
 
 -- special operators
   '->' { Lexeme $$ (TOperIdent "->") }
@@ -48,9 +49,9 @@ import Debug.Trace
   'hiding'    { Lexeme $$ (TReserved "hiding")    }
   'public'    { Lexeme $$ (TReserved "public")    }
   'private'   { Lexeme $$ (TReserved "private")   }
-  'forall'    { Lexeme $$ (TReserved "forall")    }
   'primitive' { Lexeme $$ (TReserved "primitive") }
   'type'      { Lexeme $$ (TReserved "type")      }
+  'data'      { Lexeme $$ (TReserved "data")      }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$)  }
@@ -62,7 +63,6 @@ import Debug.Trace
 %monad { Parser } { (>>=) } { return }
 %error { parseError }
 %name parseModule top_module
-%name parseForall qual_type
 %tokentype { Lexeme }
 
 %lexer { lexer } { Lexeme initPosition TEof }
@@ -89,18 +89,22 @@ top_module :: { Module }
 -- Declarations ----------------------------------------------------------------
 
 top_decls :: { PDecls }
-  : top_decls ';' top_decl      { $1 `combinePDecls` $3 }
-  | top_decls ';' public_decls  { $1 `combinePDecls` $3 }
-  | top_decls ';' private_decls { $1 `combinePDecls` $3 }
+  : top_decls ';' top_decl      { $1 `mappend` $3 }
+  | top_decls ';' public_decls  { $1 `mappend` $3 }
+  | top_decls ';' private_decls { $1 `mappend` $3 }
   | top_decl                    { $1 }
   | public_decls                { $1 }
   | private_decls               { $1 }
 
 top_decl :: { PDecls }
-  : top_fun_bind { mkUntyped $1 }
-  | type_bind    { $1 }
-  | open         { mkOpen $1 }
+  : data         { $1 }
   | primitive    { $1 }
+  | open         { mkOpen $1 }
+  | top_fun_bind { mkUntyped $1 }
+  | type_bind    { $1 }
+
+
+-- Primitive Declarations ------------------------------------------------------
 
 primitive :: { PDecls }
   : 'primitive' primitive_body { $2 }
@@ -108,6 +112,9 @@ primitive :: { PDecls }
 primitive_body :: { PDecls }
   : 'type' tycon '::' kind      { mkPrimType (PrimType $2 $4) }
   | IDENT        '::' qual_type { mkPrimTerm (PrimTerm $1 $3) }
+
+
+-- Function Declarations -------------------------------------------------------
 
 public_decls :: { PDecls }
   : 'public' '{' binds '}' { exportBlock Public $3 }
@@ -117,7 +124,7 @@ private_decls :: { PDecls }
 
 binds :: { PDecls }
   : binds ';' fun_bind  { addDecl $3 $1 }
-  | binds ';' type_bind { combinePDecls $3 $1 }
+  | binds ';' type_bind { $3 `mappend` $1 }
   | fun_bind            { mkUntyped $1 }
   | type_bind           { $1 }
 
@@ -158,6 +165,31 @@ arg_list :: { Match -> Match }
 | {- empty -}  { id }
 
 
+-- Data Declarations -----------------------------------------------------------
+
+data :: { PDecls }
+: data_decl { mkDataDecl $1 }
+
+data_decl :: { DataDecl }
+: 'data' CONIDENT tparams data_decl_body
+  { DataDecl
+    { dataName    = $2
+    , dataConstrs = Forall (reverse $3) (reverse $4)
+    }
+  }
+
+data_decl_body :: { [Constr] }
+: {- empty -}  { [] }
+| '=' constrs  { $2 }
+
+constrs :: { [Constr] }
+: constrs '|' constr { $3:$1 }
+| constr             { [$1] }
+
+constr :: { Constr }
+: CONIDENT atypes { Constr { constrName = $1, constrParams = $2 } }
+
+
 -- Terms -----------------------------------------------------------------------
 
 exp :: { Term }
@@ -190,6 +222,10 @@ aexp :: { Term }
 
 
 -- Types -----------------------------------------------------------------------
+
+atypes :: { [Type] }
+: atypes atype { $2:$1 }
+| atype        { [$1] }
 
 type :: { Type }
   : apptype type_tail { $2 (foldl1 (flip tapp) $1) }
@@ -237,6 +273,9 @@ kind_body :: { Kind -> Kind }
 akind :: { Kind }
   : '*'          { kstar }
   | '(' kind ')' { $2 }
+
+
+-- Parser Stuff ----------------------------------------------------------------
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
