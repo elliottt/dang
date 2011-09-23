@@ -1,6 +1,9 @@
+{-# LANGUAGE DoRec #-}
+
 module TypeChecker.CheckTypes where
 
 import Dang.IO
+import Dang.Monad
 import Interface (IsInterface,funSymbols,funType)
 import Pretty
 import QualName
@@ -13,8 +16,10 @@ import Variables (freeVars)
 import qualified Syntax.AST as Syn
 
 import Control.Monad (foldM,mapAndUnzipM)
+import Data.Graph (SCC(..))
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 
 type TypeAssumps = Assumps Scheme
@@ -32,9 +37,9 @@ interfaceAssumps  = foldl step emptyAssumps . funSymbols
 
 -- | Lookup a type assumption in the environment.
 typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
-typeAssump qn env = case lookupAssump qn env of
-  Just a  -> return a
-  Nothing -> unboundIdentifier qn
+typeAssump qn env = return $ case lookupAssump qn env of
+  Just a  -> a
+  Nothing -> throw (UnboundIdentifier qn)
 
 -- | Add primitive terms to the typing environment.
 primAssumps :: [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
@@ -60,7 +65,7 @@ untypedAssumps ns us env0 = foldM step env0 us
     assume (qualName ns (Syn.untypedName ud)) (toScheme var) env
 
 
--- Type Checking ---------------------------------------------------------------
+-- Modules ---------------------------------------------------------------------
 
 -- | Type-check a module, producing a list of fully-qualified declarations.
 tcModule :: IsInterface i => i -> Syn.Module -> TC [Decl]
@@ -68,15 +73,17 @@ tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
   env <- typedAssumps   ns (Syn.modTyped m)   =<<
-         untypedAssumps ns (Syn.modUntyped m) =<<
          primAssumps (Syn.modPrimTerms m) (interfaceAssumps i)
 
-  ts <- mapM (tcTypedDecl ns env) (Syn.modTyped m)
-  us <- tcUntypedDecls ns env (Syn.modUntyped m)
+  (env',us) <- tcUntypedDecls ns env (Syn.modUntyped m)
+  ts        <- mapM (tcTypedDecl ns env') (Syn.modTyped m)
 
   return (ts ++ us)
 
 
+-- Typed Declarations ----------------------------------------------------------
+
+-- | Check a typed declaration.
 tcTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTypedDecl ns env td = do
   let name = qualName ns (Syn.typedName td)
@@ -85,9 +92,7 @@ tcTypedDecl ns env td = do
   sig    <- freshInst (Syn.typedType td)
   (ty,m) <- tcMatch env (Syn.typedBody td)
 
-  logInfo ("  Inferred: " ++ pretty ty)
   unify ty sig
-
   m' <- applySubst m
 
   let ps = Set.toList (genVars env m')
@@ -97,10 +102,126 @@ tcTypedDecl ns env td = do
     , declBody   = quantify ps m'
     }
 
-tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl] -> TC [Decl]
-tcUntypedDecls _ns _env _us = do
-  logError "tcModule: only checking typed declarations"
-  return []
+
+-- Untyped Declarations --------------------------------------------------------
+
+-- | Check a group of untyped declarations.
+tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl]
+               -> TC (TypeAssumps,[Decl])
+tcUntypedDecls ns env0 us = foldM step (env0,[]) (Syn.sccUntypedDecls ns us)
+  where
+  step (env,ds) scc = do
+    (env',us') <- tcUntypedDeclBlock ns env (sccUntyped scc)
+    return (env', us' ++ ds)
+
+-- | Flatten groups of strongly connected untyped declarations into lists.
+sccUntyped :: SCC Syn.UntypedDecl -> [Syn.UntypedDecl]
+sccUntyped (AcyclicSCC u) = [u]
+sccUntyped (CyclicSCC us) = us
+
+-- | Check a block of untyped declarations, and return a new typing environment
+--   with their generalized types contained.
+tcUntypedDeclBlock :: Namespace -> TypeAssumps -> [Syn.UntypedDecl]
+                   -> TC (TypeAssumps, [Decl])
+tcUntypedDeclBlock ns envGen us = do
+  envGen' <- untypedAssumps ns us envGen
+
+  rec let bodies  = partialBodies envGen pds
+          upd e u = updateBody bodies e (untypedName ns u)
+          envInf  = foldl upd envGen' us
+
+      pds <- mapM (tcUntypedDecl ns envInf) us
+
+  return (finalizePartialDecls envGen pds)
+
+-- | Check an untyped declaration, producing a partially complete declaration.
+tcUntypedDecl :: Namespace -> TypeAssumps -> Syn.UntypedDecl -> TC PartialDecl
+tcUntypedDecl ns envInf u = do
+  let name = qualName ns (Syn.untypedName u)
+  logInfo ("Inferring: " ++ pretty name)
+
+  (ty,m) <- tcMatch envInf (Syn.untypedBody u)
+  a      <- typeAssump name envInf
+
+  -- At this point, the environment holds a single unification variable as the
+  -- type of this declaration.  Pull it out, and unify with the inferred type.
+  let Forall [] var = aData a
+  unify var ty
+
+  ty' <- applySubst ty
+  m'  <- applySubst m
+
+  return PartialDecl
+    { partialName   = name
+    , partialExport = Syn.untypedExport u
+    , partialType   = ty'
+    , partialBody   = m'
+    }
+
+
+-- | Generate the fully qualified name for an untyped declaration.
+untypedName :: Namespace -> Syn.UntypedDecl -> QualName
+untypedName ns u = qualName ns (Syn.untypedName u)
+
+
+-- Partial Untyped Declarations ------------------------------------------------
+
+type Bodies = Map.Map QualName Term
+
+-- | Generate the map from names to new declarations.
+partialBodies :: TypeAssumps -> [PartialDecl] -> Bodies
+partialBodies envGen = Map.fromList . map mk
+  where
+  mk d = (name, appT (Global name) (map TGen ps))
+    where
+    ps   = Set.toList (genVars envGen (partialType d))
+    name = partialName d
+
+forwardRef :: Maybe a -> a
+forwardRef  = fromMaybe (error "forward reference")
+
+-- | Rewrite the body of an assumption in a set of typing assumptions.
+updateBody :: Bodies -> TypeAssumps -> QualName -> TypeAssumps
+updateBody bodies env qn =
+  addAssump qn (a { aBody = Map.lookup qn bodies }) env
+  where
+  a = forwardRef (Map.lookup qn env)
+
+data PartialDecl = PartialDecl
+  { partialName   :: QualName
+  , partialExport :: Syn.Export
+  , partialType   :: Type
+  , partialBody   :: Match
+  } deriving Show
+
+finalizePartialDecls :: TypeAssumps -> [PartialDecl] -> (TypeAssumps,[Decl])
+finalizePartialDecls env0 = foldl extendAndFinalize (env0,[])
+  where
+  extendAndFinalize (env,ds) pd = (env',d:ds)
+    where
+    (env',d) = finalizePartialDecl env pd
+
+finalizePartialDecl :: TypeAssumps -> PartialDecl -> (TypeAssumps,Decl)
+finalizePartialDecl env pd = (addAssump name assump env,decl)
+  where
+  name = partialName pd
+  body = partialBody pd
+  ps   = Set.toList (genVars env body)
+
+  decl = Decl
+    { declName   = name
+    , declExport = partialExport pd
+    , declBody   = quantify ps body
+    }
+
+  assump = Assump
+    { aBody = Nothing
+    , aData = quantify ps (partialType pd)
+    }
+
+
+
+-- Terms -----------------------------------------------------------------------
 
 tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
@@ -147,10 +268,10 @@ tcTerm env tm = case tm of
     return (ty', Let [decl] (appT (Global name) vars))
 
   Syn.Let ts us e -> do
-    env'    <- untypedAssumps [] us =<< typedAssumps [] ts env
-    ts'     <- mapM (tcTypedDecl [] env') ts
-    us'     <- tcUntypedDecls [] env' us
-    (ty,e') <- tcTerm env' e
+    env'        <- typedAssumps [] ts env
+    (env'',us') <- tcUntypedDecls [] env' us
+    ts'         <- mapM (tcTypedDecl [] env'') ts
+    (ty,e')     <- tcTerm env'' e
     return (ty, Let (ts' ++ us') e')
 
   Syn.App f xs -> do

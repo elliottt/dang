@@ -124,6 +124,16 @@ instance Pretty UntypedDecl where
     (as,b) = ppMatch (untypedBody d)
   ppList _ ds = semis (map ppr ds)
 
+sccUntypedDecls :: Namespace -> [UntypedDecl] -> [SCC UntypedDecl]
+sccUntypedDecls ns = stronglyConnComp . untypedDeclsFvGraph ns
+
+untypedDeclsFvGraph :: Namespace -> [UntypedDecl]
+                    -> [(UntypedDecl,QualName,[QualName])]
+untypedDeclsFvGraph ns us = graph
+  where
+  graph = [ (u, qualName ns (untypedName u), Set.toList (freeVars u))
+          | u <- us ]
+
 
 -- Primitive Term Declarations -------------------------------------------------
 
@@ -250,7 +260,7 @@ instance FreeVars Term where
   freeVars (App f xs)    = freeVars f `Set.union` freeVars xs
   freeVars (Lit l)       = freeVars l
   freeVars (Local x)     = Set.singleton (simpleName x)
-  freeVars (Global _)    = Set.empty
+  freeVars (Global qn)   = Set.singleton qn
 
 instance Pretty Term where
   pp p t = case t of
