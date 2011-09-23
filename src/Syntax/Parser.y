@@ -13,9 +13,6 @@ import TypeChecker.Types
 
 import Data.Monoid (mappend)
 import MonadLib
-import qualified Codec.Binary.UTF8.Generic as UTF8
-
-import Debug.Trace
 }
 
 %token

@@ -12,7 +12,7 @@ include mk/clean.mk
 GHCFLAGS += -fspec-constr-count=2
 
 LIBS := base monadLib llvm-pretty pretty containers GraphSCC bytestring \
-	utf8-string cereal filepath directory process
+	text cereal filepath directory process
 
 HAPPY_MODS := $(subst src/,,$(basename $(shell find src -name '*.y')))
 ALEX_MODS  := $(subst src/,,$(basename $(shell find src -name '*.x')))

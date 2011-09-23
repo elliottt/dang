@@ -15,8 +15,7 @@ import Control.Monad.ST.Strict (runST)
 import Data.Monoid (Monoid(..))
 import Data.STRef.Strict (newSTRef,readSTRef,writeSTRef)
 import MonadLib
-import qualified Data.ByteString as S
-import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Text.Lazy as L
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -78,14 +77,14 @@ data ErrorType
 data Error = Error ErrorType String Position deriving Show
 
 data ParserState = ParserState
-  { psInput   :: !S.ByteString
+  { psInput   :: !L.Text
   , psChar    :: !Char
   , psPos     :: !Position
   , psLexCode :: !Int
   , psIndex   :: !Index
   } deriving Show
 
-initParserState :: FilePath -> S.ByteString -> ParserState
+initParserState :: FilePath -> L.Text -> ParserState
 initParserState path bs = ParserState
   { psInput   = bs
   , psChar    = '\n'
@@ -131,7 +130,7 @@ raiseP :: String -> Position -> Parser a
 raiseP msg pos = raise (Error ParserError msg pos)
 
 -- | Run the parser over the file given.
-runParser :: FilePath -> S.ByteString -> Parser a -> Either Error a
+runParser :: FilePath -> L.Text -> Parser a -> Either Error a
 runParser path bs m =
   case runM (unParser body) (initParserState path bs) of
     Right ((a,_),_) -> Right a
@@ -145,7 +144,7 @@ runParser path bs m =
 
 -- | For testing parsers within ghci.
 testParser :: Parser a -> String -> Either Error a
-testParser p str = runParser "<interactive>" (UTF8.fromString str) p
+testParser p str = runParser "<interactive>" (L.pack str) p
 
 
 -- Parsed Syntax ---------------------------------------------------------------

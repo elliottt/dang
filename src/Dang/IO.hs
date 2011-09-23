@@ -26,14 +26,15 @@ import System.Directory
 import System.IO
 import System.IO.Error
 import qualified Control.Exception as E
-import qualified Data.ByteString   as S
+import qualified Data.Text.Lazy    as L
+import qualified Data.Text.Lazy.IO as L
 
 
 -- | Read in a file as a strict ByteString.
-loadFile :: BaseM m Dang => FilePath -> m S.ByteString
+loadFile :: BaseM m Dang => FilePath -> m L.Text
 loadFile path = do
   logInfo ("load file: " ++ path)
-  io (S.readFile path)
+  io (L.readFile path)
 
 onFileNotFound :: RunExceptionM m SomeException
                => m a -> (E.IOException -> FilePath -> m a) -> m a

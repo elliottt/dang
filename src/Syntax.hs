@@ -7,7 +7,7 @@ import Syntax.Parser (parseModule)
 import Syntax.ParserCore (runParser)
 import Syntax.AST (Module)
 
-import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.Text.Lazy as L
 
 
 loadModule :: FilePath -> Dang Module
@@ -22,7 +22,7 @@ loadModule path = do
   logInfo (pretty m)
   return m
 
-parseSource :: FilePath -> UTF8.ByteString -> Dang Module
+parseSource :: FilePath -> L.Text -> Dang Module
 parseSource path source =
   case runParser path source parseModule of
     Left err -> io (putStrLn (show err)) >> fail "Parse error"

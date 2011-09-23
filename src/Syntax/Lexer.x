@@ -4,9 +4,9 @@ module Syntax.Lexer where
 
 import Syntax.ParserCore
 
+import Data.Int (Int64)
 import MonadLib
-import qualified Codec.Binary.UTF8.Generic as UTF8
-import qualified Data.ByteString           as S
+import qualified Data.Text.Lazy as L
 
 }
 
@@ -80,7 +80,7 @@ emitT tok (pos,_,_) _ = return $! Lexeme
 emitS :: (String -> Token) -> AlexAction (Parser Lexeme)
 emitS mk (pos,c,bs) len = return $! Lexeme
   { lexPos   = pos
-  , lexToken = mk (UTF8.toString (S.take len bs))
+  , lexToken = mk (L.unpack (L.take (fromIntegral len) bs))
   }
 
 reserved :: AlexAction (Parser Lexeme)
@@ -106,7 +106,7 @@ scan  = do
       alexSetInput inp'
       action inp len
 
-type AlexInput = (Position,Char,S.ByteString)
+type AlexInput = (Position,Char,L.Text)
 
 alexGetInput :: Parser AlexInput
 alexGetInput  = do
@@ -124,7 +124,7 @@ alexSetInput (pos,c,bs) = do
 
 alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
 alexGetChar (p,_,bs) = do
-  (c,bs') <- UTF8.uncons bs
+  (c,bs') <- L.uncons bs
   return (c, (movePos p c, c, bs'))
 
 alexInputPrevChar :: AlexInput -> Char
