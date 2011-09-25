@@ -37,9 +37,9 @@ interfaceAssumps  = foldl step emptyAssumps . funSymbols
 
 -- | Lookup a type assumption in the environment.
 typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
-typeAssump qn env = return $ case lookupAssump qn env of
-  Just a  -> a
-  Nothing -> throw (UnboundIdentifier qn)
+typeAssump qn env = case lookupAssump qn env of
+  Just a  -> return a
+  Nothing -> raiseE (UnboundIdentifier qn)
 
 -- | Add primitive terms to the typing environment.
 primAssumps :: [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
@@ -54,15 +54,6 @@ typedAssumps :: Namespace -> [Syn.TypedDecl] -> TypeAssumps -> TC TypeAssumps
 typedAssumps ns ts env0 = foldM step env0 ts
   where
   step env td = assume (qualName ns (Syn.typedName td)) (Syn.typedType td) env
-
--- | Introduce fresh variables for the types of a block of untyped declarations.
-untypedAssumps :: Namespace -> [Syn.UntypedDecl] -> TypeAssumps
-               -> TC TypeAssumps
-untypedAssumps ns us env0 = foldM step env0 us
-  where
-  step env ud = do
-    var <- freshVar kstar
-    assume (qualName ns (Syn.untypedName ud)) (toScheme var) env
 
 
 -- Modules ---------------------------------------------------------------------
@@ -124,13 +115,9 @@ sccUntyped (CyclicSCC us) = us
 tcUntypedDeclBlock :: Namespace -> TypeAssumps -> [Syn.UntypedDecl]
                    -> TC (TypeAssumps, [Decl])
 tcUntypedDeclBlock ns envGen us = do
-  envGen' <- untypedAssumps ns us envGen
-
   rec let bodies  = partialBodies envGen pds
-          upd e u = updateBody bodies e (untypedName ns u)
-          envInf  = foldl upd envGen' us
-
-      pds <- mapM (tcUntypedDecl ns envInf) us
+      envInf <- untypedAssumps ns bodies us envGen
+      pds    <- mapM (tcUntypedDecl ns envInf) us
 
   return (finalizePartialDecls envGen pds)
 
@@ -159,11 +146,6 @@ tcUntypedDecl ns envInf u = do
     }
 
 
--- | Generate the fully qualified name for an untyped declaration.
-untypedName :: Namespace -> Syn.UntypedDecl -> QualName
-untypedName ns u = qualName ns (Syn.untypedName u)
-
-
 -- Partial Untyped Declarations ------------------------------------------------
 
 type Bodies = Map.Map QualName Term
@@ -172,20 +154,24 @@ type Bodies = Map.Map QualName Term
 partialBodies :: TypeAssumps -> [PartialDecl] -> Bodies
 partialBodies envGen = Map.fromList . map mk
   where
-  mk d = (name, appT (Global name) (map TGen ps))
+  mk d = (name, appT (Global name) (map TVar ps))
     where
     ps   = Set.toList (genVars envGen (partialType d))
     name = partialName d
 
-forwardRef :: Maybe a -> a
-forwardRef  = fromMaybe (error "forward reference")
-
--- | Rewrite the body of an assumption in a set of typing assumptions.
-updateBody :: Bodies -> TypeAssumps -> QualName -> TypeAssumps
-updateBody bodies env qn =
-  addAssump qn (a { aBody = Map.lookup qn bodies }) env
+-- | Introduce fresh variables for the types of a block of untyped declarations.
+untypedAssumps :: Namespace -> Bodies -> [Syn.UntypedDecl] -> TypeAssumps
+               -> TC TypeAssumps
+untypedAssumps ns bodies us env0 = foldM step env0 us
   where
-  a = forwardRef (Map.lookup qn env)
+  step env u = do
+    var <- freshVar kstar
+    let name   = qualName ns (Syn.untypedName u)
+        assump = Assump
+          { aBody = Map.lookup name bodies
+          , aData = toScheme var
+          }
+    return (addAssump name assump env)
 
 data PartialDecl = PartialDecl
   { partialName   :: QualName
