@@ -66,20 +66,24 @@ addPrimType env pty = addKindAssump env name kind
 kcModule :: IsInterface iset => iset -> Module -> TC Module
 kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
-  env <- addPrimTypes (interfaceAssumps iset) (modPrimTypes m)
-
-  pts' <- mapM (kcPrimTerm env)    (modPrimTerms m)
-  ts'  <- mapM (kcTypedDecl env)   (modTyped m)
-  us'  <- mapM (kcUntypedDecl env) (modUntyped m)
+  env        <- addPrimTypes (interfaceAssumps iset) (modPrimTypes m)
+  (env',ds') <- kcDataDecls env (modDatas m)
+  pts'       <- mapM (kcPrimTerm env')    (modPrimTerms m)
+  ts'        <- mapM (kcTypedDecl env')   (modTyped m)
+  us'        <- mapM (kcUntypedDecl env') (modUntyped m)
 
   return m
     { modPrimTerms = pts'
     , modTyped     = ts'
     , modUntyped   = us'
+    , modDatas     = ds'
     }
 
-primTypeBinding :: PrimType -> (QualName,Kind)
-primTypeBinding pt = (primName (primTypeName pt), primTypeKind pt)
+-- | Perform kind inference on a group of data declarations, augmenting an
+-- environment with their kinds.
+kcDataDecls :: KindAssumps -> [DataDecl] -> TC (KindAssumps,[DataDecl])
+kcDataDecls env ds = do
+  undefined
 
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.

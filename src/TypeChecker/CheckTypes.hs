@@ -12,7 +12,7 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify (quantify,typeVars,Types)
-import Variables (freeVars)
+import Variables (freeVars,sccFreeVars)
 import qualified Syntax.AST as Syn
 
 import Control.Monad (foldM,mapAndUnzipM)
@@ -99,7 +99,7 @@ tcTypedDecl ns env td = do
 -- | Check a group of untyped declarations.
 tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl]
                -> TC (TypeAssumps,[Decl])
-tcUntypedDecls ns env0 us = foldM step (env0,[]) (Syn.sccUntypedDecls ns us)
+tcUntypedDecls ns env0 us = foldM step (env0,[]) (sccFreeVars ns us)
   where
   step (env,ds) scc = do
     (env',us') <- tcUntypedDeclBlock ns env (sccUntyped scc)

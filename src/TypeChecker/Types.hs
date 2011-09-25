@@ -5,6 +5,7 @@ module TypeChecker.Types where
 
 import Pretty
 import QualName
+import Variables
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)
@@ -12,6 +13,7 @@ import Data.Maybe (fromMaybe)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
     ,putListOf)
+import qualified Data.Set as Set
 
 type Index = Int
 
@@ -57,12 +59,22 @@ instance Pretty Type where
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
   pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
 
+instance FreeVars Type where
+  freeVars (TCon qn)       = Set.singleton qn
+  freeVars (TVar p)        = freeVars p
+  freeVars (TGen _)        = Set.empty
+  freeVars (TApp a b)      = freeVars a `Set.union` freeVars b
+  freeVars (TInfix qn a b) = Set.singleton qn `Set.union` freeVars (a,b)
+
 data TParam = TParam
   { paramIndex      :: Index
   , paramFromSource :: Bool
   , paramName       :: String
   , paramKind       :: Kind
   } deriving (Eq,Show,Ord)
+
+instance FreeVars TParam where
+  freeVars = Set.singleton . simpleName . paramName
 
 instance Pretty TParam where
   pp _ p = text (paramName p)
@@ -165,3 +177,6 @@ instance Pretty a => Pretty (Forall a) where
     where
     vars | null ps   = empty
          | otherwise = text "forall" <+> ppList 0 ps <> char '.'
+
+instance FreeVars a => FreeVars (Forall a) where
+  freeVars = freeVars  . forallData

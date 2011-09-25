@@ -240,7 +240,7 @@ llDecls ds = do
   let names               = Set.fromList (map (qualName ns . AST.typedName) ds)
       step (AcyclicSCC d) = bindVars names (createClosure [d])
       step (CyclicSCC rs) = bindVars names (createClosure rs)
-  concat `fmap` mapM step (AST.sccTypedDecls ns ds)
+  concat `fmap` mapM step (sccFreeVars ns ds)
 
 -- | Rewrite references to declared names with applications that fill in its
 -- free variables.  Augment the variables list for each declaration to include

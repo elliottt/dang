@@ -1,5 +1,4 @@
 {-# LANGUAGE StandaloneDeriving #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Syntax.AST where
 
@@ -8,8 +7,6 @@ import QualName
 import TypeChecker.Types
 import Variables
 
-import Data.Graph (SCC(..))
-import Data.Graph.SCC (stronglyConnComp)
 import qualified Data.Set as Set
 
 
@@ -79,6 +76,9 @@ data TypedDecl = TypedDecl
 instance FreeVars TypedDecl where
   freeVars = freeVars . typedBody
 
+instance DefinesName TypedDecl where
+  definedName = typedName
+
 ppTypedDecl :: TypedDecl -> [Doc]
 ppTypedDecl d = [sig,body]
   where
@@ -95,15 +95,6 @@ mkTypedDecl u ty = TypedDecl
   , typedName   = untypedName u
   , typedBody   = untypedBody u
   }
-
-sccTypedDecls :: Namespace -> [TypedDecl] -> [SCC TypedDecl]
-sccTypedDecls ns = stronglyConnComp . typedDeclsFvGraph ns
-
-typedDeclsFvGraph :: Namespace -> [TypedDecl]
-                  -> [(TypedDecl,QualName,[QualName])]
-typedDeclsFvGraph ns ds = graph
-  where
-  graph = [ (d, qualName ns (typedName d), Set.toList (freeVars d)) | d <- ds ]
 
 
 -- Untyped Declarations --------------------------------------------------------
@@ -124,15 +115,8 @@ instance Pretty UntypedDecl where
     (as,b) = ppMatch (untypedBody d)
   ppList _ ds = semis (map ppr ds)
 
-sccUntypedDecls :: Namespace -> [UntypedDecl] -> [SCC UntypedDecl]
-sccUntypedDecls ns = stronglyConnComp . untypedDeclsFvGraph ns
-
-untypedDeclsFvGraph :: Namespace -> [UntypedDecl]
-                    -> [(UntypedDecl,QualName,[QualName])]
-untypedDeclsFvGraph ns us = graph
-  where
-  graph = [ (u, qualName ns (untypedName u), Set.toList (freeVars u))
-          | u <- us ]
+instance DefinesName UntypedDecl where
+  definedName = untypedName
 
 
 -- Primitive Term Declarations -------------------------------------------------
@@ -145,6 +129,12 @@ data PrimTerm = PrimTerm
 instance Pretty PrimTerm where
   pp _ p = text "primitive" <+> text (primTermName p)
        <+> text "::" <+> pp 0 (primTermType p)
+
+instance FreeVars PrimTerm where
+  freeVars = freeVars . primTermType
+
+instance DefinesName PrimTerm where
+  definedName = primTermName
 
 
 -- Primitive Type Declarations -------------------------------------------------
@@ -172,6 +162,12 @@ instance Pretty DataDecl where
     where
     Forall ps cs = dataConstrs d
 
+instance FreeVars DataDecl where
+  freeVars = freeVars . dataConstrs
+
+instance DefinesName DataDecl where
+  definedName = dataName
+
 
 -- Data Constructors -----------------------------------------------------------
 
@@ -188,6 +184,13 @@ constrBlock (c:cs) = foldl step (char '=' <+> ppr c) cs
 
 instance Pretty Constr where
   pp _ c = ppr (constrName c) <+> ppList 1 (constrParams c)
+
+instance FreeVars Constr where
+  freeVars c =
+    Set.delete (simpleName (constrName c)) (freeVars (constrParams c))
+
+instance DefinesName Constr where
+  definedName = constrName
 
 
 -- Variable Introduction -------------------------------------------------------
@@ -302,8 +305,6 @@ instance Pretty Literal where
 
 
 -- Utilities -------------------------------------------------------------------
-
-deriving instance Show a => Show (SCC a)
 
 ignoreVars :: [Var] -> Set.Set QualName -> Set.Set QualName
 ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)
