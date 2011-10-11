@@ -322,11 +322,20 @@ scopeCheckModule m = do
     }
 
 -- | Register variables as bound for the computation that is passed.
-bindVars :: [Var] -> Scope a -> Scope a
-bindVars vs m = do
+bindLocals :: [Var] -> Scope a -> Scope a
+bindLocals vs m = do
   ro <- ask
   let locals = CM.fromList [ (simpleName v, Bound v) | v <- vs ]
   local (ro { roNames = mergeResolvedNames locals (roNames ro) }) m
+
+-- | Register variables as bound, top-level names for the computation that is
+-- passed.
+bindGlobals :: [Var] -> Scope a -> Scope a
+bindGlobals vs m = do
+  ro <- ask
+  let globals = CM.fromList [ (qn, Resolved qn)
+                            | v <- vs, let qn = simpleName v ]
+  local (ro { roNames = mergeResolvedNames globals (roNames ro) }) m
 
 -- | Check all identifiers used in a declaration.
 scopeCheckTypedDecl :: TypedDecl -> Scope TypedDecl
@@ -355,7 +364,7 @@ scopeCheckTerm :: Term -> Scope Term
 scopeCheckTerm t = case t of
   Lit _       -> return t
   Abs m       -> Abs <$> scopeCheckMatch m
-  Let ts us b -> bindVars (letBinds ts us)
+  Let ts us b -> bindGlobals (letBinds ts us)
                $ Let <$> mapM scopeCheckTypedDecl ts
                      <*> mapM scopeCheckUntypedDecl us
                      <*> scopeCheckTerm b
@@ -367,7 +376,7 @@ scopeCheckTerm t = case t of
 scopeCheckMatch :: Match -> Scope Match
 scopeCheckMatch m = case m of
   MTerm t   -> MTerm  <$> scopeCheckTerm t
-  MPat p m' -> MPat p <$> bindVars (patVars p) (scopeCheckMatch m')
+  MPat p m' -> MPat p <$> bindLocals (patVars p) (scopeCheckMatch m')
 
 -- | Check the underlying type in a quantified type.
 scopeCheckForall :: Forall Type -> Scope (Forall Type)
