@@ -80,16 +80,14 @@ instance Types Term where
     AppT f ts -> AppT (apply s f) (apply s ts)
     App t ts  -> App (apply s t)  (apply s ts)
     Let ds e  -> Let (apply s ds) (apply s e)
-    Local v   -> Local v
-    Global qn -> Global qn
+    Var qn    -> Var qn
     Lit lit   -> Lit lit
 
   typeVars tm = case tm of
     AppT f ts -> typeVars f `Set.union` typeVars ts
     App t ts  -> typeVars t `Set.union` typeVars ts
     Let ds e  -> typeVars ds `Set.union` typeVars e
-    Local _   -> Set.empty
-    Global _  -> Set.empty
+    Var _     -> Set.empty
     Lit _     -> Set.empty
 
 lookupSubst :: Index -> Subst -> Maybe Type

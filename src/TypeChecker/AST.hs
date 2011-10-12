@@ -1,13 +1,26 @@
-module TypeChecker.AST where
+module TypeChecker.AST (
+    module TypeChecker.AST
+  , Var
+  , Literal(..)
+  ) where
 
 import Pretty
-import QualName (QualName,simpleName)
+import QualName (QualName)
 import TypeChecker.Types (Type,Forall(..),forallData)
-import Syntax.AST (Var,Literal,Export)
+import Syntax.AST (Var,Literal(..),Export)
 import Variables (FreeVars(freeVars))
 
 import qualified Data.Set as Set
 
+
+data Module = Module
+  { modName  :: QualName
+  , modDecls :: [Decl]
+  } deriving (Show)
+
+instance Pretty Module where
+  pp _ m = text "module" <+> ppr (modName m)
+       $+$ declBlock (map ppr (modDecls m))
 
 -- | Pretty print a list of type parameters for a type application/definition.
 ppTyApp :: Pretty a => [a] -> Doc
@@ -58,24 +71,27 @@ ppMatch (MPat p m)   = (pp 1 p:as,b)
   (as,b) = ppMatch m
 
 data Pat
-  = PVar Var Type
+  = PVar QualName Type
   | PWildcard Type
     deriving (Show)
 
+patVars :: Pat -> [QualName]
+patVars (PVar qn _) = [qn]
+patVars _           = []
+
 instance FreeVars Pat where
-  freeVars (PVar v _)    = Set.singleton (simpleName v)
+  freeVars (PVar qn _)   = Set.singleton qn
   freeVars (PWildcard _) = Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar v ty)    = parens (text v   <+> text "::" <+> ppr ty)
+  pp _ (PVar qn ty)   = parens (ppr qn   <+> text "::" <+> ppr ty)
   pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
 
 data Term
   = AppT Term [Type]
   | App Term [Term]
   | Let [Decl] Term
-  | Local Var
-  | Global QualName
+  | Var QualName
   | Lit Literal
     deriving (Show)
 
@@ -84,8 +100,7 @@ instance FreeVars Term where
   freeVars (App t as) = freeVars (t:as)
   freeVars (Let ds t) = (freeVars t `Set.union` freeVars ds)
                            Set.\\ Set.fromList (map declName ds)
-  freeVars (Local v)  = Set.singleton (simpleName v)
-  freeVars (Global n) = Set.singleton n
+  freeVars (Var n)    = Set.singleton n
   freeVars (Lit l)    = freeVars l
 
 instance Pretty Term where
@@ -94,6 +109,5 @@ instance Pretty Term where
   pp p (Let ds e)  = optParens (p > 0)
                    $ text "let" <+> declBlock (map ppDecl ds)
                  <+> text "in"  <+> ppr e
-  pp _ (Local v)   = text v
-  pp _ (Global qn) = ppr qn
+  pp _ (Var qn)    = ppr qn
   pp _ (Lit l)     = ppr l

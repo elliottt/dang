@@ -4,14 +4,15 @@ import Dang.IO (logStage,logDebug,logInfo)
 import Dang.Monad (Dang)
 import Interface (InterfaceSet)
 import Pretty (pretty)
-import Syntax.AST (Module)
 import TypeChecker.CheckKinds (kcModule)
 import TypeChecker.CheckTypes (tcModule)
 import TypeChecker.Monad (runTC)
+import qualified Syntax.AST      as Syn
+import qualified TypeChecker.AST as Core
 
 
 -- | Top-level interface to kind checking.
-kindCheckModule :: InterfaceSet -> Module -> Dang Module
+kindCheckModule :: InterfaceSet -> Syn.Module -> Dang Syn.Module
 kindCheckModule iset m = do
   logStage "kind-checker"
   kcm <- runTC (kcModule iset m)
@@ -20,11 +21,11 @@ kindCheckModule iset m = do
   logInfo (pretty kcm)
   return kcm
 
-typeCheckModule :: InterfaceSet -> Module -> Dang Module
+typeCheckModule :: InterfaceSet -> Syn.Module -> Dang Core.Module
 typeCheckModule iset m = do
   logStage "type-checker"
   tcm <- runTC (tcModule iset m)
   logInfo "Type checking output:"
   logDebug (show tcm)
   logInfo (pretty tcm)
-  return m
+  return tcm

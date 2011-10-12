@@ -12,6 +12,7 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify as Types
+import Variables (sccToList,sccFreeVars)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (foldM)
@@ -66,8 +67,9 @@ addPrimType env pty = addKindAssump env name kind
 kcModule :: IsInterface iset => iset -> Module -> TC Module
 kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
+  let ns = modNamespace m
   env        <- addPrimTypes (interfaceAssumps iset) (modPrimTypes m)
-  (env',ds') <- kcDataDecls env (modDatas m)
+  (env',ds') <- kcDataDecls ns env (modDatas m)
   pts'       <- mapM (kcPrimTerm env')    (modPrimTerms m)
   ts'        <- mapM (kcTypedDecl env')   (modTyped m)
   us'        <- mapM (kcUntypedDecl env') (modUntyped m)
@@ -81,9 +83,47 @@ kcModule iset m = do
 
 -- | Perform kind inference on a group of data declarations, augmenting an
 -- environment with their kinds.
-kcDataDecls :: KindAssumps -> [DataDecl] -> TC (KindAssumps,[DataDecl])
-kcDataDecls env ds = do
+kcDataDecls :: Namespace -> KindAssumps -> [DataDecl]
+            -> TC (KindAssumps,[DataDecl])
+kcDataDecls ns env0 = foldM step (env0, [])
+  where
+  step (env,ds) d = do
+    (env',d') <- kcDataDecl ns env d
+    return (env', d':ds)
+
+-- | Kind check the constructors of a data declaration, returning a modified
+-- kind-checking environment with the inferred kind.
+kcDataDecl :: Namespace -> KindAssumps -> DataDecl -> TC (KindAssumps,DataDecl)
+kcDataDecl ns env d = do
+  let name = qualName ns (dataName d)
+  logInfo ("Checking: " ++ pretty name)
+
+  res <- freshKindVar
+  let assump = Assump { aBody = Nothing, aData = res }
+
+  let Forall ps cs = dataConstrs d
+  declEnv <- dataVars ps (addAssump name assump env)
+
+  cs' <- mapM (kcConstr declEnv) cs
+
   undefined
+
+kcConstr :: KindAssumps -> Constr -> TC Constr
+kcConstr env c = do
+  undefined
+
+
+-- | Augment a kind-checking environment, adding the type variables of the data
+-- declaration.
+dataVars :: [TParam] -> KindAssumps -> TC KindAssumps
+dataVars ps env0 = foldM step env0 ps
+  where
+  step env p = do
+    var <- freshVarFromTParam p
+    let assump = Assump { aBody = Nothing, aData = var }
+        name   = simpleName (paramName p)
+    return (addAssump name assump env)
+
 
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
@@ -202,7 +242,7 @@ freshTParam p = do
 
 -- | Quantify all variables in a type, fixing their kind variables to stars on
 -- the way.
-quantifyAndFixKinds :: Type -> Forall Type
+quantifyAndFixKinds :: Types t => t -> Forall t
 quantifyAndFixKinds ty = Forall (map fixKind ps) ty'
   where
   Forall ps ty' = quantifyAll ty

@@ -8,19 +8,18 @@ import Dang.Monad
 import Dang.Tool
 import Interface
 import Pretty
-import Syntax.AST
+import TypeChecker.AST
 
 import System.IO (hPrint,hFlush)
 
+
 compile :: InterfaceSet -> Module -> FilePath -> Dang ()
 compile iset m out = do
-  rm <- rename m
-
+  rename m
+  return ()
+  {-
+  rm    <- rename m
   decls <- lambdaLift iset rm
-  logDebug "Lambda-lifting output"
-  logDebug (show decls)
-  logDebug (unlines ["Lambda-lifted decls:", pretty decls])
-
   withOpenTempFile $ \ llvm h -> do
     let iface = moduleInterface rm
     doc <- codeGen iset iface decls
@@ -32,3 +31,4 @@ compile iset m out = do
         sync llc       ["-o", asm, bc]
         sync assembler ["-o", out, asm]
         writeInterface iface
+        -}

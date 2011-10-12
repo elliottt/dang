@@ -12,11 +12,10 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify (quantify,typeVars,Types)
-import Variables (freeVars,sccFreeVars)
+import Variables (freeVars,sccFreeVars,sccToList)
 import qualified Syntax.AST as Syn
 
 import Control.Monad (foldM,mapAndUnzipM)
-import Data.Graph (SCC(..))
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -59,7 +58,7 @@ typedAssumps ns ts env0 = foldM step env0 ts
 -- Modules ---------------------------------------------------------------------
 
 -- | Type-check a module, producing a list of fully-qualified declarations.
-tcModule :: IsInterface i => i -> Syn.Module -> TC [Decl]
+tcModule :: IsInterface i => i -> Syn.Module -> TC Module
 tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
@@ -69,7 +68,10 @@ tcModule i m = do
   (env',us) <- tcUntypedDecls ns env (Syn.modUntyped m)
   ts        <- mapM (tcTypedDecl ns env') (Syn.modTyped m)
 
-  return (ts ++ us)
+  return Module
+    { modName  = Syn.modName m
+    , modDecls = ts ++ us
+    }
 
 
 -- Typed Declarations ----------------------------------------------------------
@@ -102,13 +104,8 @@ tcUntypedDecls :: Namespace -> TypeAssumps -> [Syn.UntypedDecl]
 tcUntypedDecls ns env0 us = foldM step (env0,[]) (sccFreeVars ns us)
   where
   step (env,ds) scc = do
-    (env',us') <- tcUntypedDeclBlock ns env (sccUntyped scc)
+    (env',us') <- tcUntypedDeclBlock ns env (sccToList scc)
     return (env', us' ++ ds)
-
--- | Flatten groups of strongly connected untyped declarations into lists.
-sccUntyped :: SCC Syn.UntypedDecl -> [Syn.UntypedDecl]
-sccUntyped (AcyclicSCC u) = [u]
-sccUntyped (CyclicSCC us) = us
 
 -- | Check a block of untyped declarations, and return a new typing environment
 --   with their generalized types contained.
@@ -154,7 +151,7 @@ type Bodies = Map.Map QualName Term
 partialBodies :: TypeAssumps -> [PartialDecl] -> Bodies
 partialBodies envGen = Map.fromList . map mk
   where
-  mk d = (name, appT (Global name) (map TVar ps))
+  mk d = (name, appT (Var name) (map TVar ps))
     where
     ps   = Set.toList (genVars envGen (partialType d))
     name = partialName d
@@ -229,9 +226,10 @@ tcPat env p = case p of
     return (env,var,PWildcard var)
 
   Syn.PVar n -> do
+    let name = simpleName n
     var  <- freshVar kstar
-    env' <- assume (simpleName n) (toScheme var) env
-    return (env',var,PVar n var)
+    env' <- assume name (toScheme var) env
+    return (env',var,PVar name var)
 
 tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
 tcTerm env tm = case tm of
@@ -251,7 +249,7 @@ tcTerm env tm = case tm of
 
     (vs,ty') <- freshInst' qt
     let vars = map TVar vs
-    return (ty', Let [decl] (appT (Global name) vars))
+    return (ty', Let [decl] (appT (Var name) vars))
 
   Syn.Let ts us e -> do
     env'        <- typedAssumps [] ts env
@@ -275,15 +273,16 @@ tcTerm env tm = case tm of
     return (ty, App f'' xs'')
 
   Syn.Local n -> do
-    a       <- typeAssump (simpleName n) env
+    let name = simpleName n
+    a       <- typeAssump name env
     (ps,ty) <- freshInst' (aData a)
-    let body = fromMaybe (Local n) (aBody a)
+    let body = fromMaybe (Var name) (aBody a)
     return (ty, appT body (map TVar ps))
 
   Syn.Global qn -> do
     a       <- typeAssump qn env
     (ps,ty) <- freshInst' (aData a)
-    let body = fromMaybe (Global qn) (aBody a)
+    let body = fromMaybe (Var qn) (aBody a)
     return (ty, appT body (map TVar ps))
 
   Syn.Lit lit -> tcLit lit

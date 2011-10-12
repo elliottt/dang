@@ -9,6 +9,7 @@ import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
 import qualified Data.Set as Set
 
+
 class FreeVars a where
   freeVars :: a -> Set.Set QualName
 
@@ -34,3 +35,7 @@ sccFreeVars :: DefinesName a => Namespace -> [a] -> [SCC a]
 sccFreeVars ns as = stronglyConnComp graph
   where
   graph = [ (a, qualDefinedName ns a, Set.toList (freeVars a)) | a <- as ]
+
+sccToList :: SCC a -> [a]
+sccToList (AcyclicSCC a) = [a]
+sccToList (CyclicSCC as) = as

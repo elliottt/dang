@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
 
 module Compile.Rename (
     rename
@@ -10,11 +9,14 @@ import Dang.IO (logInfo,logStage,logDebug)
 import Dang.Monad (Dang)
 import Pretty (pretty)
 import QualName
-import Syntax.AST
+import TypeChecker.AST
+import TypeChecker.Types (Forall(..))
 
 import Control.Applicative (Applicative(..),(<$>))
+import Data.Maybe (fromMaybe)
 import MonadLib
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 
 -- External Interface ----------------------------------------------------------
@@ -22,7 +24,7 @@ import qualified Data.Map as Map
 rename :: Module -> Dang Module
 rename m = do
   logStage "renamer"
-  let m' = runLift (runRename [] (renameModule m))
+  m' <- runRename (renameModule m)
   logInfo "Renaming output:"
   logDebug (show m')
   logInfo (pretty m')
@@ -31,129 +33,108 @@ rename m = do
 
 -- Renaming Monad --------------------------------------------------------------
 
-data RO = RO
-  { roSubst :: Map.Map Var QualName
-  } deriving Show
+type NameMap a = Map.Map a a
 
-addSubst :: Var -> QualName -> RO -> RO
-addSubst a b ro = ro { roSubst = Map.insert a b (roSubst ro) }
+data Subst = Subst
+  { sNames :: NameMap QualName
+  , sAvoid :: Set.Set QualName
+  }
 
-captures :: RO -> Var -> Bool
-captures ro v = Map.member v (roSubst ro)
+emptySubst :: Subst
+emptySubst  = Subst
+  { sNames = Map.empty
+  , sAvoid = Set.empty
+  }
 
-newtype Rename m a = Rename
-  { unRename :: StateT Int (ReaderT RO m) a
+newtype Rename a = Rename
+  { unRename :: StateT Int (ReaderT Subst Dang) a
   } deriving (Functor,Applicative,Monad)
 
-runRename :: Monad m => [Var] -> Rename m a -> m a
-runRename bound (Rename m) = do
-  let ro = RO
-        { roSubst = Map.fromList [ (x,simpleName x) | x <- bound ]
-        }
-  (a,_) <- runReaderT ro (runStateT 0 m)
-  return a
+instance BaseM Rename Dang where
+  inBase = Rename . inBase
 
-instance Monad m => StateM (Rename m) Int where
-  get = Rename get
-  set = Rename . set
+runRename :: Rename a -> Dang a
+runRename m = fst `fmap` runReaderT emptySubst (runStateT 0 (unRename m))
 
-instance Monad m => ReaderM (Rename m) RO where
-  ask = Rename ask
+getSubst :: Rename Subst
+getSubst  = Rename ask
 
-instance Monad m => RunReaderM (Rename m) RO where
-  local ro = Rename . local ro . unRename
+withSubst :: Subst -> Rename a -> Rename a
+withSubst u m = Rename (local u (unRename m))
 
+avoid :: [QualName] -> Rename a -> Rename a
+avoid names m = do
+  u <- getSubst
+  withSubst (u { sAvoid = Set.fromList names `Set.union` sAvoid u }) m
 
-subst' :: Monad m => Var -> Rename m QualName
-subst' v = do
-  ro <- ask
-  case Map.lookup v (roSubst ro) of
-    Nothing -> return (simpleName v)
-    Just x  -> return x
+freshName :: String -> Rename QualName
+freshName pfx = do
+  u  <- getSubst
+  i0 <- Rename get
+  let bound = sAvoid u
+      loop i
+        | name `Set.member` bound = loop (i+1)
+        | otherwise               = (name,i+1)
+        where
+        name = simpleName (pfx ++ show i)
 
-subst :: Monad m => Var -> Rename m Var
-subst v = do
-  x <- subst' v
-  return (qualSymbol x)
+      (n,i') = loop i0
+  Rename (set $! i')
+  return n
 
--- | Give fresh names to all that are passed, in the context of the given
--- action.
-fresh :: Monad m => [Var] -> Rename m a -> Rename m a
-fresh vs m = do
-  i  <- get
-  ro <- ask
-  let (ro',i',_) = findFresh ro i vs
-  set i'
-  local ro' m
+fresh :: String -> [QualName] -> Rename a -> Rename a
+fresh pfx ns m = do
+  let step v = do
+        n <- freshName pfx
+        return (v,n)
+  ns' <- mapM step ns
+  u   <- getSubst
+  avoid (map snd ns')
+    (withSubst (u { sNames = Map.fromList ns' `Map.union` sNames u }) m)
 
-findFresh :: RO -> Int -> [Var] -> (RO,Int,[Var])
-findFresh  = loop []
-  where
-  loop rs ro i []      = (ro, i,reverse rs)
-  loop rs ro i (v:vs)
-    | ro `captures` v' = loop     rs                 ro  i' (v:vs)
-    | otherwise        = loop (v':rs) (addSubst v qn ro) i'    vs
-    where
-    i' = i + 1
-    v' = "_" ++ v ++ show i
-    qn = simpleName v'
-
+subst :: QualName -> Rename QualName
+subst qn = do
+  u <- getSubst
+  return (fromMaybe qn (Map.lookup qn (sNames u)))
 
 
 -- Term Renaming ---------------------------------------------------------------
 
-renameModule :: Monad m => Module -> Rename m Module
-renameModule m = do
-  ts' <- mapM renameTypedDecl (modTyped m)
-  return m { modTyped = ts' }
-
--- | Rename a declaration, assuming a fresh name is already in the environment.
-renameTypedDecl :: Monad m => TypedDecl -> Rename m TypedDecl
-renameTypedDecl d = do
-  n' <- subst (typedName d)
-  m' <- renameMatch (typedBody d)
-  return d
-    { typedName = n'
-    , typedBody = m'
+renameModule :: Module -> Rename Module
+renameModule m = avoid (map declName (modDecls m)) $ do
+  decls' <- mapM renameDecl (modDecls m)
+  return m
+    { modDecls = decls'
     }
 
--- | Rename variable introductions.
-renameMatch :: Monad m => Match -> Rename m Match
+renameDecl :: Decl -> Rename Decl
+renameDecl d = do
+  qn'  <- subst (declName d)
+  body <- renameForall renameMatch (declBody d)
+  return d
+    { declName = qn'
+    , declBody = body
+    }
+
+renameForall :: (a -> Rename a) -> Forall a -> Rename (Forall a)
+renameForall k (Forall ps a) = Forall ps `fmap` k a
+
+renameMatch :: Match -> Rename Match
 renameMatch m = case m of
-  MTerm t   -> MTerm <$> renameTerm t
-  MPat p m' -> fresh (patVars p) (MPat <$> renamePat p <*> renameMatch m')
+  MPat p m'   -> fresh "_arg" (patVars p)
+               $ MPat  <$> renamePat p   <*> renameMatch m'
+  MTerm tm ty -> MTerm <$> renameTerm tm <*> pure ty
 
--- | Rename the variables introduced by a pattern.
-renamePat :: Monad m => Pat -> Rename m Pat
-renamePat (PVar v)  = PVar <$> subst v
-renamePat PWildcard = return PWildcard
+renamePat :: Pat -> Rename Pat
+renamePat p = case p of
+  PVar qn ty   -> PVar <$> subst qn <*> pure ty
+  PWildcard ty -> pure (PWildcard ty)
 
--- | Rename variable occurrences and bindings in terms.
-renameTerm :: Monad m => Term -> Rename m Term
-renameTerm t =
-  case t of
-    App f xs -> apply  <$> renameTerm f <*> mapM renameTerm xs
-    Local v  -> Local  <$> subst v
-    Lit l    -> Lit    <$> renameLiteral l
-    Global n -> renameGlobal n
-    Let ts [] e -> fresh (map typedName ts)
-                 $ Let <$> mapM renameTypedDecl ts <*> pure [] <*> renameTerm e
-    Let _  _  _ ->
-      fail "Unexpected untyped declarations in Let"
-
-    Abs _ ->
-      fail "Unexpected abstraction"
-
-renameGlobal :: Monad m => QualName -> Rename m Term
-renameGlobal qn
-  | not (isSimpleName qn) = return (Global qn)
-  | otherwise             = do
-     qn' <- subst' (qualSymbol qn)
-     if isSimpleName qn'
-        then return (Local (qualSymbol qn'))
-        else return (Global qn')
-
-
--- | Rename literals.  For the time being, this doesn't do anything.
-renameLiteral :: Monad m => Literal -> Rename m Literal
-renameLiteral (LInt i) = return (LInt i)
+renameTerm :: Term -> Rename Term
+renameTerm tm = case tm of
+  AppT f tys -> AppT <$> renameTerm f <*> pure tys
+  App  f xs  -> App  <$> renameTerm f <*> mapM renameTerm xs
+  Let ds e   -> fresh "_decl" (map declName ds)
+              $ Let <$> mapM renameDecl ds <*> renameTerm e
+  Var qn     -> Var <$> subst qn
+  Lit lit    -> return (Lit lit)
