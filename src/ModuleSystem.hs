@@ -304,8 +304,9 @@ scopeCheck :: Module -> Dang (InterfaceSet, Module)
 scopeCheck m = do
   logStage "module-system"
   res@(_,scm) <- runScope (withEnv m (scopeCheckModule m))
-  logDebug "Module system output"
+  logInfo "Module system output"
   logDebug (show scm)
+  logInfo (pretty scm)
   return res
 
 -- | Check all of the identifiers in a module, requiring that they are defined
