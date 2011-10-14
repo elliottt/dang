@@ -121,20 +121,16 @@ renameForall k (Forall ps a) = Forall ps `fmap` k a
 
 renameMatch :: Match -> Rename Match
 renameMatch m = case m of
-  MPat p m'   -> fresh "_arg" (patVars p)
-               $ MPat  <$> renamePat p   <*> renameMatch m'
-  MTerm tm ty -> MTerm <$> renameTerm tm <*> pure ty
-
-renamePat :: Pat -> Rename Pat
-renamePat p = case p of
-  PVar qn ty   -> PVar <$> subst qn <*> pure ty
-  PWildcard ty -> pure (PWildcard ty)
+  MPat p m'   -> avoid (map simpleName (patVars p))
+               $ MPat p <$> renameMatch m'
+  MTerm tm ty -> MTerm  <$> renameTerm tm <*> pure ty
 
 renameTerm :: Term -> Rename Term
 renameTerm tm = case tm of
-  AppT f tys -> AppT <$> renameTerm f <*> pure tys
-  App  f xs  -> App  <$> renameTerm f <*> mapM renameTerm xs
+  AppT f tys -> AppT    <$> renameTerm f <*> pure tys
+  App  f xs  -> App     <$> renameTerm f <*> mapM renameTerm xs
   Let ds e   -> fresh "_decl" (map declName ds)
-              $ Let <$> mapM renameDecl ds <*> renameTerm e
-  Var qn     -> Var <$> subst qn
+              $ Let    <$> mapM renameDecl ds <*> renameTerm e
+  Global qn  -> Global <$> subst qn
+  Local n    -> return (Local n)
   Lit lit    -> return (Lit lit)

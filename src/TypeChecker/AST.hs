@@ -5,7 +5,7 @@ module TypeChecker.AST (
   ) where
 
 import Pretty
-import QualName (QualName)
+import QualName (QualName,simpleName)
 import TypeChecker.Types (Type,Forall(..),forallData)
 import Syntax.AST (Var,Literal(..),Export)
 import Variables (FreeVars(freeVars))
@@ -71,37 +71,39 @@ ppMatch (MPat p m)   = (pp 1 p:as,b)
   (as,b) = ppMatch m
 
 data Pat
-  = PVar QualName Type
+  = PVar Var Type
   | PWildcard Type
     deriving (Show)
 
-patVars :: Pat -> [QualName]
-patVars (PVar qn _) = [qn]
-patVars _           = []
+patVars :: Pat -> [Var]
+patVars (PVar n _) = [n]
+patVars _          = []
 
 instance FreeVars Pat where
-  freeVars (PVar qn _)   = Set.singleton qn
+  freeVars (PVar n _)    = Set.singleton (simpleName n)
   freeVars (PWildcard _) = Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar qn ty)   = parens (ppr qn   <+> text "::" <+> ppr ty)
+  pp _ (PVar n ty)    = parens (ppr n    <+> text "::" <+> ppr ty)
   pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
 
 data Term
   = AppT Term [Type]
   | App Term [Term]
   | Let [Decl] Term
-  | Var QualName
+  | Global QualName
+  | Local Var
   | Lit Literal
     deriving (Show)
 
 instance FreeVars Term where
-  freeVars (AppT f _) = freeVars f
-  freeVars (App t as) = freeVars (t:as)
-  freeVars (Let ds t) = (freeVars t `Set.union` freeVars ds)
-                           Set.\\ Set.fromList (map declName ds)
-  freeVars (Var n)    = Set.singleton n
-  freeVars (Lit l)    = freeVars l
+  freeVars (AppT f _)  = freeVars f
+  freeVars (App t as)  = freeVars (t:as)
+  freeVars (Let ds t)  = (freeVars t `Set.union` freeVars ds)
+                            Set.\\ Set.fromList (map declName ds)
+  freeVars (Global qn) = Set.singleton qn
+  freeVars (Local n)   = Set.singleton (simpleName n)
+  freeVars (Lit l)     = freeVars l
 
 instance Pretty Term where
   pp _ (AppT f vs) = pp 1 f <> char '@' <> brackets (commas (map ppr vs))
@@ -109,5 +111,6 @@ instance Pretty Term where
   pp p (Let ds e)  = optParens (p > 0)
                    $ text "let" <+> declBlock (map ppDecl ds)
                  <+> text "in"  <+> ppr e
-  pp _ (Var qn)    = ppr qn
+  pp _ (Global qn) = ppr qn
+  pp _ (Local n)   = ppr n
   pp _ (Lit l)     = ppr l
