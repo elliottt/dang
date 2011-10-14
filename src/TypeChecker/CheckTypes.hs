@@ -2,12 +2,12 @@
 
 module TypeChecker.CheckTypes where
 
+import Core.AST
 import Dang.IO
 import Dang.Monad
 import Interface (IsInterface,funSymbols,funType)
 import Pretty
 import QualName
-import TypeChecker.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types

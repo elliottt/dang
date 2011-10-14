@@ -4,9 +4,9 @@
 
 module TypeChecker.Unify where
 
+import Core.AST
 import Dang.Monad
 import Pretty
-import TypeChecker.AST
 import TypeChecker.Types
 import Utils ((!!?))
 

@@ -3,12 +3,12 @@ module Compile where
 import CodeGen
 import Compile.LambdaLift
 import Compile.Rename
+import Core.AST
 import Dang.IO
 import Dang.Monad
 import Dang.Tool
 import Interface
 import Pretty
-import TypeChecker.AST
 
 import System.IO (hPrint,hFlush)
 

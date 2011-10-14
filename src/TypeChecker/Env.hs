@@ -1,7 +1,7 @@
 module TypeChecker.Env where
 
+import Core.AST (Term)
 import QualName (QualName)
-import TypeChecker.AST (Term)
 
 import qualified Data.Map as Map
 

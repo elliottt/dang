@@ -5,11 +5,11 @@ module Compile.Rename (
     rename
   ) where
 
+import Core.AST
 import Dang.IO (logInfo,logStage,logDebug)
 import Dang.Monad (Dang)
 import Pretty (pretty)
 import QualName
-import TypeChecker.AST
 import TypeChecker.Types (Forall(..))
 
 import Control.Applicative (Applicative(..),(<$>))

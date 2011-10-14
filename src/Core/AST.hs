@@ -1,5 +1,5 @@
-module TypeChecker.AST (
-    module TypeChecker.AST
+module Core.AST (
+    module Core.AST
   , Var
   , Literal(..)
   ) where

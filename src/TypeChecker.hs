@@ -7,8 +7,8 @@ import Pretty (pretty)
 import TypeChecker.CheckKinds (kcModule)
 import TypeChecker.CheckTypes (tcModule)
 import TypeChecker.Monad (runTC)
-import qualified Syntax.AST      as Syn
-import qualified TypeChecker.AST as Core
+import qualified Core.AST   as Core
+import qualified Syntax.AST as Syn
 
 
 -- | Top-level interface to kind checking.
