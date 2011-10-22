@@ -96,6 +96,18 @@ data Term
   | Lit Literal
     deriving (Show)
 
+appT :: Term -> [Type] -> Term
+appT f [] = f
+appT f ts = case f of
+  AppT f' ts' -> AppT f' (ts' ++ ts)
+  _           -> AppT f ts
+
+app :: Term -> [Term] -> Term
+app f [] = f
+app f xs = case f of
+  App f' xs' -> App f' (xs' ++ xs)
+  _          -> App f xs
+
 instance FreeVars Term where
   freeVars (AppT f _)  = freeVars f
   freeVars (App t as)  = freeVars (t:as)
