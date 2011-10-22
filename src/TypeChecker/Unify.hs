@@ -193,13 +193,24 @@ instance Instantiate Type where
 -- Quantification --------------------------------------------------------------
 
 quantify :: Types t => [TParam] -> t -> Forall t
-quantify ps t = Forall vs' (apply s t)
-  where
-  vs        = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
-  u         = zipWith mkGen [0 ..] vs
-  mkGen n p = (paramIndex p, p { paramIndex = n })
-  (_,vs')   = unzip u
-  s         = Subst (map (second TGen) u)
+quantify ps t = uncurry Forall (quantifyAux 0 ps t)
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
+
+-- | Quantify the type parameters provided, but extend an existing quantifier
+-- instead of generating a new one.
+quantify' :: Types t => [TParam] -> Forall t -> Forall t
+quantify' ps (Forall ps0 t) = Forall (ps0 ++ ps') t'
+  where
+  i        = length ps0
+  (ps',t') = quantifyAux i ps t
+
+quantifyAux :: Types t => Int -> [TParam] -> t -> ([TParam],t)
+quantifyAux i ps t = (vs',apply s t)
+  where
+  vs        = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
+  u         = zipWith mkGen [i ..] vs
+  mkGen n p = (paramIndex p, p { paramIndex = n })
+  (_,vs')   = unzip u
+  s         = Subst (map (second TGen) u)
