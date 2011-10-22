@@ -12,7 +12,7 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify as Types
-import Variables (sccToList,sccFreeVars)
+import Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (foldM)

@@ -26,15 +26,21 @@ instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
 class FreeVars a => DefinesName a where
   definedName :: a -> Name
 
-qualDefinedName :: DefinesName a => Namespace -> a -> QualName
-qualDefinedName ns = qualName ns . definedName
+class FreeVars a => DefinesQualName a where
+  definedQualName :: a -> QualName
 
 deriving instance Show a => Show (SCC a)
 
-sccFreeVars :: DefinesName a => Namespace -> [a] -> [SCC a]
-sccFreeVars ns as = stronglyConnComp graph
+sccFreeNames :: DefinesName a => Namespace -> [a] -> [SCC a]
+sccFreeNames ns as = stronglyConnComp graph
   where
-  graph = [ (a, qualDefinedName ns a, Set.toList (freeVars a)) | a <- as ]
+  graph = [ (a, qualName ns (definedName a), Set.toList (freeVars a))
+          | a <- as ]
+
+sccFreeQualNames :: DefinesQualName a => [a] -> [SCC a]
+sccFreeQualNames as = stronglyConnComp graph
+  where
+  graph = [ (a, definedQualName a, Set.toList (freeVars a)) | a <- as ]
 
 sccToList :: SCC a -> [a]
 sccToList (AcyclicSCC a) = [a]

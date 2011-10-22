@@ -8,7 +8,7 @@ import Pretty
 import QualName (QualName,simpleName)
 import TypeChecker.Types (Type,Forall(..),forallData)
 import Syntax.AST (Var,Literal(..),Export)
-import Variables (FreeVars(freeVars))
+import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import qualified Data.Set as Set
 
@@ -33,6 +33,9 @@ data Decl = Decl
   , declExport :: Export
   , declBody   :: Forall Match
   } deriving (Show)
+
+instance DefinesQualName Decl where
+  definedQualName = declName
 
 instance FreeVars Decl where
   freeVars d = Set.delete (declName d) (freeVars (forallData (declBody d)))
