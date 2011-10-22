@@ -14,9 +14,40 @@ GHCFLAGS += -fspec-constr-count=2
 LIBS := base monadLib llvm-pretty pretty containers GraphSCC bytestring \
 	text cereal filepath directory process
 
-HAPPY_MODS := $(subst src/,,$(basename $(shell find src -name '*.y')))
-ALEX_MODS  := $(subst src/,,$(basename $(shell find src -name '*.x')))
-SLASH_MODS := $(subst src/,,$(basename $(shell find src -name '*.hs')))
+HAPPY_MODS := Syntax/Parser
+ALEX_MODS  := Syntax/Lexer
+SLASH_MODS := \
+    CodeGen \
+    Colors \
+    Compile \
+    Compile/LambdaLift \
+    Compile/Rename \
+    Core/AST \
+    Dang/FileName \
+    Dang/IO \
+    Dang/Monad \
+    Dang/Tool \
+    Data/ClashMap \
+    Interface \
+    Link \
+    Main \
+    ModuleSystem \
+    Pretty \
+    Prim \
+    QualName \
+    ReadWrite \
+    Syntax \
+    Syntax/AST \
+    Syntax/ParserCore \
+    TypeChecker \
+    TypeChecker/CheckKinds \
+    TypeChecker/CheckTypes \
+    TypeChecker/Env \
+    TypeChecker/Monad \
+    TypeChecker/Types \
+    TypeChecker/Unify \
+    Utils \
+    Variables
 
 HS_SOURCES := $(addprefix src/,$(addsuffix .hs,$(SLASH_MODS))) \
               $(addprefix ghc/,$(addsuffix .hs,$(ALEX_MODS) $(HAPPY_MODS)))
