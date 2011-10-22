@@ -116,7 +116,8 @@ tcUntypedDeclBlock ns envGen us = do
       envInf <- untypedAssumps ns bodies us envGen
       pds    <- mapM (tcUntypedDecl ns envInf) us
 
-  return (finalizePartialDecls envGen pds)
+  envGen' <- applySubst envGen
+  return (finalizePartialDecls envGen' pds)
 
 -- | Check an untyped declaration, producing a partially complete declaration.
 tcUntypedDecl :: Namespace -> TypeAssumps -> Syn.UntypedDecl -> TC PartialDecl
@@ -286,10 +287,6 @@ tcTerm env tm = case tm of
     return (ty, appT body (map TVar ps))
 
   Syn.Lit lit -> tcLit lit
-
-appT :: Term -> [Type] -> Term
-appT tm [] = tm
-appT tm ts = AppT tm ts
 
 tcLit :: Syn.Literal -> TC (Type,Term)
 tcLit l = case l of
