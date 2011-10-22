@@ -15,7 +15,7 @@ import System.IO (hPrint,hFlush)
 
 compile :: InterfaceSet -> Module -> FilePath -> Dang ()
 compile iset m out = do
-  rename m
+  lambdaLift =<< rename m
   return ()
   {-
   rm    <- rename m
