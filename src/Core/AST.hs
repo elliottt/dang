@@ -51,6 +51,10 @@ ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
   Forall ps body = declBody d
   (as,b)         = ppMatch body
 
+hasArgs :: Decl -> Bool
+hasArgs  = not . isMTerm . forallData . declBody
+
+
 -- | Typed variable introduction.
 data Match
  = MTerm Term Type
