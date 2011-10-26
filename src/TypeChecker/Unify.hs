@@ -11,7 +11,7 @@ import TypeChecker.Types
 import Utils ((!!?))
 
 import Control.Arrow (second)
-import Control.Monad (unless)
+import Control.Monad (unless,liftM,liftM2)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
@@ -188,6 +188,31 @@ instance Instantiate Type where
     Just ty -> return ty
 
   inst _ ty = return ty
+
+instance Instantiate Decl where
+  inst ts d = do
+    b' <- inst ts (declBody d)
+    return d { declBody = b' }
+
+instance Instantiate a => Instantiate (Forall a) where
+  inst ts (Forall ps a) = liftM (Forall ps) (inst ts a)
+
+instance Instantiate Match where
+  inst ts (MPat p m')   = liftM2 MPat  (inst ts p)  (inst ts m')
+  inst ts (MTerm tm ty) = liftM2 MTerm (inst ts tm) (inst ts ty)
+
+instance Instantiate Pat where
+  inst ts (PVar n ty)    = liftM (PVar n)  (inst ts ty)
+  inst ts (PWildcard ty) = liftM PWildcard (inst ts ty)
+
+instance Instantiate Term where
+  inst ts tm = case tm of
+    AppT f ps -> liftM2 AppT (inst ts f)  (inst ts ps)
+    App f xs  -> liftM2 App  (inst ts f)  (inst ts xs)
+    Let ds e  -> liftM2 Let  (inst ts ds) (inst ts e)
+    Global _  -> return tm
+    Local _   -> return tm
+    Lit _     -> return tm
 
 
 -- Quantification --------------------------------------------------------------
