@@ -73,6 +73,14 @@ ppMatch (MPat p m)   = (pp 1 p:as,b)
   where
   (as,b) = ppMatch m
 
+isMTerm :: Match -> Bool
+isMTerm MTerm{} = True
+isMTerm _       = False
+
+isMPat :: Match -> Bool
+isMPat MPat{} = True
+isMPat _      = False
+
 data Pat
   = PVar Var Type
   | PWildcard Type
@@ -110,6 +118,10 @@ app f [] = f
 app f xs = case f of
   App f' xs' -> App f' (xs' ++ xs)
   _          -> App f xs
+
+letIn :: [Decl] -> Term -> Term
+letIn [] e = e
+letIn ds e = Let ds e
 
 instance FreeVars Term where
   freeVars (AppT f _)  = freeVars f
