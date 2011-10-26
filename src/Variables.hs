@@ -29,6 +29,10 @@ class FreeVars a => DefinesName a where
 class FreeVars a => DefinesQualName a where
   definedQualName :: a -> QualName
 
+freeLocals :: FreeVars a => a -> Set.Set Name
+freeLocals  = Set.map qualSymbol . Set.filter isSimpleName . freeVars
+
+
 deriving instance Show a => Show (SCC a)
 
 sccFreeNames :: DefinesName a => Namespace -> [a] -> [SCC a]
