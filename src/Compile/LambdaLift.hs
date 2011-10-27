@@ -15,7 +15,7 @@ import Core.AST
 import Pretty (pretty)
 import QualName (QualName)
 import TypeChecker.Types
-import TypeChecker.Unify (Types(typeVars),quantify,Instantiate(inst))
+import TypeChecker.Unify (Types(typeVars),quantify,Instantiate,inst')
 import Variables
     (sccFreeQualNames,sccToList,FreeVars(),freeLocals)
 
@@ -161,7 +161,7 @@ llTopDecl d = do
 
 llForall :: (Show a, Types a, Instantiate a) => (a -> LL a) -> Forall a -> LL (Forall a)
 llForall k (Forall ps a) = introVars ps $ do
-  a' <- k =<< inst (map TVar ps) a
+  a' <- k (inst' (map TVar ps) a)
   return (quantify ps a')
 
 llMatch :: Match -> LL Match

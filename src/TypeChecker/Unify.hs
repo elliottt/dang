@@ -8,14 +8,14 @@ import Core.AST
 import Dang.Monad
 import Pretty
 import TypeChecker.Types
-import Utils ((!!?))
 
 import Control.Arrow (second)
-import Control.Monad (unless,liftM,liftM2)
+import Control.Monad (unless)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 
 newtype Subst = Subst { unSubst :: [(Index,Type)] }
@@ -25,6 +25,7 @@ instance Pretty Subst where
   pp _ (Subst us) = braces (commas (map step us))
     where
     step (p,ty) = ppr p <+> text "+->" <+> ppr ty
+
 
 class Types a where
   apply    :: Subst -> a -> a
@@ -50,11 +51,16 @@ instance Types Type where
     TCon{}       -> Set.empty
 
 instance Types Decl where
-  apply s d  = d { declBody = apply s (declBody d) }
-  typeVars d = typeVars (declBody d)
+  apply s d = d { declBody = apply s (declBody d) }
+  typeVars  = typeVars . declBody
 
 instance Types a => Types (Forall a) where
-  apply s (Forall ps a) = Forall ps (apply s a)
+  apply (Subst s) (Forall ps a) = Forall ps (apply (Subst s') a)
+    where
+    offset = length ps
+    s'     = [ (i,mapGen incr ty) | (i,ty) <- s ]
+    incr p = p { paramIndex = paramIndex p + offset }
+
   typeVars (Forall _ a) = typeVars a
 
 instance Types Match where
@@ -166,53 +172,54 @@ data InstError = InstError TParam
 
 instance Exception InstError
 
+
+type Inst = Map.Map Index Type
+
+-- | Generate a type instantiation.
+mkInst :: [Type] -> Inst
+mkInst  = Map.fromList . zip [0 ..]
+
+inst' :: Instantiate t => [Type] -> t -> t
+inst'  = inst . mkInst
+
+
 class Instantiate t where
-  inst :: ExceptionM m SomeException => [Type] -> t -> m t
+  inst :: Inst -> t -> t
 
 instance Instantiate a => Instantiate [a] where
-  inst ts = mapM (inst ts)
+  inst ts = map (inst ts)
 
 instance Instantiate Type where
-  inst ts (TApp l r) = do
-    l' <- inst ts l
-    r' <- inst ts r
-    return (TApp l' r')
-
-  inst ts (TInfix n l r) = do
-    l' <- inst ts l
-    r' <- inst ts r
-    return (TInfix n l' r')
-
-  inst ts (TGen p) = case ts !!? paramIndex p of
-    Nothing -> raiseE (InstError p)
-    Just ty -> return ty
-
-  inst _ ty = return ty
+  inst ts (TApp l r)     = TApp (inst ts l) (inst ts r)
+  inst ts (TInfix n l r) = TInfix n (inst ts l) (inst ts r)
+  inst ts gen@(TGen p)   = fromMaybe gen (Map.lookup (paramIndex p) ts)
+  inst _ ty              = ty
 
 instance Instantiate Decl where
-  inst ts d = do
-    b' <- inst ts (declBody d)
-    return d { declBody = b' }
+  inst ts d = d { declBody = inst ts (declBody d) }
 
 instance Instantiate a => Instantiate (Forall a) where
-  inst ts (Forall ps a) = liftM (Forall ps) (inst ts a)
+  inst ts (Forall ps a) = Forall ps (inst ts' a)
+    where
+    offset = length ps
+    ts'    = Map.mapKeys (+offset) ts
 
 instance Instantiate Match where
-  inst ts (MPat p m')   = liftM2 MPat  (inst ts p)  (inst ts m')
-  inst ts (MTerm tm ty) = liftM2 MTerm (inst ts tm) (inst ts ty)
+  inst ts (MPat p m')   = MPat  (inst ts p)  (inst ts m')
+  inst ts (MTerm tm ty) = MTerm (inst ts tm) (inst ts ty)
 
 instance Instantiate Pat where
-  inst ts (PVar n ty)    = liftM (PVar n)  (inst ts ty)
-  inst ts (PWildcard ty) = liftM PWildcard (inst ts ty)
+  inst ts (PVar n ty)    = PVar n    (inst ts ty)
+  inst ts (PWildcard ty) = PWildcard (inst ts ty)
 
 instance Instantiate Term where
   inst ts tm = case tm of
-    AppT f ps -> liftM2 AppT (inst ts f)  (inst ts ps)
-    App f xs  -> liftM2 App  (inst ts f)  (inst ts xs)
-    Let ds e  -> liftM2 Let  (inst ts ds) (inst ts e)
-    Global _  -> return tm
-    Local _   -> return tm
-    Lit _     -> return tm
+    AppT f ps -> AppT (inst ts f)  (inst ts ps)
+    App f xs  -> App  (inst ts f)  (inst ts xs)
+    Let ds e  -> Let  (inst ts ds) (inst ts e)
+    Global _  -> tm
+    Local _   -> tm
+    Lit _     -> tm
 
 
 -- Quantification --------------------------------------------------------------

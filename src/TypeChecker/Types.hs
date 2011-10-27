@@ -9,7 +9,9 @@ import Variables
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)
+import Data.Function (on)
 import Data.Maybe (fromMaybe)
+import Data.Ord (comparing)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
     ,putListOf)
@@ -66,12 +68,27 @@ instance FreeVars Type where
   freeVars (TApp a b)      = freeVars a `Set.union` freeVars b
   freeVars (TInfix qn a b) = Set.singleton qn `Set.union` freeVars (a,b)
 
+-- | Map a function over the generic variables in a type
+mapGen :: (TParam -> TParam) -> Type -> Type
+mapGen f (TApp a b)      = TApp (mapGen f a) (mapGen f b)
+mapGen f (TInfix qn a b) = TInfix qn (mapGen f a) (mapGen f b)
+mapGen f (TGen p)        = TGen (f p)
+mapGen _ ty              = ty
+
+
 data TParam = TParam
   { paramIndex      :: Index
   , paramFromSource :: Bool
   , paramName       :: String
   , paramKind       :: Kind
-  } deriving (Eq,Show,Ord)
+  } deriving (Show)
+
+instance Eq TParam where
+  (==) = (==) `on` paramIndex
+  (/=) = (/=) `on` paramIndex
+
+instance Ord TParam where
+  compare = comparing paramIndex
 
 instance FreeVars TParam where
   freeVars = Set.singleton . simpleName . paramName

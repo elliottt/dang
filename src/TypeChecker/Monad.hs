@@ -189,7 +189,7 @@ freshInst qt = snd `fmap` freshInst' qt
 freshInst' :: Scheme -> TC ([TParam],Type)
 freshInst' (Forall ps ty) = do
   ps' <- mapM freshTParam ps
-  ty' <- applySubst =<< inst (map TVar ps') ty
+  ty' <- applySubst (inst' (map TVar ps') ty)
   return (ps',ty')
 
 data UnboundIdentifier = UnboundIdentifier QualName
