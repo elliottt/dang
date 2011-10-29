@@ -193,10 +193,16 @@ karrow :: Kind -> Kind -> Kind
 karrow  = TInfix arrowConstr
 infixr 9 `karrow`
 
+
+-- Sorts -----------------------------------------------------------------------
+
 type Sort = Type
 
 setSort :: Sort
 setSort = TCon (primName "Set")
+
+
+-- Type Schemes ----------------------------------------------------------------
 
 type Scheme = Forall Type
 
