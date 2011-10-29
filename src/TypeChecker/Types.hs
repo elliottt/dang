@@ -25,20 +25,19 @@ putIndex  = putWord32be . toEnum
 getIndex :: Get Index
 getIndex  = fromEnum <$> getWord32be
 
+
 data Type
   = TApp Type Type
   | TInfix QualName Type Type
   | TCon QualName
-  | TVar TParam
-  | TGen TParam
+  | TVar TVar
     deriving (Eq,Show,Ord)
 
 putType :: Putter Type
 putType (TApp l r)     = putWord8 0 >> putType l     >> putType r
 putType (TInfix n l r) = putWord8 1 >> putQualName n >> putType l >> putType r
 putType (TCon n)       = putWord8 2 >> putQualName n
-putType (TVar p)       = putWord8 3 >> putTParam p
-putType (TGen p)       = putWord8 4 >> putTParam p
+putType (TVar p)       = putWord8 3 >> putTVar p
 
 getType :: Get Type
 getType  = getWord8 >>= \ tag ->
@@ -46,8 +45,7 @@ getType  = getWord8 >>= \ tag ->
     0 -> TApp   <$> getType     <*> getType
     1 -> TInfix <$> getQualName <*> getType <*> getType
     2 -> TCon   <$> getQualName
-    3 -> TVar   <$> getTParam
-    4 -> TGen   <$> getTParam
+    3 -> TVar   <$> getTVar
     _ -> fail ("Invalid tag: " ++ show tag)
 
 isTVar :: Type -> Bool
@@ -57,24 +55,57 @@ isTVar _      = False
 instance Pretty Type where
   pp _ (TCon n)       = ppr n
   pp _ (TVar m)       = ppr m
-  pp _ (TGen m)       = ppr m
   pp p (TApp a b)     = optParens (p > 1) (ppr a <+> pp 2 b)
   pp p (TInfix c a b) = optParens (p > 0) (pp 1 a <+> ppr c <+> pp 0 b)
 
 instance FreeVars Type where
   freeVars (TCon qn)       = Set.singleton qn
   freeVars (TVar p)        = freeVars p
-  freeVars (TGen _)        = Set.empty
   freeVars (TApp a b)      = freeVars a `Set.union` freeVars b
   freeVars (TInfix qn a b) = Set.singleton qn `Set.union` freeVars (a,b)
 
--- | Map a function over the generic variables in a type
-mapGen :: (TParam -> TParam) -> Type -> Type
-mapGen f (TApp a b)      = TApp (mapGen f a) (mapGen f b)
-mapGen f (TInfix qn a b) = TInfix qn (mapGen f a) (mapGen f b)
-mapGen f (TGen p)        = TGen (f p)
-mapGen _ ty              = ty
+-- | Map a function over the type variables in a type
+mapTVar :: (TVar -> TVar) -> Type -> Type
+mapTVar f = loop
+  where
+  loop (TApp a b)      = TApp (loop a) (loop b)
+  loop (TInfix qn a b) = TInfix qn (loop a) (loop b)
+  loop (TVar p)        = TVar (f p)
+  loop ty              = ty
 
+
+-- Type Variables --------------------------------------------------------------
+
+data TVar
+  = GVar TParam
+  | UVar TParam
+    deriving (Show,Eq,Ord)
+
+putTVar :: Putter TVar
+putTVar (GVar p) = putWord8 0 >> putTParam p
+putTVar (UVar p) = putWord8 1 >> putTParam p
+
+getTVar :: Get TVar
+getTVar  = getWord8 >>= \ tag -> case tag of
+  0 -> GVar <$> getTParam
+  1 -> UVar <$> getTParam
+
+instance Pretty TVar where
+  pp p (GVar v) = pp p v
+  pp p (UVar v) = pp p v
+
+instance FreeVars TVar where
+  freeVars (UVar v) = Set.singleton (simpleName (paramName v))
+  freeVars GVar{}   = Set.empty
+
+uvar :: TParam -> Type
+uvar  = TVar . UVar
+
+gvar :: TParam -> Type
+gvar  = TVar . GVar
+
+
+-- Type Parameters -------------------------------------------------------------
 
 data TParam = TParam
   { paramIndex      :: Index
@@ -135,9 +166,9 @@ destArgs ty = fromMaybe [ty] $ do
   (l,r) <- destArrow ty
   return (l:destArgs r)
 
-destTVar :: Type -> Maybe TParam
-destTVar (TVar p) = return p
-destTVar _        = Nothing
+destUVar :: Type -> Maybe TParam
+destUVar (TVar (UVar p)) = return p
+destUVar _               = Nothing
 
 -- | Count the number of arguments to a function.
 typeArity :: Type -> Int

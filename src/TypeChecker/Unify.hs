@@ -10,7 +10,7 @@ import Pretty
 import TypeChecker.Types
 
 import Control.Arrow (second)
-import Control.Monad (unless)
+import Control.Monad (unless,guard)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
@@ -18,99 +18,146 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 
-newtype Subst = Subst { unSubst :: [(Index,Type)] }
-    deriving (Show)
+-- Substitution ----------------------------------------------------------------
 
-instance Pretty Subst where
-  pp _ (Subst us) = braces (commas (map step us))
-    where
-    step (p,ty) = ppr p <+> text "+->" <+> ppr ty
+data Subst = Subst
+  { substUnbound :: Map.Map Index Type
+  , substBound   :: Map.Map Index Type
+  } deriving (Show)
+
+-- | Lookup a variable index in a substitution.
+lookupGen :: Index -> Subst -> Maybe Type
+lookupGen i = Map.lookup i . substBound
+
+-- | Lookup a variable index in a substitution.
+lookupVar :: Index -> Subst -> Maybe Type
+lookupVar i = Map.lookup i . substUnbound
+
+-- | The empty substitution.
+emptySubst :: Subst
+emptySubst  = Subst
+  { substUnbound = Map.empty
+  , substBound   = Map.empty
+  }
+
+-- | Generate a singleton generic substitution.
+genSubst :: Index -> Type -> Subst
+genSubst v ty = emptySubst { substBound = Map.singleton v ty }
+
+-- | Generate a singleton variable substitution.
+varSubst :: Index -> Type -> Subst
+varSubst v ty = emptySubst { substUnbound = Map.singleton v ty }
+
+-- | Compose two substitutions.
+(@@) :: Subst -> Subst -> Subst
+s1 @@ s2 = Subst
+  { substBound = Map.map (apply s1) (substBound s2)
+      `Map.union` substBound s1
+  , substUnbound = Map.map (apply s1) (substUnbound s2)
+      `Map.union` substUnbound s1
+  }
+
+
+-- Type Interface --------------------------------------------------------------
+
+apply :: Types a => Subst -> a -> a
+apply  = apply' 0
 
 
 class Types a where
-  apply    :: Subst -> a -> a
+  apply'   :: Int -> Subst -> a -> a
   typeVars :: a -> Set.Set TParam
 
 instance Types a => Types [a] where
-  apply u  = map (apply u)
-  typeVars = Set.unions . map typeVars
+  apply' b u = map (apply' b u)
+  typeVars  = Set.unions . map typeVars
 
 instance Types Type where
-  apply s ty = case ty of
-    TApp f x     -> TApp (apply s f) (apply s x)
-    TInfix n l r -> TInfix n (apply s l) (apply s r)
-    TVar p       -> fromMaybe ty (lookupSubst (paramIndex p) s)
-    TGen{}       -> ty
+  apply' b u ty = case ty of
+    TApp f x     -> TApp (apply' b u f) (apply' b u x)
+    TInfix n l r -> TInfix n (apply' b u l) (apply' b u r)
+    TVar p       -> apply'TVar b u p
     TCon{}       -> ty
 
   typeVars ty = case ty of
     TApp f x     -> typeVars f `Set.union` typeVars x
     TInfix _ l r -> typeVars l `Set.union` typeVars r
-    TVar p       -> Set.singleton p
-    TGen{}       -> Set.empty
+    TVar tv      -> typeVarsTVar tv
     TCon{}       -> Set.empty
 
+apply'TVar :: Int -> Subst -> TVar -> Type
+apply'TVar b u tv = case tv of
+
+  -- when an unbound variable is found, apply the substitution without adjusting
+  -- the parameter index.
+  UVar p -> process (lookupVar (paramIndex p) u)
+
+  -- when a bound variable is found, make sure that it is reachable from a
+  -- quantifier outside any that may have been crossed, and then adjust its
+  -- index to be the same as the outer most quantifier.
+  GVar p -> process $ do
+    let ix = paramIndex p
+    guard (ix >= b)
+    lookupGen (ix - b) u
+
+  where
+  process         = maybe (TVar tv) (mapTVar adjust)
+  adjust (GVar p) = GVar p { paramIndex = paramIndex p + b }
+  adjust uv       = uv
+
+typeVarsTVar :: TVar -> Set.Set TParam
+typeVarsTVar (UVar p) = Set.singleton p
+typeVarsTVar _        = Set.empty
+
+genVarsTVar :: TVar -> Set.Set TParam
+genVarsTVar (GVar p) = Set.singleton p
+genVarsTVar _        = Set.empty
+
 instance Types Decl where
-  apply s d = d { declBody = apply s (declBody d) }
+  apply' b s d = d { declBody = apply' b s (declBody d) }
   typeVars  = typeVars . declBody
 
 instance Types a => Types (Forall a) where
-  apply (Subst s) (Forall ps a) = Forall ps (apply (Subst s') a)
-    where
-    offset = length ps
-    s'     = [ (i,mapGen incr ty) | (i,ty) <- s ]
-    incr p = p { paramIndex = paramIndex p + offset }
-
-  typeVars (Forall _ a) = typeVars a
+  apply' b u (Forall ps a) = Forall ps (apply' (b + length ps) u a)
+  typeVars (Forall _ a)    = typeVars a
 
 instance Types Match where
-  apply s m = case m of
-    MTerm t ty -> MTerm (apply s t) (apply s ty)
-    MPat p m'  -> MPat (apply s p) (apply s m')
+  apply' b s m = case m of
+    MTerm t ty -> MTerm (apply' b s t) (apply' b s ty)
+    MPat p m'  -> MPat  (apply' b s p) (apply' b s m')
 
   typeVars m = case m of
     MTerm t ty -> typeVars t `Set.union` typeVars ty
     MPat p m'  -> typeVars p `Set.union` typeVars m'
 
 instance Types Pat where
-  apply s p = case p of
-    PWildcard ty -> PWildcard (apply s ty)
-    PVar v ty    -> PVar v (apply s ty)
+  apply' b s p = case p of
+    PWildcard ty -> PWildcard (apply' b s ty)
+    PVar v ty    -> PVar v    (apply' b s ty)
 
   typeVars p = case p of
     PWildcard ty -> typeVars ty
     PVar _ ty    -> typeVars ty
 
 instance Types Term where
-  apply s tm = case tm of
-    AppT f ts -> AppT (apply s f) (apply s ts)
-    App t ts  -> App (apply s t)  (apply s ts)
-    Let ds e  -> Let (apply s ds) (apply s e)
+  apply' b s tm = case tm of
+    AppT f ts -> AppT (apply' b s f)  (apply' b s ts)
+    App t ts  -> App  (apply' b s t)  (apply' b s ts)
+    Let ds e  -> Let  (apply' b s ds) (apply' b s e)
     Global qn -> Global qn
     Local n   -> Local n
     Lit lit   -> Lit lit
 
   typeVars tm = case tm of
-    AppT f ts -> typeVars f `Set.union` typeVars ts
-    App t ts  -> typeVars t `Set.union` typeVars ts
+    AppT f ts -> typeVars f  `Set.union` typeVars ts
+    App t ts  -> typeVars t  `Set.union` typeVars ts
     Let ds e  -> typeVars ds `Set.union` typeVars e
     Global _  -> Set.empty
     Local _   -> Set.empty
     Lit _     -> Set.empty
 
-lookupSubst :: Index -> Subst -> Maybe Type
-lookupSubst p (Subst u) = lookup p u
 
-emptySubst :: Subst
-emptySubst  = Subst []
-
--- | Generate a singleton substitution.
-(+->) :: Index -> Type -> Subst
-v +-> ty = Subst [(v,ty)]
-
--- | Compose two substitutions.
-(@@) :: Subst -> Subst -> Subst
-s1 @@ Subst s2 = Subst ([ (p,apply s1 ty) | (p,ty) <- s2 ] ++ unSubst s1)
+-- Unification -----------------------------------------------------------------
 
 data UnifyError
   = UnifyError Type Type
@@ -142,8 +189,8 @@ mgu a b = case (a,b) of
     sr <- mgu (apply sl r) (apply sl y)
     return (sl @@ sr)
 
-  (TVar p, r) -> varBind p r
-  (l, TVar p) -> varBind p l
+  (TVar (UVar p), r) -> varBind p r
+  (l, TVar (UVar p)) -> varBind p l
 
   -- constructors
   (TCon l, TCon r) | l == r -> return emptySubst
@@ -156,9 +203,9 @@ mgu a b = case (a,b) of
 -- XXX should this do a kind check in addition to an occurs check?
 varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
 varBind p ty
-  | Just p' <- destTVar ty, p == p' = return emptySubst
+  | Just p' <- destUVar ty, p == p' = return emptySubst
   | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
-  | otherwise                       = return (paramIndex p +-> ty)
+  | otherwise                       = return (varSubst (paramIndex p) ty)
 
 
 occursCheck :: TParam -> Type -> Bool
@@ -167,69 +214,26 @@ occursCheck p = Set.member p . typeVars
 
 -- Instantiation ---------------------------------------------------------------
 
-data InstError = InstError TParam
-    deriving (Show,Typeable)
-
-instance Exception InstError
-
-
-type Inst = Map.Map Index Type
-
--- | Generate a type instantiation.
-mkInst :: [Type] -> Inst
-mkInst  = Map.fromList . zip [0 ..]
-
-inst' :: Instantiate t => [Type] -> t -> t
-inst'  = inst . mkInst
-
-
-class Instantiate t where
-  inst :: Inst -> t -> t
-
-instance Instantiate a => Instantiate [a] where
-  inst ts = map (inst ts)
-
-instance Instantiate Type where
-  inst ts (TApp l r)     = TApp (inst ts l) (inst ts r)
-  inst ts (TInfix n l r) = TInfix n (inst ts l) (inst ts r)
-  inst ts gen@(TGen p)   = fromMaybe gen (Map.lookup (paramIndex p) ts)
-  inst _ ty              = ty
-
-instance Instantiate Decl where
-  inst ts d = d { declBody = inst ts (declBody d) }
-
-instance Instantiate a => Instantiate (Forall a) where
-  inst ts (Forall ps a) = Forall ps (inst ts' a)
-    where
-    offset = length ps
-    ts'    = Map.mapKeys (+offset) ts
-
-instance Instantiate Match where
-  inst ts (MPat p m')   = MPat  (inst ts p)  (inst ts m')
-  inst ts (MTerm tm ty) = MTerm (inst ts tm) (inst ts ty)
-
-instance Instantiate Pat where
-  inst ts (PVar n ty)    = PVar n    (inst ts ty)
-  inst ts (PWildcard ty) = PWildcard (inst ts ty)
-
-instance Instantiate Term where
-  inst ts tm = case tm of
-    AppT f ps -> AppT (inst ts f)  (inst ts ps)
-    App f xs  -> App  (inst ts f)  (inst ts xs)
-    Let ds e  -> Let  (inst ts ds) (inst ts e)
-    Global _  -> tm
-    Local _   -> tm
-    Lit _     -> tm
+inst :: Types t => [Type] -> t -> t
+inst ts = apply (emptySubst { substBound = Map.fromList (zip [0 ..] ts) })
 
 
 -- Quantification --------------------------------------------------------------
 
+-- | Generalize type variables.
 quantify :: Types t => [TParam] -> t -> Forall t
-quantify ps t = uncurry Forall (quantifyAux 0 ps t)
+quantify ps t = Forall vs (apply u t)
+  where
+  vs         = Set.toList (typeVars t `Set.intersection` Set.fromList ps)
+  u          = emptySubst { substUnbound = Map.fromList subst }
+  subst      = zipWith mkGen [0..] vs
+  mkGen ix v = (paramIndex v, gvar v { paramIndex = ix })
+
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
 
+{-
 -- | Quantify the type parameters provided, but extend an existing quantifier
 -- instead of generating a new one.
 quantify' :: Types t => [TParam] -> Forall t -> Forall t
@@ -245,4 +249,5 @@ quantifyAux i ps t = (vs',apply s t)
   u         = zipWith mkGen [i ..] vs
   mkGen n p = (paramIndex p, p { paramIndex = n })
   (_,vs')   = unzip u
-  s         = Subst (map (second TGen) u)
+  s         = Subst (map (second (TVar . GVar)) u)
+  -}
