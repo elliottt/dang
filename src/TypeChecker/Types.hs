@@ -46,7 +46,7 @@ getType  = getWord8 >>= \ tag ->
     1 -> TInfix <$> getQualName <*> getType <*> getType
     2 -> TCon   <$> getQualName
     3 -> TVar   <$> getTVar
-    _ -> fail ("Invalid tag: " ++ show tag)
+    _ -> fail ("Invalid Type tag: " ++ show tag)
 
 isTVar :: Type -> Bool
 isTVar TVar{} = True
@@ -89,6 +89,7 @@ getTVar :: Get TVar
 getTVar  = getWord8 >>= \ tag -> case tag of
   0 -> GVar <$> getTParam
   1 -> UVar <$> getTParam
+  _ -> fail ("Invalid TVar tag: " ++ show tag)
 
 instance Pretty TVar where
   pp p (GVar v) = pp p v

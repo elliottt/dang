@@ -209,16 +209,21 @@ inferKind env ty = case ty of
     k <- kindAssump n env
     return (k,ty)
 
+  TVar tv -> do
+    (k',tv') <- inferKindTVar env tv
+    return (k', TVar tv')
+
+inferKindTVar :: KindAssumps -> TVar -> TC (Kind,TVar)
+inferKindTVar env tv = case tv of
+
   -- The idea here is that a variable might already have a kind associated with
   -- it through the environment, or that if it's a variable, that it might
   -- already have been unified with something concrete.
-  TVar p -> do
+  UVar p -> do
     k' <- kindAssump (simpleName (paramName p)) env
-    return (k', TVar p { paramKind = k' })
+    return (k', UVar p { paramKind = k' })
 
-  -- All generic variables should disappear through instantiation, so this
-  -- shouldn't happen.
-  TGen{} -> kindError "Unexpected generic variable"
+  GVar{} -> kindError "Unexpected generic variable"
 
 
 -- Type Helpers ----------------------------------------------------------------
@@ -242,14 +247,16 @@ freshTParam p = do
 
 -- | Quantify all variables in a type, fixing their kind variables to stars on
 -- the way.
-quantifyAndFixKinds :: Types t => t -> Forall t
-quantifyAndFixKinds ty = Forall (map fixKind ps) ty'
-  where
-  Forall ps ty' = quantifyAll ty
+quantifyAndFixKinds :: Type -> Forall Type
+quantifyAndFixKinds  = quantifyAll . mapTVar fixKind
 
 -- | Turn kind variables into stars.
-fixKind :: TParam -> TParam
-fixKind p = p { paramKind = Types.apply s k }
+fixKind :: TVar -> TVar
+fixKind tv = case tv of
+  UVar p -> UVar (upd p)
+  GVar p -> GVar (upd p)
   where
-  k = paramKind p
-  s = Subst [ (paramIndex v,kstar) | v <- Set.toList (typeVars k) ]
+  upd p = p { paramKind = Types.apply s k }
+    where
+    k = paramKind p
+    s = unboundSubst [ (paramIndex v,kstar) | v <- Set.toList (typeVars k) ]

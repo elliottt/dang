@@ -19,7 +19,7 @@ instance Pretty ty => Pretty (Assumps ty) where
     step (n,a) = ppr n <+> text "+->" <+> ppr a
 
 instance Types ty => Types (Assumps ty) where
-  apply u  = Map.map (apply u)
+  apply' b u  = Map.map (apply' b u)
   typeVars = Fold.foldl step Set.empty
     where
     step acc a = acc `Set.union` typeVars a
@@ -33,7 +33,7 @@ instance Pretty ty => Pretty (Assump ty) where
   pp _ = ppr . aData
 
 instance Types ty => Types (Assump ty) where
-  apply u a = a { aData = apply u (aData a) }
+  apply' b u a = a { aData = apply' b u (aData a) }
   typeVars  = typeVars . aData
 
 emptyAssumps :: Assumps ty

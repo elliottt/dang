@@ -11,7 +11,6 @@ import TypeChecker.Types
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)
-import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
 import qualified Data.Set as Set
@@ -47,6 +46,14 @@ genSubst v ty = emptySubst { substBound = Map.singleton v ty }
 -- | Generate a singleton variable substitution.
 varSubst :: Index -> Type -> Subst
 varSubst v ty = emptySubst { substUnbound = Map.singleton v ty }
+
+-- | Generate a substitution on unbound variables.
+unboundSubst :: [(Index,Type)] -> Subst
+unboundSubst u = emptySubst { substUnbound = Map.fromList u }
+
+-- | Generate a substitution on bound variables.
+boundSubst :: [(Index,Type)] -> Subst
+boundSubst u = emptySubst { substBound = Map.fromList u }
 
 -- | Compose two substitutions.
 (@@) :: Subst -> Subst -> Subst
@@ -222,12 +229,13 @@ inst ts = apply (emptySubst { substBound = Map.fromList (zip [0 ..] ts) })
 
 -- | Generalize type variables.
 quantify :: Types t => [TParam] -> t -> Forall t
-quantify ps t = Forall vs (apply u t)
+quantify ps t = Forall ps' (apply u t)
   where
   vs         = Set.toList (typeVars t `Set.intersection` Set.fromList ps)
-  u          = emptySubst { substUnbound = Map.fromList subst }
   subst      = zipWith mkGen [0..] vs
-  mkGen ix v = (paramIndex v, gvar v { paramIndex = ix })
+  mkGen ix v = (paramIndex v, v { paramIndex = ix })
+  (_,ps')    = unzip subst
+  u          = unboundSubst (map (second gvar) subst)
 
 
 quantifyAll :: Types t => t -> Forall t

@@ -169,7 +169,7 @@ freshName pfx fvs = loop
 freshVar :: Kind -> TC Type
 freshVar k = do
   ix <- nextIndex
-  return (TVar (TParam ix False ('t':show ix) k))
+  return (uvar (TParam ix False ('t':show ix) k))
 
 freshTParam :: TParam -> TC TParam
 freshTParam p = do
@@ -178,9 +178,7 @@ freshTParam p = do
 
 -- | Generate a new type variable, given a @TParam@ as a template.
 freshVarFromTParam :: TParam -> TC Type
-freshVarFromTParam p = do
-  p' <- freshTParam p
-  return (TVar p')
+freshVarFromTParam p = uvar `fmap` freshTParam p
 
 -- | Freshly instantiate a @Scheme@.
 freshInst :: Scheme -> TC Type
@@ -189,7 +187,7 @@ freshInst qt = snd `fmap` freshInst' qt
 freshInst' :: Scheme -> TC ([TParam],Type)
 freshInst' (Forall ps ty) = do
   ps' <- mapM freshTParam ps
-  ty' <- applySubst (inst' (map TVar ps') ty)
+  ty' <- applySubst (inst (map uvar ps') ty)
   return (ps',ty')
 
 data UnboundIdentifier = UnboundIdentifier QualName

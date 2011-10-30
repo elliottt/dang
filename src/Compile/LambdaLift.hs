@@ -15,7 +15,7 @@ import Core.AST
 import Pretty (pretty)
 import QualName (QualName)
 import TypeChecker.Types
-import TypeChecker.Unify (Types(typeVars),quantify,Instantiate,inst')
+import TypeChecker.Unify (Types(typeVars),quantify,inst)
 import Variables
     (sccFreeQualNames,sccToList,FreeVars(),freeLocals)
 
@@ -91,7 +91,7 @@ addClosure clos = extend
   extend d  = (d',call)
     where
     d'   = d { declBody = quantify tyVars (addVars (forallData (declBody d))) }
-    call = app (appT (Global (declName d)) (map TVar tyVars))
+    call = app (appT (Global (declName d)) (map uvar tyVars))
          $ map (Local . fst) clos
 
 typedClosure :: (FreeVars a) => a -> LL [(Var,Type)]
@@ -159,9 +159,9 @@ llTopDecl d = do
   b' <- llForall llMatch (declBody d)
   return d { declBody = b' }
 
-llForall :: (Show a, Types a, Instantiate a) => (a -> LL a) -> Forall a -> LL (Forall a)
+llForall :: (Show a, Types a) => (a -> LL a) -> Forall a -> LL (Forall a)
 llForall k (Forall ps a) = introVars ps $ do
-  a' <- k (inst' (map TVar ps) a)
+  a' <- k (inst (map uvar ps) a)
   return (quantify ps a')
 
 llMatch :: Match -> LL Match

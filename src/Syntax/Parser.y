@@ -236,7 +236,7 @@ atypes :: { [Type] }
 |              { [] }
 
 atype :: { Type }
-  : IDENT        { TVar (TParam 0 True $1 setSort) }
+  : IDENT        { uvar (TParam 0 True $1 setSort) }
   | CONIDENT     { TCon (simpleName $1) }
   | '(' type ')' { $2 }
 

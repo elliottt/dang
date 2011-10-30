@@ -152,7 +152,7 @@ type Bodies = Map.Map QualName Term
 partialBodies :: TypeAssumps -> [PartialDecl] -> Bodies
 partialBodies envGen = Map.fromList . map mk
   where
-  mk d = (name, appT (Global name) (map TVar ps))
+  mk d = (name, appT (Global name) (map uvar ps))
     where
     ps   = Set.toList (genVars envGen (partialType d))
     name = partialName d
@@ -249,7 +249,7 @@ tcTerm env tm = case tm of
           }
 
     (vs,ty') <- freshInst' qt
-    let vars = map TVar vs
+    let vars = map uvar vs
     return (ty', Let [decl] (appT (Global name) vars))
 
   Syn.Let ts us e -> do
@@ -278,13 +278,13 @@ tcTerm env tm = case tm of
     a       <- typeAssump name env
     (ps,ty) <- freshInst' (aData a)
     let body = fromMaybe (Local n) (aBody a)
-    return (ty, appT body (map TVar ps))
+    return (ty, appT body (map uvar ps))
 
   Syn.Global qn -> do
     a       <- typeAssump qn env
     (ps,ty) <- freshInst' (aData a)
     let body = fromMaybe (Global qn) (aBody a)
-    return (ty, appT body (map TVar ps))
+    return (ty, appT body (map uvar ps))
 
   Syn.Lit lit -> tcLit lit
 

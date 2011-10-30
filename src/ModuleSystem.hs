@@ -394,4 +394,3 @@ scopeCheckType ty = case ty of
   TCon n -> TCon <$> resolveType n
 
   TVar{} -> return ty
-  TGen{} -> return ty
