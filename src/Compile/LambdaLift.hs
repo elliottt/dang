@@ -12,10 +12,10 @@ module Compile.LambdaLift (
 import Dang.IO
 import Dang.Monad
 import Core.AST
-import Pretty (pretty)
+import Pretty (Pretty,pretty)
 import QualName (QualName)
 import TypeChecker.Types
-import TypeChecker.Unify (Types(typeVars),quantify,inst)
+import TypeChecker.Unify (Types(typeVars),quantify,quantifyAux,inst)
 import Variables
     (sccFreeQualNames,sccToList,FreeVars(),freeLocals)
 
@@ -68,41 +68,47 @@ runLL (LL m) =
 
 -- Renaming and Lifting --------------------------------------------------------
 
-type Rename = Map.Map QualName Term
+type Call = ([Type],[Term])
+
+type Rename = Map.Map QualName Call
 
 emptyRename :: Rename
 emptyRename  = Map.empty
 
 -- | Produce either a reference to a global variable, or the term that it is to
 -- be replaced with.
-subst :: QualName -> LL Term
+subst :: QualName -> LL Call
 subst qn = LL $ do
   u <- get
   case Map.lookup qn u of
     Just tm -> return tm
-    Nothing -> return (Global qn)
+    Nothing -> return ([],[])
 
--- | Extend the closure, and return a new call-pattern for the symbol.
-addClosure :: [(Var,Type)] -> Decl -> (Decl,Term)
+-- | Extend the closure, and return a new call-pattern for the symbol.  Add the
+-- type variables from the free variables, and the free variables to the
+-- arguments.
+addClosure :: [(Var,Type)] -> Decl -> (Decl,Call)
 addClosure clos = extend
   where
   tyVars    = Set.toList (typeVars (map snd clos))
   addVars   = foldl (\f (v,ty) -> MPat (PVar v ty) . f) id clos
   extend d  = (d',call)
     where
-    d'   = d { declBody = quantify tyVars (addVars (forallData (declBody d))) }
-    call = app (appT (Global (declName d)) (map uvar tyVars))
-         $ map (Local . fst) clos
+    d'      = d { declBody = Forall (forallParams body ++ qs) b' }
+    (qs,b') = quantifyAux off tyVars (addVars (forallData body))
+    body    = declBody d
+    off     = length (forallParams body)
+    call    = (map uvar tyVars, map (Local . fst) clos)
 
 typedClosure :: (FreeVars a) => a -> LL [(Var,Type)]
 typedClosure  = mapM step . Set.toList . freeLocals
   where
   step a = (a,) <$> typeOfLocal a
 
-rename :: QualName -> Term -> LL ()
-rename qn tm = LL $ do
+rename :: QualName -> Call -> LL ()
+rename qn call = LL $ do
   u <- get
-  set $! Map.insert qn tm u
+  set $! Map.insert qn call u
 
 
 -- Type Environment ------------------------------------------------------------
@@ -110,24 +116,33 @@ rename qn tm = LL $ do
 data Env = Env
   { envParams :: Set.Set TParam
   , envTypes  :: Map.Map Var Type
+  , envDepth  :: !Int
   } deriving (Show)
 
 emptyEnv :: Env
 emptyEnv  = Env
   { envParams = Set.empty
   , envTypes  = Map.empty
+  , envDepth  = 0
   }
 
 addLocal :: Var -> Type -> Env -> Env
 addLocal n ty env = env { envTypes = Map.insert n ty (envTypes env) }
 
+-- | Extend the environment with information about type variables to be
+-- introduced.
 addParams :: Set.Set TParam -> Env -> Env
-addParams ps env = env { envParams = ps `Set.union` envParams env }
+addParams ps env = env
+  { envParams = ps `Set.union` envParams env
+  , envDepth  = envDepth env + Set.size ps
+  }
 
-introVars :: [TParam] -> LL a -> LL a
+-- | Introduce type variables, adding them to the environment as captured.
+introVars :: [TParam] -> ([TParam] -> LL a) -> LL a
 introVars ps k = do
   env <- ask
-  local (addParams (Set.fromList ps) env) k
+  let ps' = [ p { paramIndex = envDepth env + paramIndex p } | p <- ps ]
+  local (addParams (Set.fromList ps') env) (k ps')
 
 introPat :: Pat -> LL a -> LL a
 introPat p k = case p of
@@ -159,10 +174,11 @@ llTopDecl d = do
   b' <- llForall llMatch (declBody d)
   return d { declBody = b' }
 
-llForall :: (Show a, Types a) => (a -> LL a) -> Forall a -> LL (Forall a)
-llForall k (Forall ps a) = introVars ps $ do
-  a' <- k (inst (map uvar ps) a)
-  return (quantify ps a')
+llForall :: (Pretty a, Types a) => (a -> LL a) -> Forall a -> LL (Forall a)
+llForall k (Forall ps a) = introVars ps $ \ ps' -> do
+  let i = inst (map uvar ps') a
+  a' <- k i
+  return (quantify ps' a')
 
 llMatch :: Match -> LL Match
 llMatch m = case m of
@@ -182,23 +198,12 @@ llLetDecls  = foldM step [] . sccFreeQualNames
     ds' <- llLetBlock (sccToList ds)
     return (acc ++ ds')
 
-{-
-llLetDecl :: Decl -> LL [Decl]
-llLetDecl d = do
-  -- generate the replacement term for this declaration
-  clos <- typedClosure d
-  let (d',call) = addClosure clos d
-  rename (declName d) call
-  b' <- llForall llMatch (declBody d')
-  let decl = d' { declBody = b' }
-  if hasArgs decl
-     then put [decl] >> return []
-     else return [decl]
-     -}
-
 llLetBlock :: [Decl] -> LL [Decl]
 llLetBlock ds = do
+  logInfo ("processing " ++ pretty (map declName ds))
+
   clos <- typedClosure ds
+  logInfo ("  closure: " ++ pretty clos)
 
   let extend d = do
         let (d',call) = addClosure clos d
@@ -217,6 +222,10 @@ llLetBlock ds = do
 llTerm :: Term -> LL Term
 llTerm tm = case tm of
 
+  AppT g@(Global qn) ts -> do
+    (ts',vs) <- subst qn
+    return (app (appT g (ts ++ ts')) vs)
+
   AppT f ts -> do
     f' <- llTerm f
     return (appT f' ts)
@@ -231,7 +240,9 @@ llTerm tm = case tm of
     e'  <- llTerm e
     return (letIn ds' e')
 
-  Global qn -> subst qn
+  Global qn -> do
+    (ts,vs) <- subst qn
+    return (app (appT tm ts) vs)
 
   Local _ -> return tm
   Lit _   -> return tm
