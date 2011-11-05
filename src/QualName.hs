@@ -25,6 +25,7 @@ data QualName
 instance Pretty QualName where
   pp _ (QualName ps n) = hcat (map (\p -> text p <> char '.') ps) <> text n
   pp _ (PrimName n)    = text n
+  ppList _ = brackets . commas . map ppr
 
 instance Serialize QualName where
   get = getQualName

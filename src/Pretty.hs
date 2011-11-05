@@ -6,6 +6,7 @@ module Pretty (
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.List (intersperse)
 import Text.PrettyPrint
+import qualified Data.Set as Set
 
 pretty :: Pretty a => a -> String
 pretty  = render . pp 0
@@ -66,6 +67,9 @@ instance Pretty a => Pretty (Maybe a) where
 
 instance Pretty a => Pretty [a] where
   pp p as = ppList p as
+
+instance Pretty a => Pretty (Set.Set a) where
+  pp p = ppList p . Set.toList
 
 instance Pretty () where
   pp _ _ = empty
