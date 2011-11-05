@@ -229,33 +229,16 @@ inst ts = apply (emptySubst { substBound = Map.fromList (zip [0 ..] ts) })
 
 -- | Generalize type variables.
 quantify :: Types t => [TParam] -> t -> Forall t
-quantify ps t = Forall ps' (apply u t)
-  where
-  vs         = Set.toList (typeVars t `Set.intersection` Set.fromList ps)
-  subst      = zipWith mkGen [0..] vs
-  mkGen ix v = (paramIndex v, v { paramIndex = ix })
-  (_,ps')    = unzip subst
-  u          = unboundSubst (map (second gvar) subst)
-
+quantify ps t = uncurry Forall (quantifyAux 0 ps t)
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
 
-{-
--- | Quantify the type parameters provided, but extend an existing quantifier
--- instead of generating a new one.
-quantify' :: Types t => [TParam] -> Forall t -> Forall t
-quantify' ps (Forall ps0 t) = Forall (ps0 ++ ps') t'
-  where
-  i        = length ps0
-  (ps',t') = quantifyAux i ps t
-
 quantifyAux :: Types t => Int -> [TParam] -> t -> ([TParam],t)
-quantifyAux i ps t = (vs',apply s t)
+quantifyAux off ps t = (ps',apply u t)
   where
-  vs        = [ v | v <- Set.toList (typeVars t), v `elem` ps ]
-  u         = zipWith mkGen [i ..] vs
-  mkGen n p = (paramIndex p, p { paramIndex = n })
-  (_,vs')   = unzip u
-  s         = Subst (map (second (TVar . GVar)) u)
-  -}
+  vs         = Set.toList (typeVars t `Set.intersection` Set.fromList ps)
+  subst      = zipWith mkGen [off ..] vs
+  mkGen ix v = (paramIndex v, v { paramIndex = ix })
+  (_,ps')    = unzip subst
+  u          = unboundSubst (map (second gvar) subst)
