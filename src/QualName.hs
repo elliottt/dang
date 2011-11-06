@@ -68,6 +68,11 @@ qualSymbol :: QualName -> Name
 qualSymbol (QualName _ n) = n
 qualSymbol (PrimName n)   = n
 
+-- | Modify the symbol in a qualified name.
+mapSymbol :: (Name -> Name) -> (QualName -> QualName)
+mapSymbol f (QualName ns n) = QualName ns (f n)
+mapSymbol f (PrimName n)    = PrimName (f n)
+
 -- | Get the module name associated with a qualified name.
 qualModule :: QualName -> Maybe QualName
 qualModule qn = do

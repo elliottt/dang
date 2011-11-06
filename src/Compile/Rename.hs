@@ -67,8 +67,8 @@ avoid names m = do
   u <- getSubst
   withSubst (u { sAvoid = Set.fromList names `Set.union` sAvoid u }) m
 
-freshName :: String -> Rename QualName
-freshName pfx = do
+freshName :: QualName -> Rename QualName
+freshName qn = do
   u  <- getSubst
   i0 <- Rename get
   let bound = sAvoid u
@@ -76,16 +76,16 @@ freshName pfx = do
         | name `Set.member` bound = loop (i+1)
         | otherwise               = (name,i+1)
         where
-        name = simpleName (pfx ++ show i)
+        name = mapSymbol (++ show i) qn
 
       (n,i') = loop i0
   Rename (set $! i')
   return n
 
-fresh :: String -> [QualName] -> Rename a -> Rename a
-fresh pfx ns m = do
+fresh :: [QualName] -> Rename a -> Rename a
+fresh ns m = do
   let step v = do
-        n <- freshName pfx
+        n <- freshName v
         return (v,n)
   ns' <- mapM step ns
   u   <- getSubst
@@ -129,7 +129,7 @@ renameTerm :: Term -> Rename Term
 renameTerm tm = case tm of
   AppT f tys -> AppT    <$> renameTerm f <*> pure tys
   App  f xs  -> App     <$> renameTerm f <*> mapM renameTerm xs
-  Let ds e   -> fresh "_decl" (map declName ds)
+  Let ds e   -> fresh (map declName ds)
               $ Let    <$> mapM renameDecl ds <*> renameTerm e
   Global qn  -> Global <$> subst qn
   Local n    -> return (Local n)
