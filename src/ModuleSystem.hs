@@ -24,8 +24,6 @@ import MonadLib
 import qualified Data.Foldable as F
 import qualified Data.Set as Set
 
-import Debug.Trace
-
 
 -- Scope Checking Monad --------------------------------------------------------
 
