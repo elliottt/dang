@@ -158,7 +158,7 @@ typeOfLocal v = do
   env <- ask
   case Map.lookup v (envTypes env) of
     Just ty -> return ty
-    Nothing -> fail "typeOfLocal"
+    Nothing -> fail ("typeOfLocal: " ++ v)
 
 
 -- Core Lambda-lifting ---------------------------------------------------------

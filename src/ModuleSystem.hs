@@ -11,6 +11,7 @@ module ModuleSystem (
 import Dang.IO
 import Dang.Monad
 import Interface
+import ModuleSystem.Imports (getImports)
 import Pretty
 import QualName
 import Syntax.AST
@@ -147,6 +148,10 @@ withEnv m k = do
   let opened = moduleImports m
   logDebug "Opened modules:"
   logDebug (show opened)
+
+  let t = getImports m
+  logDebug "test:"
+  logDebug (show t)
 
   let need = Set.toList opened
   logDebug "Needed interfaces:"

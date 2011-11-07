@@ -32,6 +32,7 @@ SLASH_MODS := \
     Link \
     Main \
     ModuleSystem \
+    ModuleSystem/Imports \
     Pretty \
     Prim \
     QualName \
@@ -74,3 +75,6 @@ $(GHC_DIR)/depend: $(GHC_DIR) $(HS_SOURCES)
 
 clean:
 	$(call cmd,clean) -r ghc $(TARGET)
+
+print-%:
+	@echo "$* = $($*)"
