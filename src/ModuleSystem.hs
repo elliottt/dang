@@ -11,7 +11,7 @@ module ModuleSystem (
 import Dang.IO
 import Dang.Monad
 import Interface
-import ModuleSystem.Imports (getImports)
+import ModuleSystem.Imports (getUses)
 import Pretty
 import QualName
 import Syntax.AST
@@ -149,7 +149,7 @@ withEnv m k = do
   logDebug "Opened modules:"
   logDebug (show opened)
 
-  let t = getImports m
+  let t = getUses m
   logDebug "test:"
   logDebug (show t)
 
