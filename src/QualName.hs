@@ -23,9 +23,13 @@ data QualName
     deriving (Ord,Eq,Show,Typeable)
 
 instance Pretty QualName where
-  pp _ (QualName ps n) = hcat (map (\p -> text p <> char '.') ps) <> text n
+  pp _ (QualName ns n) = ppWithNamespace ns (text n)
   pp _ (PrimName n)    = text n
   ppList _ = brackets . commas . map ppr
+
+ppWithNamespace :: Namespace -> Doc -> Doc
+ppWithNamespace [] d = d
+ppWithNamespace ns d = dots (map text ns) <> dot <> d
 
 instance Serialize QualName where
   get = getQualName

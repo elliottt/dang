@@ -15,7 +15,10 @@ dot :: Doc
 dot  = char '.'
 
 commas :: [Doc] -> Doc
-commas ds = hcat (intersperse (comma <> space) ds)
+commas  = hcat . intersperse (comma <> space)
+
+dots :: [Doc] -> Doc
+dots  = hcat . intersperse dot
 
 commaSep :: Doc -> Doc -> Doc
 commaSep a b
