@@ -18,7 +18,7 @@ module ModuleSystem.Imports (
   , missingInterface
   ) where
 
-import Dang.Monad (Dang,Exception,SomeException,raiseE)
+import Dang.Monad (Dang,Exception,raiseE)
 import Interface (openInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import QualName (QualName,isSimpleName,qualModule)
 import Syntax.AST
@@ -30,7 +30,7 @@ import Control.Monad (guard)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
-import MonadLib (BaseM,inBase,try,ExceptionM,RunExceptionM)
+import MonadLib (BaseM,inBase,try,RunExceptionM)
 import qualified Data.Set as Set
 import qualified Data.Foldable as F
 
@@ -138,8 +138,8 @@ type ImportSet = Set.Set QualName
 minimalImports :: UseSet -> ImportSet
 minimalImports us = ms Set.\\ rs
   where
-  (rs,ms)           = foldl' step (Set.empty,Set.empty) (Set.toList us)
-  step st@(as,bs) u = case u of
+  (rs,ms)        = foldl' step (Set.empty,Set.empty) (Set.toList us)
+  step (as,bs) u = case u of
     Explicit o -> ( maybe as (`Set.insert` as) (openAs o)
                   , Set.insert (openMod o) bs)
     Implicit n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
