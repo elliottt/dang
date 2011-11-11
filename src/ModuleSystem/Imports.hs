@@ -3,15 +3,18 @@ module ModuleSystem.Imports (
     Use(..)
   , UseSet
   , UsesModules(getUses)
+
+  , minimalImports
   ) where
 
-import QualName (QualName,isSimpleName)
+import QualName (QualName,isSimpleName,qualModule)
 import Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),Constr(..),Match(..),Pat(..),Term(..))
 import TypeChecker.Types (Forall(..),forallData,Type(..))
 
 import Control.Monad (guard)
+import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 
@@ -108,3 +111,19 @@ globalName :: QualName -> UseSet
 globalName qn = fromMaybe Set.empty $ do
   guard (not (isSimpleName qn))
   return (Set.singleton (Implicit qn))
+
+
+-- Import Sets -----------------------------------------------------------------
+
+type ImportSet = Set.Set QualName
+
+-- | Given a set of module uses, calculate the minimal set of modules that are
+-- required to satisfy the uses.
+minimalImports :: UseSet -> ImportSet
+minimalImports us = ms Set.\\ rs
+  where
+  (rs,ms)           = foldl' step (Set.empty,Set.empty) (Set.toList us)
+  step st@(as,bs) u = case u of
+    Explicit o -> ( maybe as (`Set.insert` as) (openAs o)
+                  , Set.insert (openMod o) bs)
+    Implicit n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
