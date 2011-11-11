@@ -1,12 +1,25 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module ModuleSystem.Imports (
-  -- * Usage Sets
+    -- * Usage Sets
     Use(..)
   , UseSet
   , UsesModules(getUses)
 
+    -- * Import Sets
+  , ImportSet
   , minimalImports
+  , loadInterfaces
+
+    -- * Errors
+  , MissingInterface
+  , missingInterface
   ) where
 
+import Dang.Monad (Dang,Exception,SomeException,raiseE)
+import Interface (openInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import QualName (QualName,isSimpleName,qualModule)
 import Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
@@ -16,7 +29,10 @@ import TypeChecker.Types (Forall(..),forallData,Type(..))
 import Control.Monad (guard)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
+import Data.Typeable (Typeable)
+import MonadLib (BaseM,inBase,try,ExceptionM,RunExceptionM)
 import qualified Data.Set as Set
+import qualified Data.Foldable as F
 
 
 -- Usage Sets ------------------------------------------------------------------
@@ -127,3 +143,25 @@ minimalImports us = ms Set.\\ rs
     Explicit o -> ( maybe as (`Set.insert` as) (openAs o)
                   , Set.insert (openMod o) bs)
     Implicit n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
+
+-- | Attempt to load an interface set that contains all the module interfaces
+-- named in an import set.
+loadInterfaces :: BaseM m Dang => ImportSet -> m InterfaceSet
+loadInterfaces  = inBase . F.foldlM step emptyInterfaceSet
+  where
+  step is m = do
+    e <- try (openInterface m)
+    case e of
+      Right iface -> return (addInterface iface is)
+      Left{}      -> missingInterface m
+
+
+-- Errors ----------------------------------------------------------------------
+
+data MissingInterface = MissingInterface QualName
+    deriving (Show,Typeable)
+
+instance Exception MissingInterface
+
+missingInterface :: BaseM m Dang => QualName -> m a
+missingInterface  = inBase . raiseE . MissingInterface
