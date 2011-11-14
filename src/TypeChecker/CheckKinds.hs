@@ -50,13 +50,13 @@ addKindAssump env qn k = do
   logInfo ("  Assuming: " ++ pretty qn ++ " :: " ++ pretty k)
   return (addAssump qn (Assump Nothing k) env)
 
-addPrimTypes :: KindAssumps -> [PrimType] -> TC KindAssumps
-addPrimTypes  = foldM addPrimType
+addPrimTypes :: Namespace -> KindAssumps -> [PrimType] -> TC KindAssumps
+addPrimTypes ns = foldM (addPrimType ns)
 
-addPrimType :: KindAssumps -> PrimType -> TC KindAssumps
-addPrimType env pty = addKindAssump env name kind
+addPrimType :: Namespace -> KindAssumps -> PrimType -> TC KindAssumps
+addPrimType ns env pty = addKindAssump env name kind
   where
-  name = primName (primTypeName pty)
+  name = primName ns (primTypeName pty)
   kind = primTypeKind pty
 
 
@@ -68,7 +68,7 @@ kcModule :: IsInterface iset => iset -> Module -> TC Module
 kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
   let ns = modNamespace m
-  env        <- addPrimTypes (interfaceAssumps iset) (modPrimTypes m)
+  env        <- addPrimTypes ns (interfaceAssumps iset) (modPrimTypes m)
   (env',ds') <- kcDataDecls ns env (modDatas m)
   pts'       <- mapM (kcPrimTerm env')    (modPrimTerms m)
   ts'        <- mapM (kcTypedDecl env')   (modTyped m)

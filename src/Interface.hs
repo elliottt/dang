@@ -121,13 +121,13 @@ moduleInterface m = Interface
 -- declarations are not used when generating an interface.
 mkIFaceTypes :: Namespace -> Module -> IFaceTypes
 mkIFaceTypes ns m = Map.fromList
-                  $ map mkPrimTermFunSymbol (modPrimTerms m)
+                  $ map (mkPrimTermFunSymbol ns) (modPrimTerms m)
                  ++ map (mkTypedDeclFunSymbol ns) (modTyped m)
 
-mkPrimTermFunSymbol :: PrimTerm -> (QualName,FunSymbol)
-mkPrimTermFunSymbol pt = (qn,sym)
+mkPrimTermFunSymbol :: Namespace -> PrimTerm -> (QualName,FunSymbol)
+mkPrimTermFunSymbol ns pt = (qn,sym)
   where
-  qn  = primName (primTermName pt)
+  qn  = primName ns (primTermName pt)
   sym = FunSymbol
     { funName = mangle qn
     , funType = primTermType pt
@@ -143,10 +143,10 @@ mkTypedDeclFunSymbol ns d = (qn, sym)
     }
 
 mkIFaceKinds :: Namespace -> Module -> IFaceKinds
-mkIFaceKinds _ns m = Map.fromList (map mkPrimTypeKind (modPrimTypes m))
+mkIFaceKinds ns m = Map.fromList (map (mkPrimTypeKind ns) (modPrimTypes m))
 
-mkPrimTypeKind :: PrimType -> (QualName,Kind)
-mkPrimTypeKind pt = (primName (primTypeName pt), primTypeKind pt)
+mkPrimTypeKind :: Namespace -> PrimType -> (QualName,Kind)
+mkPrimTypeKind ns pt = (primName ns (primTypeName pt), primTypeKind pt)
 
 
 -- Query -----------------------------------------------------------------------

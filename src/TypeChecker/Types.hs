@@ -150,7 +150,7 @@ tarrow  = TInfix arrowConstr
 infixr 9 `tarrow`
 
 arrowConstr :: QualName
-arrowConstr  = primName "->"
+arrowConstr  = primName ["Prim","Type"] "->"
 
 destInfix :: Type -> Maybe (QualName,Type,Type)
 destInfix (TInfix qn l r) = return (qn,l,r)
@@ -187,7 +187,7 @@ getKind  = getType
 
 -- | The kind of types.
 kstar :: Kind
-kstar  = TCon (primName "*")
+kstar  = TCon (primName ["Prim","Type"] "*")
 
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
@@ -200,7 +200,7 @@ infixr 9 `karrow`
 type Sort = Type
 
 setSort :: Sort
-setSort = TCon (primName "Set")
+setSort = TCon (primName ["Prim","Type"] "Set")
 
 
 -- Type Schemes ----------------------------------------------------------------

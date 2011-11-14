@@ -41,11 +41,11 @@ typeAssump qn env = case lookupAssump qn env of
   Nothing -> raiseE (UnboundIdentifier qn)
 
 -- | Add primitive terms to the typing environment.
-primAssumps :: [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
-primAssumps pts env0 = foldM step env0 pts
+primAssumps :: Namespace -> [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
+primAssumps ns pts env0 = foldM step env0 pts
   where
   step env pt =
-    assume (primName (Syn.primTermName pt)) (Syn.primTermType pt) env
+    assume (primName ns (Syn.primTermName pt)) (Syn.primTermType pt) env
 
 -- | Introduce the signatures as the assumed type for a block of typed
 -- declarations.
@@ -63,7 +63,7 @@ tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
   env <- typedAssumps   ns (Syn.modTyped m)   =<<
-         primAssumps (Syn.modPrimTerms m) (interfaceAssumps i)
+         primAssumps ns (Syn.modPrimTerms m) (interfaceAssumps i)
 
   (env',us) <- tcUntypedDecls ns env (Syn.modUntyped m)
   ts        <- mapM (tcTypedDecl ns env') (Syn.modTyped m)
@@ -290,7 +290,7 @@ tcTerm env tm = case tm of
 
 tcLit :: Syn.Literal -> TC (Type,Term)
 tcLit l = case l of
-  Syn.LInt{} -> return (TCon (primName "Int"), Lit l)
+  Syn.LInt{} -> return (TCon (primName ["Prim","Type"] "Int"), Lit l)
 
 
 -- Generalization --------------------------------------------------------------

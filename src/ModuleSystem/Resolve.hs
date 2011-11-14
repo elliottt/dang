@@ -67,13 +67,12 @@ mergeResolvedNames  = CM.unionWith mergeResolved
 -- | Generate the set of resolved names that a module defines at the top-level.
 modDecls :: Module -> ResolvedNames
 modDecls m = CM.fromList
-           $ concatMap primTypeNames (modPrimTypes m)
-          ++ concatMap primTermNames (modPrimTerms m)
-          ++ concatMap (typedNames ns) (modTyped m)
-          ++ concatMap (untypedNames ns) (modUntyped m)
+           $ concatMap (primTypeNames ns) (modPrimTypes m)
+          ++ concatMap (primTermNames ns) (modPrimTerms m)
+          ++ concatMap (typedNames ns)    (modTyped m)
+          ++ concatMap (untypedNames ns)  (modUntyped m)
   where
   ns = modNamespace m
-
 
 -- | Extract the simple and qualified names that a declaration introduces.
 declResolvedNames :: (a -> Name) -> (Name -> QualName)
@@ -86,18 +85,18 @@ declResolvedNames simple qualify d = [ (simpleName n, res), (qn, res) ]
 
 -- | The resolved names from a single typed declaration.
 typedNames :: Namespace -> TypedDecl -> [(QualName,Resolved)]
-typedNames ns = declResolvedNames typedName (qualName ns)
+typedNames  = declResolvedNames typedName . qualName
 
 untypedNames :: Namespace -> UntypedDecl -> [(QualName,Resolved)]
-untypedNames ns = declResolvedNames untypedName (qualName ns)
+untypedNames  = declResolvedNames untypedName . qualName
 
 -- | The resolved names form a single primitive type declaration.
-primTypeNames :: PrimType -> [(QualName,Resolved)]
-primTypeNames  = declResolvedNames primTypeName primName
+primTypeNames :: Namespace -> PrimType -> [(QualName,Resolved)]
+primTypeNames  = declResolvedNames primTypeName . primName
 
 -- | The resolved names form a single primitive term declaration.
-primTermNames :: PrimTerm -> [(QualName,Resolved)]
-primTermNames  = declResolvedNames primTermName primName
+primTermNames :: Namespace -> PrimTerm -> [(QualName,Resolved)]
+primTermNames  = declResolvedNames primTermName . primName
 
 
 -- UseSet Interface ------------------------------------------------------------
