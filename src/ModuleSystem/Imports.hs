@@ -39,7 +39,8 @@ import qualified Data.Foldable as F
 
 data Use
   = Explicit Open     -- ^ Module use via an open declaration
-  | Implicit QualName -- ^ Module use via a qualified name
+  | QualTerm QualName -- ^ Module use via qualified term name
+  | QualType QualName -- ^ Module use via qualified type constructor
     deriving (Eq,Show,Ord)
 
 type UseSet = Set.Set Use
@@ -101,8 +102,8 @@ instance UsesModules a => UsesModules (Forall a) where
 instance UsesModules Type where
   getUses ty = case ty of
     TApp f x      -> getUses f `Set.union` getUses x
-    TInfix qn l r -> Set.unions [globalName qn, getUses l, getUses r]
-    TCon qn       -> globalName qn
+    TInfix qn l r -> Set.unions [globalName QualType qn, getUses l, getUses r]
+    TCon qn       -> globalName QualType qn
     TVar{}        -> Set.empty
 
 instance UsesModules Match where
@@ -119,14 +120,14 @@ instance UsesModules Term where
     Let ts us e -> Set.unions [getUses ts, getUses us, getUses e]
     App f xs    -> getUses f `Set.union` getUses xs
     Local _     -> Set.empty
-    Global qn   -> globalName qn
+    Global qn   -> globalName QualTerm qn
     Lit _       -> Set.empty
 
 -- | Generate the import set for a used name, if one exists.
-globalName :: QualName -> UseSet
-globalName qn = fromMaybe Set.empty $ do
+globalName :: (QualName -> Use) -> QualName -> UseSet
+globalName k qn = fromMaybe Set.empty $ do
   guard (not (isSimpleName qn))
-  return (Set.singleton (Implicit qn))
+  return (Set.singleton (k qn))
 
 
 -- Import Sets -----------------------------------------------------------------
@@ -142,7 +143,8 @@ minimalImports us = ms Set.\\ rs
   step (as,bs) u = case u of
     Explicit o -> ( maybe as (`Set.insert` as) (openAs o)
                   , Set.insert (openMod o) bs)
-    Implicit n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
+    QualTerm n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
+    QualType n -> (as,maybe bs (`Set.insert` bs) (qualModule n))
 
 -- | Attempt to load an interface set that contains all the module interfaces
 -- named in an import set.
