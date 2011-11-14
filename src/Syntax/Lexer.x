@@ -1,5 +1,6 @@
 {
 {-# OPTIONS_GHC -w #-}
+-- vim: filetype=haskell
 module Syntax.Lexer where
 
 import Syntax.ParserCore
