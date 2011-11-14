@@ -1,0 +1,4 @@
+module Prelude where
+{ primitive type Int  :: *
+; primitive type (->) :: * -> * -> *
+}
