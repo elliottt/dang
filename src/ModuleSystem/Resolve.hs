@@ -13,14 +13,19 @@ module ModuleSystem.Resolve (
   , resolveUses
   ) where
 
-import Interface (IsInterface)
-import ModuleSystem.Imports (UseSet)
-import QualName (QualName,Name,Namespace,qualName,primName,simpleName)
+import Interface (IsInterface,modContents)
+import ModuleSystem.Imports (UseSet,Use(..))
+import QualName
+    (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
+    ,qualNamespace,qualSymbol)
 import Syntax.AST
     (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
-    ,TypedDecl(..),DataDecl(..),Constr(..))
+    ,TypedDecl(..),DataDecl(..),Constr(..),Open(..))
 import TypeChecker.Types (forallData)
 import qualified Data.ClashMap as CM
+
+import Data.List (foldl')
+import qualified Data.Set as Set
 
 
 -- Name Resolution -------------------------------------------------------------
@@ -115,5 +120,46 @@ primTermNames  = declResolvedNames primTermName UsedTerm . primName
 
 -- UseSet Interface ------------------------------------------------------------
 
-resolveUses :: IsInterface iface => iface -> UseSet -> ResolvedNames
-resolveUses iface = undefined
+resolveUses :: IsInterface iset => iset -> UseSet -> ResolvedNames
+resolveUses iset = foldl' step CM.empty . Set.toList
+  where
+  step res (QualTerm qn) = resolveQualName UsedTerm qn `mergeResolvedNames` res
+  step res (QualType qn) = resolveQualName UsedType qn `mergeResolvedNames` res
+  step res (Explicit o)  = resolveOpen iset o `mergeResolvedNames` res
+
+-- | Resolve a qualified name into a used name.
+resolveQualName :: (QualName -> UsedName) -> QualName -> ResolvedNames
+resolveQualName k qn = CM.singleton (k qn) (Resolved 0 qn)
+
+-- | Resolve an open declaration into a set of resolved names.
+resolveOpen :: IsInterface iset => iset -> Open -> ResolvedNames
+resolveOpen iset o = rename resolved
+  where
+  syms                    = resolveModule iset (openMod o)
+  resolved | openHiding o = resolveHiding (openSymbols o) syms
+           | otherwise    = resolveOnly   (openSymbols o) syms
+  rename = case openAs o of
+    Nothing -> id
+    Just m' -> CM.mapKeys (changeNamespace (qualNamespace m'))
+
+-- | Resolve all symbols from a module as though they were opened with no
+-- qualifications.
+resolveModule :: IsInterface iset => iset -> QualName -> ResolvedNames
+resolveModule iface m =
+  CM.fromListWith mergeResolved (map step (modContents m iface))
+  where
+  step (qn,_) = (simpleName (qualSymbol qn), Resolved 0 qn)
+
+-- | Resolve an open declaration that hides some names, and optionally renames
+-- the module.
+resolveHiding :: [Name] -> ResolvedNames -> ResolvedNames
+resolveHiding ns syms = foldl step syms ns
+  where
+  step m n = CM.delete (simpleName n) m
+
+-- | Resolve an open declaration that selects some names, and optionally renames
+-- the module.
+resolveOnly :: [Name] -> ResolvedNames -> ResolvedNames
+resolveOnly ns syms = CM.intersection syms (CM.fromList (map step ns))
+  where
+  step n = (simpleName n,error "ModuleSystem.resolveOnly")
