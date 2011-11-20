@@ -16,6 +16,7 @@ $letter      = [a-zA-Z]
 $lowerletter = [a-z]
 $capletter   = [A-Z]
 $symbol      = [\- \> \< \: \*]
+$white_no_nl = $white # \n
 
 @conident  = $capletter [$letter $digit [_ \! \? \']]*
 @symident  = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
@@ -24,16 +25,26 @@ $symbol      = [\- \> \< \: \*]
 :-
 
 -- No nested comments, currently
-<0,comment> "{-" { begin comment }
-<comment> {
-  "-}"           { begin 0 }
-  .              ;
+<main,comment> {
+"{-"            { begin comment }
 }
 
-<0> {
+<comment> {
+"-}"            { begin main }
+.               ;
+}
+
+<0,layout> {
+$white*         { endLayout }
+}
+
+<main> {
+
+-- start layout
+\n              { begin layout }
 
 -- skip whitespace
-$white+         ;
+$white_no_nl+   ;
 "--".*$         ;
 
 \\              { reserved }
@@ -91,7 +102,7 @@ scan :: Parser Lexeme
 scan  = do
   inp@(pos,_,_) <- alexGetInput
   sc            <- alexGetStartCode
-  case alexScan inp sc of
+  case alexScan inp (fromEnum sc) of
     AlexEOF -> return $! Lexeme
       { lexPos   = pos
       , lexToken = TEof
@@ -142,8 +153,16 @@ alexSetStartCode code = do
   s <- get
   set $! s { psLexCode = code }
 
+begin :: Int -> AlexAction (Parser Lexeme)
 begin code _ _ = alexSetStartCode code >> scan
 
+endLayout :: AlexAction (Parser Lexeme)
+endLayout (pos,_,_) len = do
+  alexSetStartCode main
+  return $! Lexeme
+    { lexPos   = pos
+    , lexToken = TIndent len
+    }
 
 -- | For testing the lexer within ghci.
 testLexer :: Parser [Lexeme]

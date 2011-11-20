@@ -58,6 +58,7 @@ data Token
   | TSymIdent String
   | TOperIdent String
   | TInt Integer
+  | TIndent !Int
   | TEof
     deriving (Eq,Show)
 
