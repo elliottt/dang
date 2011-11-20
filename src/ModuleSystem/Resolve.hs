@@ -131,6 +131,9 @@ resolveUses iset = foldl' step CM.empty . Set.toList
 resolveQualName :: (QualName -> UsedName) -> QualName -> ResolvedNames
 resolveQualName k qn = CM.singleton (k qn) (Resolved 0 qn)
 
+resolveOpen = undefined
+
+{-
 -- | Resolve an open declaration into a set of resolved names.
 resolveOpen :: IsInterface iset => iset -> Open -> ResolvedNames
 resolveOpen iset o = rename resolved
@@ -163,3 +166,4 @@ resolveOnly :: [Name] -> ResolvedNames -> ResolvedNames
 resolveOnly ns syms = CM.intersection syms (CM.fromList (map step ns))
   where
   step n = (simpleName n,error "ModuleSystem.resolveOnly")
+  -}
