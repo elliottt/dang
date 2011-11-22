@@ -58,9 +58,12 @@ data Token
   | TSymIdent String
   | TOperIdent String
   | TInt Integer
-  | TIndent !Int
   | TEof
     deriving (Eq,Show)
+
+isEof :: Token -> Bool
+isEof TEof = True
+isEof _    = False
 
 data Lexeme = Lexeme
   { lexPos   :: !Position
@@ -77,12 +80,17 @@ data ErrorType
 
 data Error = Error ErrorType String Position deriving Show
 
+type Level = Int
+
 data ParserState = ParserState
   { psInput   :: !L.Text
   , psChar    :: !Char
   , psPos     :: !Position
   , psLexCode :: !Int
   , psIndex   :: !Index
+  , psLevels  :: [Level]
+  , psBegin   :: Bool
+  , psDelay   :: Maybe Lexeme
   } deriving Show
 
 initParserState :: FilePath -> L.Text -> ParserState
@@ -92,6 +100,9 @@ initParserState path bs = ParserState
   , psPos     = initPosition path
   , psLexCode = 0
   , psIndex   = 0
+  , psLevels  = [0]
+  , psBegin   = False
+  , psDelay   = Nothing
   }
 
 newtype Parser a = Parser
@@ -143,9 +154,110 @@ runParser path bs m =
         (raiseP ("definition errors: " ++ show errs) nullPosition)
     return res
 
+testFile :: Parser a -> FilePath -> IO (Either Error a)
+testFile p file = testParser p `fmap` readFile file
+
 -- | For testing parsers within ghci.
 testParser :: Parser a -> String -> Either Error a
 testParser p str = runParser "<interactive>" (L.pack str) p
+
+
+-- Layout Processing -----------------------------------------------------------
+
+layout :: Parser Lexeme -> Parser Lexeme
+layout scan = loop
+  where
+  open  pos = Lexeme { lexPos = pos, lexToken = TReserved "{" }
+  sep   pos = Lexeme { lexPos = pos, lexToken = TReserved ";" }
+  close pos = Lexeme { lexPos = pos, lexToken = TReserved "}" }
+
+  loop = checkDelayed >>= \mb -> case mb of
+
+    -- nothing delayed, proceed.
+    Nothing -> do
+      l <- scan
+      let tok = lexToken l
+          pos = lexPos l
+
+      -- act on a new layout level
+      level <- getLevel
+      ps    <- get
+      l'    <- case psBegin ps of
+
+        _res | isEof tok -> delayLexeme l >> return (close pos)
+
+        False -> case compare (posCol pos) level of
+          EQ -> delayLexeme l >> return (sep pos)
+          GT -> return l
+          LT -> do
+            delayLexeme l
+            popLevel
+            return (close pos)
+
+        True -> do
+          clearBegin
+          pushLevel (posCol pos)
+          delayLexeme l
+          return (open pos)
+
+      -- schedule a new layout level
+      when (beginsLayout tok) nextBeginsLayout
+
+      return l'
+
+    -- not common that a token gets delayed by a layout token
+    Just l -> return l
+
+checkDelayed :: Parser (Maybe Lexeme)
+checkDelayed  = do
+  ps <- get
+  case psDelay ps of
+    Nothing -> return Nothing
+    mb      -> do
+      set ps { psDelay = Nothing }
+      return mb
+
+delayLexeme :: Lexeme -> Parser ()
+delayLexeme l = do
+  ps <- get
+  set ps { psDelay = Just l }
+
+beginsLayout :: Token -> Bool
+beginsLayout tok = case tok of
+  TReserved "let"   -> True
+  TReserved "do"    -> True
+  TReserved "where" -> True
+  _                 -> False
+
+-- | Signal that the next token begins a level of indentation.
+nextBeginsLayout :: Parser ()
+nextBeginsLayout  = do
+  ps <- get
+  set ps { psBegin = True }
+
+clearBegin :: Parser ()
+clearBegin  = do
+  ps <- get
+  set ps { psBegin = False }
+
+getLevel :: Parser Level
+getLevel  = do
+  ps <- get
+  case psLevels ps of
+    l:_ -> return l
+    []  -> fail "Syntax.ParserCore.getLevel: the unexpected happened"
+
+pushLevel :: Level -> Parser ()
+pushLevel l = do
+  ps <- get
+  set $! ps { psLevels = l : psLevels ps }
+
+popLevel :: Parser ()
+popLevel  = do
+  ps <- get
+  case psLevels ps of
+    _:ls -> set ps { psLevels = ls }
+    []   -> fail "Syntax.ParserCore.popLevel: the unexpected happened"
 
 
 -- Parsed Syntax ---------------------------------------------------------------

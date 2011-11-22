@@ -16,7 +16,6 @@ $letter      = [a-zA-Z]
 $lowerletter = [a-z]
 $capletter   = [A-Z]
 $symbol      = [\- \> \< \: \*]
-$white_no_nl = $white # \n
 
 @conident  = $capletter [$letter $digit [_ \! \? \']]*
 @symident  = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
@@ -30,21 +29,14 @@ $white_no_nl = $white # \n
 }
 
 <comment> {
-"-}"            { begin main }
+"-}"            { begin 0 }
 .               ;
 }
 
-<0,layout> {
-$white*         { endLayout }
-}
-
-<main> {
-
--- start layout
-\n              { begin layout }
+<0> {
 
 -- skip whitespace
-$white_no_nl+   ;
+$white          ;
 "--".*$         ;
 
 \\              { reserved }
@@ -53,9 +45,6 @@ $white_no_nl+   ;
 ")"             { reserved }
 "let"           { reserved }
 "in"            { reserved }
-"{"             { reserved }
-"}"             { reserved }
-";"             { reserved }
 ","             { reserved }
 "."             { reserved }
 "=>"            { reserved }
@@ -156,14 +145,6 @@ alexSetStartCode code = do
 begin :: Int -> AlexAction (Parser Lexeme)
 begin code _ _ = alexSetStartCode code >> scan
 
-endLayout :: AlexAction (Parser Lexeme)
-endLayout (pos,_,_) len = do
-  alexSetStartCode main
-  return $! Lexeme
-    { lexPos   = pos
-    , lexToken = TIndent len
-    }
-
 -- | For testing the lexer within ghci.
 testLexer :: Parser [Lexeme]
 testLexer  = do
@@ -171,6 +152,13 @@ testLexer  = do
   if lexToken lex == TEof
     then return []
     else (lex :) `fmap` testLexer
+
+testLexerLayout :: Parser [Lexeme]
+testLexerLayout  = do
+  lex <- layout scan
+  if lexToken lex == TEof
+    then return []
+    else (lex :) `fmap` testLexerLayout
 
 }
 

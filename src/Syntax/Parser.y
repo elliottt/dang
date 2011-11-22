@@ -276,7 +276,7 @@ akind :: { Kind }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
-lexer k = k =<< scan
+lexer k = k =<< layout scan
 
 happyError :: Parser a
 happyError  = raiseP "Happy error" nullPosition
