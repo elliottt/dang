@@ -35,6 +35,12 @@ instance Serialize QualName where
   get = getQualName
   put = putQualName
 
+putName :: Putter Name
+putName  = put
+
+getName :: Get Name
+getName  = get
+
 getQualName :: Get QualName
 getQualName  = getWord8 >>= \tag ->
   case tag of
