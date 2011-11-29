@@ -18,6 +18,7 @@ import MonadLib
 import qualified Data.Text.Lazy as L
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Sequence as Seq
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
@@ -80,7 +81,13 @@ data ErrorType
 
 data Error = Error ErrorType String Position deriving Show
 
-type Level = Int
+data Level = Level
+  { levBlock  :: Bool
+  , levIndent :: !Int
+  } deriving Show
+
+zeroLevel :: Level
+zeroLevel  = Level { levBlock = False, levIndent = 0 }
 
 data ParserState = ParserState
   { psInput   :: !L.Text
@@ -90,7 +97,8 @@ data ParserState = ParserState
   , psIndex   :: !Index
   , psLevels  :: [Level]
   , psBegin   :: Bool
-  , psDelay   :: Maybe Lexeme
+  , psBlock   :: Bool
+  , psDelay   :: Seq.Seq Lexeme
   } deriving Show
 
 initParserState :: FilePath -> L.Text -> ParserState
@@ -100,9 +108,10 @@ initParserState path bs = ParserState
   , psPos     = initPosition path
   , psLexCode = 0
   , psIndex   = 0
-  , psLevels  = [0]
+  , psLevels  = [zeroLevel]
   , psBegin   = False
-  , psDelay   = Nothing
+  , psBlock   = False
+  , psDelay   = Seq.empty
   }
 
 newtype Parser a = Parser
@@ -184,24 +193,31 @@ layout scan = loop
       ps    <- get
       l'    <- case psBegin ps of
 
-        _res | isEof tok -> delayLexeme l >> return (close pos)
+        _res | isEof tok -> do
+          ls <- getLevels
+          let c = close pos
+          -- we never close the last level, and we close the current one, so 2.
+          replicateM_ (length ls - 2) (delayLexeme c)
+          delayLexeme l
+          return c
 
-        False -> case compare (posCol pos) level of
+        False -> case compare (posCol pos) (levIndent level) of
           EQ -> delayLexeme l >> return (sep pos)
           GT -> return l
           LT -> do
-            delayLexeme l
             popLevel
+            when (levBlock level) (delayLexeme (sep pos))
+            delayLexeme l
             return (close pos)
 
         True -> do
-          clearBegin
           pushLevel (posCol pos)
+          clearBegin
           delayLexeme l
           return (open pos)
 
       -- schedule a new layout level
-      when (beginsLayout tok) nextBeginsLayout
+      when (beginsLayout tok) (nextBeginsLayout tok)
 
       return l'
 
@@ -211,46 +227,59 @@ layout scan = loop
 checkDelayed :: Parser (Maybe Lexeme)
 checkDelayed  = do
   ps <- get
-  case psDelay ps of
-    Nothing -> return Nothing
-    mb      -> do
-      set ps { psDelay = Nothing }
-      return mb
+  case Seq.viewl (psDelay ps) of
+    Seq.EmptyL  -> return Nothing
+    l Seq.:< ls -> do
+      set ps { psDelay = ls }
+      return (Just l)
 
 delayLexeme :: Lexeme -> Parser ()
 delayLexeme l = do
   ps <- get
-  set ps { psDelay = Just l }
+  set ps { psDelay = psDelay ps Seq.|> l }
 
 beginsLayout :: Token -> Bool
 beginsLayout tok = case tok of
-  TReserved "let"   -> True
-  TReserved "do"    -> True
-  TReserved "where" -> True
-  _                 -> False
+  TReserved "let"     -> True
+  TReserved "do"      -> True
+  TReserved "where"   -> True
+  TReserved "public"  -> True
+  TReserved "private" -> True
+  _                   -> False
+
+opensBlock :: Token -> Bool
+opensBlock tok = case tok of
+  TReserved "public"  -> True
+  TReserved "private" -> True
+  TReserved "where"   -> True
+  _                   -> False
 
 -- | Signal that the next token begins a level of indentation.
-nextBeginsLayout :: Parser ()
-nextBeginsLayout  = do
+nextBeginsLayout :: Token -> Parser ()
+nextBeginsLayout tok = do
   ps <- get
-  set ps { psBegin = True }
+  set ps { psBegin = True, psBlock = opensBlock tok }
 
 clearBegin :: Parser ()
 clearBegin  = do
   ps <- get
-  set ps { psBegin = False }
+  set ps { psBegin = False, psBlock = False }
+
+getLevels :: Parser [Level]
+getLevels  = psLevels `fmap` get
 
 getLevel :: Parser Level
 getLevel  = do
-  ps <- get
-  case psLevels ps of
+  ls <- getLevels
+  case ls of
     l:_ -> return l
     []  -> fail "Syntax.ParserCore.getLevel: the unexpected happened"
 
-pushLevel :: Level -> Parser ()
+pushLevel :: Int -> Parser ()
 pushLevel l = do
   ps <- get
-  set $! ps { psLevels = l : psLevels ps }
+  let lev = Level { levIndent = l, levBlock = psBlock ps }
+  set $! ps { psLevels = lev : psLevels ps }
 
 popLevel :: Parser ()
 popLevel  = do

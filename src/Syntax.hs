@@ -19,7 +19,7 @@ loadModule path = do
   m <- parseSource path source
   logInfo "Parsed module"
   logDebug (show m)
-  logInfo (pretty m)
+  logInfo ('\n' : pretty m)
   return m
 
 parseSource :: FilePath -> L.Text -> Dang Module

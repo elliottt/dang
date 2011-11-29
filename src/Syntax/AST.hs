@@ -24,7 +24,7 @@ data Module = Module
 
 instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
-       $+$ declBlock decls
+       $+$ vcat decls
     where
     decls = map       ppr         (modOpens m)
          ++ map       ppr         (modPrimTypes m)
@@ -157,8 +157,9 @@ data DataDecl = DataDecl
   } deriving (Show)
 
 instance Pretty DataDecl where
-  pp _ d = text "data" <+> ppr (dataName d) <+> vcat (map ppr ps)
-       <+> constrBlock cs
+  pp _ d = text "data" <+> ppr (dataName d)
+       <+> vcat (map ppr ps) <+> text "where"
+       $+$ nest 2 (constrBlock cs)
     where
     Forall ps cs = dataConstrs d
 
@@ -172,22 +173,22 @@ instance DefinesName DataDecl where
 -- Data Constructors -----------------------------------------------------------
 
 data Constr = Constr
-  { constrName   :: Name
-  , constrParams :: [Type]
+  { constrName :: Name
+  , constrType :: Type
   } deriving (Show)
 
 constrBlock :: [Constr] -> Doc
 constrBlock []     = empty
-constrBlock (c:cs) = foldl step (char '=' <+> ppr c) cs
+constrBlock (c:cs) = foldl step (ppr c) cs
   where
-  step d k = d $+$ char '|' <+> ppr k
+  step d constr = d $+$ ppr constr
 
 instance Pretty Constr where
-  pp _ c = ppr (constrName c) <+> ppList 1 (constrParams c)
+  pp _ c = ppr (constrName c) <+> text "::" <+> ppr (constrType c)
 
 instance FreeVars Constr where
   freeVars c =
-    Set.delete (simpleName (constrName c)) (freeVars (constrParams c))
+    Set.delete (simpleName (constrName c)) (freeVars (constrType c))
 
 instance DefinesName Constr where
   definedName = constrName

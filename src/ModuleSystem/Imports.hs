@@ -93,7 +93,7 @@ instance UsesModules DataDecl where
   getUses = getUses . dataConstrs
 
 instance UsesModules Constr where
-  getUses = getUses . constrParams
+  getUses = getUses . constrType
 
 instance UsesModules a => UsesModules (Forall a) where
   getUses = getUses . forallData

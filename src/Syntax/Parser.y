@@ -168,23 +168,20 @@ data :: { PDecls }
 : data_decl { mkDataDecl $1 }
 
 data_decl :: { DataDecl }
-: 'data' CONIDENT tparams data_decl_body
+: 'data' CONIDENT tparams 'where' '{' constrs '}'
   { DataDecl
     { dataName    = $2
-    , dataConstrs = Forall (reverse $3) (reverse $4)
+    , dataConstrs = Forall (reverse $3) (reverse $6)
     }
   }
 
-data_decl_body :: { [Constr] }
-: {- empty -}  { [] }
-| '=' constrs  { $2 }
-
 constrs :: { [Constr] }
-: constrs '|' constr { $3:$1 }
+: constrs ';' constr { $3:$1 }
 | constr             { [$1] }
+| {- empty -}        { [] }
 
 constr :: { Constr }
-: CONIDENT atypes { Constr { constrName = $1, constrParams = $2 } }
+: CONIDENT '::' type { Constr { constrName = $1, constrType = $3 } }
 
 
 -- Terms -----------------------------------------------------------------------
