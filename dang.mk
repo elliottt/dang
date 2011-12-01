@@ -33,7 +33,9 @@ SLASH_MODS := \
     Main \
     ModuleSystem \
     ModuleSystem/Imports \
+    ModuleSystem/Interface \
     ModuleSystem/Resolve \
+    ModuleSystem/Types \
     Pretty \
     Prim \
     QualName \

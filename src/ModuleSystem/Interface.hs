@@ -5,6 +5,7 @@ module ModuleSystem.Interface where
 
 import Dang.IO (withROBinaryFile,withWOBinaryFile)
 import Dang.Monad (Dang,io)
+import ModuleSystem.Types (UsedName(..))
 import QualName
 import Syntax.AST
 import TypeChecker.Types
@@ -29,6 +30,16 @@ class HasInterface i where
   lookupPrimTerm :: Lookup i PrimTerm
 
 
+-- Defined Symbols -------------------------------------------------------------
+
+-- | A typed symbol.
+data Symbol = Symbol
+  { symExternal :: Name -- ^ External name
+  , symInternal :: Name -- ^ Object symbol name, fully mangled
+  , symType     :: Scheme
+  } deriving (Show)
+
+
 -- Interfaces ------------------------------------------------------------------
 
 type NameMap = Map.Map QualName
@@ -43,12 +54,30 @@ data Interface = Interface
   , ifacePrimTerms :: NameMap PrimTerm
   } deriving (Show)
 
--- | A typed symbol.
-data Symbol = Symbol
-  { symExternal :: Name -- ^ External name
-  , symInternal :: Name -- ^ Object symbol name, fully mangled
-  , symType     :: Scheme
-  } deriving (Show)
+symbolNames :: Interface -> [UsedName]
+symbolNames  = map UsedTerm . Map.keys . ifaceSymbols
+
+dataNames :: Interface -> [UsedName]
+dataNames iface = Map.foldlWithKey step [] (ifaceDatas iface)
+  where
+  ns           = qualNamespace (ifaceName iface)
+  step us qn d = UsedType qn : cs ++ us
+    where
+    cs = map (UsedTerm . qualName ns . constrName) (forallData (dataConstrs d))
+
+primTypeNames :: Interface -> [UsedName]
+primTypeNames  = map UsedType . Map.keys . ifacePrimTypes
+
+primTermNames :: Interface -> [UsedName]
+primTermNames  = map UsedTerm . Map.keys . ifacePrimTerms
+
+ifaceNames :: Interface -> [UsedName]
+ifaceNames iface = concat
+  [ symbolNames   iface
+  , dataNames     iface
+  , primTypeNames iface
+  , primTermNames iface
+  ]
 
 instance HasInterface Interface where
   lookupSymbol   qn = Map.lookup qn . ifaceSymbols

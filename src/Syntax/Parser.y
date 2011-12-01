@@ -5,6 +5,7 @@
 
 module Syntax.Parser where
 
+import ModuleSystem.Types
 import QualName
 import Syntax.AST
 import Syntax.Lexer
@@ -31,7 +32,6 @@ import MonadLib
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
-  '|'  { Lexeme $$ (TReserved "|")  }
 
 -- special operators
   '->' { Lexeme $$ (TOperIdent "->") }
@@ -136,71 +136,86 @@ top_fun_bind :: { UntypedDecl }
   |           fun_bind { $1 { untypedExport = Public } }
 
 type_bind :: { PDecls }
-: IDENT '::' qual_type { mkTypeDecl $1 $3 }
+  : IDENT '::' qual_type { mkTypeDecl $1 $3 }
 
 fun_bind :: { UntypedDecl }
-: IDENT arg_list '=' exp { UntypedDecl Private $1 ($2 (MTerm $4)) }
-
-open :: { Open }
-: 'open' mod_name open_body { $3 $2 }
-
-open_body :: { QualName -> Open }
-: 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
-| open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
-
-open_tail :: { (Bool,[Name]) }
-: {- empty -}                { (True, []) }
-| '(' mod_names ')'          { (False, $2) }
-| 'hiding' '(' mod_names ')' { (True, $3) }
-
-mod_names :: { [Name] }
-: IDENT               { [$1] }
-| mod_names ',' IDENT { $3:$1 }
+  : IDENT arg_list '=' exp { UntypedDecl Private $1 ($2 (MTerm $4)) }
 
 arg_list :: { Match -> Match }
-: arg_list pat { $1 . MPat $2 }
-| {- empty -}  { id }
+  : arg_list pat { $1 . MPat $2 }
+  | {- empty -}  { id }
+
+
+-- Module Imports --------------------------------------------------------------
+
+open :: { Open }
+  : 'open' mod_name open_body { $3 $2 }
+
+open_body :: { QualName -> Open }
+  : 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
+  | open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
+
+open_tail :: { (Bool,[OpenSymbol]) }
+  : {- empty -}                { (True,  []) }
+  | '(' open_list ')'          { (False, $2) }
+  | 'hiding' '(' open_list ')' { (True,  $3) }
+
+open_list :: { [OpenSymbol] }
+  : open_sym               { [$1] }
+  | open_list ',' open_sym { $3:$1 }
+
+open_sym :: { OpenSymbol }
+  : IDENT                   { OpenTerm $1 }
+  | CONIDENT open_type_tail { OpenType $1 $2 }
+
+open_type_tail :: { [Name] }
+  : {- empty -}               { [] }
+  | '(' open_type_members ')' { reverse $2 }
+
+open_type_members :: { [Name] }
+  : CONIDENT                       { [$1] }
+  | open_type_members ',' CONIDENT { $3 : $1 }
 
 
 -- Data Declarations -----------------------------------------------------------
 
 data :: { PDecls }
-: data_decl { mkDataDecl $1 }
+  : data_decl { mkDataDecl $1 }
 
 data_decl :: { DataDecl }
-: 'data' CONIDENT tparams 'where' '{' constrs '}'
-  { DataDecl
-    { dataName    = $2
-    , dataConstrs = Forall (reverse $3) (reverse $6)
+  : 'data' CONIDENT tparams 'where' '{' constrs '}'
+    { DataDecl
+      { dataName    = $2
+      , dataConstrs = Forall (reverse $3) (reverse $6)
+      }
     }
-  }
 
 constrs :: { [Constr] }
-: constrs ';' constr { $3:$1 }
-| constr             { [$1] }
-| {- empty -}        { [] }
+  : constrs ';' constr { $3:$1 }
+  | constr             { [$1] }
+  | {- empty -}        { [] }
 
 constr :: { Constr }
-: CONIDENT '::' type { Constr { constrName = $1, constrType = $3 } }
+  : CONIDENT '::' type { Constr { constrName = $1, constrType = $3 } }
 
 
 -- Terms -----------------------------------------------------------------------
 
 exp :: { Term }
-: '\\' abs_args '->' lexp { Abs ($2 (MTerm $4)) }
-| lexp                    { $1 }
+  : '\\' abs_args '->' lexp { Abs ($2 (MTerm $4)) }
+  | lexp                    { $1 }
 
 abs_args :: { Match -> Match  }
-: abs_args pat { $1 . MPat $2 }
-| pat          { MPat $1  }
+  : abs_args pat { $1 . MPat $2 }
+  | pat          { MPat $1  }
 
 pat :: { Pat }
-: IDENT { PVar $1 }
+  : IDENT { PVar $1 }
 
 lexp :: { Term }
-: 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
-                                    processBindings (parsedPDecls $3) }
-| fexp                          { $1 }
+  : 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
+                                      processBindings (parsedPDecls $3) }
+  | fexp                          { $1 }
 
 fexp :: { Term }
   : aexp aexp_list { apply $1 (reverse $2) }
@@ -227,10 +242,6 @@ type_tail :: { Type -> Type }
 apptype :: { [Type] }
   : apptype atype { $2 : $1 }
   | atype         { [$1] }
-
-atypes :: { [Type] }
-: atypes atype { $2:$1 }
-|              { [] }
 
 atype :: { Type }
   : IDENT        { uvar (TParam 0 True $1 setSort) }

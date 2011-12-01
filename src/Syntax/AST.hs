@@ -43,7 +43,7 @@ data Open = Open
   { openMod     :: QualName
   , openAs      :: (Maybe QualName)
   , openHiding  :: Bool
-  , openSymbols :: [Name]
+  , openSymbols :: [OpenSymbol]
   } deriving (Eq,Ord,Show)
 
 instance Pretty Open where
@@ -53,7 +53,19 @@ instance Pretty Open where
     hiding | openHiding o && null (openSymbols o) = empty
            | openHiding o                         = text "hiding" <+> symList
            | otherwise                            = symList
-    symList = parens (commas (map (pp 0) (openSymbols o)))
+    symList = parens (commas (map ppr (openSymbols o)))
+
+
+data OpenSymbol
+  = OpenTerm Name
+  | OpenType Name [Name]
+    deriving (Eq,Ord,Show)
+
+instance Pretty OpenSymbol where
+  pp _ os = case os of
+    OpenTerm n    -> ppr n
+    OpenType n [] -> ppr n
+    OpenType n ns -> ppr n <> parens (commas (map ppr ns))
 
 
 data Export = Public | Private

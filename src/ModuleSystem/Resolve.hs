@@ -13,14 +13,15 @@ module ModuleSystem.Resolve (
   , resolveUses
   ) where
 
-import Interface (IsInterface,modContents)
+import ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
 import ModuleSystem.Imports (UseSet,Use(..))
+import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName)
 import QualName
     (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
     ,qualNamespace,qualSymbol)
 import Syntax.AST
     (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
-    ,TypedDecl(..),DataDecl(..),Constr(..),Open(..))
+    ,TypedDecl(..),DataDecl(..),Constr(..),Open(..),OpenSymbol(..))
 import TypeChecker.Types (forallData)
 import qualified Data.ClashMap as CM
 
@@ -37,15 +38,10 @@ type ResolvedNames = CM.ClashMap UsedName Resolved
 -- | Lexical scope numbering.
 type Level = Int
 
-data UsedName
-  = UsedType QualName
-  | UsedTerm QualName
-    deriving (Ord,Show,Eq)
-
 -- | Names resolved by an interface, or function environment.
 data Resolved
-  = Resolved Level QualName -- ^ A resolved, top-level name
-  | Bound Name              -- ^ A resolved bound name
+  = Resolved Level UsedName -- ^ A resolved, top-level name
+  | Bound UsedName          -- ^ A resolved bound name
     deriving (Eq,Show)
 
 -- | True when the resolved name is a bound variable.
@@ -89,16 +85,19 @@ modResolvedNames m = CM.fromList
 -- | Extract the simple and qualified names that a declaration introduces.
 declResolvedNames :: (a -> Name) -> (QualName -> UsedName) -> (Name -> QualName)
                   -> (a -> [(UsedName,Resolved)])
-declResolvedNames simple k qualify d = [ (k (simpleName n), res), (k qn, res) ]
+declResolvedNames simple k qualify d =
+  [ (k (simpleName n), res), (u, res) ]
   where
   n   = simple d
-  qn  = qualify n
-  res = Resolved 0 qn
+  u   = k (qualify n)
+  res = Resolved 0 u
 
+-- | The resolved names from a data declaration.
 dataDeclNames :: Namespace -> DataDecl -> [(UsedName,Resolved)]
 dataDeclNames ns d = declResolvedNames dataName UsedType (qualName ns) d
                   ++ concatMap (constrNames ns) (forallData (dataConstrs d))
 
+-- | The resolved names from a data constructor.
 constrNames :: Namespace -> Constr -> [(UsedName,Resolved)]
 constrNames  = declResolvedNames constrName UsedTerm . qualName
 
@@ -120,7 +119,8 @@ primTermNames  = declResolvedNames primTermName UsedTerm . primName
 
 -- UseSet Interface ------------------------------------------------------------
 
-resolveUses :: IsInterface iset => iset -> UseSet -> ResolvedNames
+-- | Resolve a usage set using a set of interfaces that satisfy it.
+resolveUses :: InterfaceSet -> UseSet -> ResolvedNames
 resolveUses iset = foldl' step CM.empty . Set.toList
   where
   step res (QualTerm qn) = resolveQualName UsedTerm qn `mergeResolvedNames` res
@@ -129,41 +129,58 @@ resolveUses iset = foldl' step CM.empty . Set.toList
 
 -- | Resolve a qualified name into a used name.
 resolveQualName :: (QualName -> UsedName) -> QualName -> ResolvedNames
-resolveQualName k qn = CM.singleton (k qn) (Resolved 0 qn)
+resolveQualName k qn = CM.singleton (k qn) (Resolved 0 (k qn))
 
-resolveOpen = undefined
-
-{-
 -- | Resolve an open declaration into a set of resolved names.
-resolveOpen :: IsInterface iset => iset -> Open -> ResolvedNames
+resolveOpen :: InterfaceSet -> Open -> ResolvedNames
 resolveOpen iset o = rename resolved
   where
+  ns                      = qualNamespace (openMod o)
   syms                    = resolveModule iset (openMod o)
-  resolved | openHiding o = resolveHiding (openSymbols o) syms
-           | otherwise    = resolveOnly   (openSymbols o) syms
+  resolved | openHiding o = resolveHiding ns (openSymbols o) syms
+           | otherwise    = resolveOnly   ns (openSymbols o) syms
   rename = case openAs o of
     Nothing -> id
-    Just m' -> CM.mapKeys (changeNamespace (qualNamespace m'))
+    Just m' -> CM.mapKeys (mapUsedName (changeNamespace (qualNamespace m')))
 
 -- | Resolve all symbols from a module as though they were opened with no
 -- qualifications.
-resolveModule :: IsInterface iset => iset -> QualName -> ResolvedNames
-resolveModule iface m =
-  CM.fromListWith mergeResolved (map step (modContents m iface))
+resolveModule :: InterfaceSet -> QualName -> ResolvedNames
+resolveModule iset m = case lookupInterface m iset of
+  Just iface ->
+    CM.fromListWith mergeResolved (map step (ifaceNames iface))
+  Nothing    -> error "ModuleSystem.Resolve.resolveModule: inconceivable"
   where
-  step (qn,_) = (simpleName (qualSymbol qn), Resolved 0 qn)
+  step u = (simpleUsedName u, Resolved 0 u)
 
 -- | Resolve an open declaration that hides some names, and optionally renames
 -- the module.
-resolveHiding :: [Name] -> ResolvedNames -> ResolvedNames
-resolveHiding ns syms = foldl step syms ns
+resolveHiding :: Namespace -> [OpenSymbol] -> ResolvedNames -> ResolvedNames
+resolveHiding ns os syms = foldl step syms os
   where
-  step m n = CM.delete (simpleName n) m
+  step m o = case o of
+    OpenTerm n    -> CM.delete (UsedTerm (simpleName n)) m
+    OpenType n cs ->
+      let keys = UsedType (simpleName n) : map (UsedTerm . simpleName) cs
+       in CM.filterWithKey (\k _ -> k `elem` keys) m
 
 -- | Resolve an open declaration that selects some names, and optionally renames
 -- the module.
-resolveOnly :: [Name] -> ResolvedNames -> ResolvedNames
-resolveOnly ns syms = CM.intersection syms (CM.fromList (map step ns))
+resolveOnly :: Namespace -> [OpenSymbol] -> ResolvedNames -> ResolvedNames
+resolveOnly ns os syms = CM.intersection syms (CM.fromList (concatMap step os))
   where
-  step n = (simpleName n,error "ModuleSystem.resolveOnly")
-  -}
+  step sym = case sym of
+    OpenTerm n    -> [openTerm ns n]
+    OpenType t cs -> openType ns t : map (openTerm ns) cs
+
+-- | Construct an element of a clash map that resolves a used name to its
+-- resolved name.
+openTerm :: Namespace -> Name -> (UsedName,Resolved)
+openTerm ns n =
+  (UsedTerm (simpleName n), Resolved 0 (UsedTerm (qualName ns n)))
+
+-- | Construct an element of a clash map that resolves a used name to its
+-- resolved name.
+openType :: Namespace -> Name -> (UsedName,Resolved)
+openType ns n =
+  (UsedType (simpleName n), Resolved 0 (UsedTerm (qualName ns n)))
