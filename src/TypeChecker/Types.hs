@@ -212,20 +212,16 @@ toScheme :: Type -> Scheme
 toScheme  = Forall []
 
 -- | Things with quantified variables.
-data Forall a = Forall [TParam] a
-    deriving (Show,Eq,Ord)
+data Forall a = Forall
+  { forallParams :: [TParam]
+  , forallData   :: a
+  } deriving (Show,Eq,Ord)
 
 putForall :: Putter a -> Putter (Forall a)
 putForall p (Forall ps a) = putListOf putTParam ps >> p a
 
 getForall :: Get a -> Get (Forall a)
 getForall a = Forall <$> getListOf getTParam <*> a
-
-forallParams :: Forall a -> [TParam]
-forallParams (Forall ps _) = ps
-
-forallData :: Forall a -> a
-forallData (Forall _ a) = a
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = vars <+> pp 0 a

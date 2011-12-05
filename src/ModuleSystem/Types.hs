@@ -14,3 +14,7 @@ mapUsedName f (UsedTerm qn) = UsedTerm (f qn)
 
 simpleUsedName :: UsedName -> UsedName
 simpleUsedName  = mapUsedName (simpleName . qualSymbol)
+
+usedQualName :: UsedName -> QualName
+usedQualName (UsedType qn) = qn
+usedQualName (UsedTerm qn) = qn

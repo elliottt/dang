@@ -92,6 +92,13 @@ newtype InterfaceSet = InterfaceSet
   { getInterfaces :: NameMap Interface
   } deriving (Show)
 
+emptyInterfaceSet :: InterfaceSet
+emptyInterfaceSet  = InterfaceSet Map.empty
+
+addInterface :: Interface -> InterfaceSet -> InterfaceSet
+addInterface iface (InterfaceSet iset) =
+  InterfaceSet (Map.insert (ifaceName iface) iface iset)
+
 lookupInterface :: QualName -> InterfaceSet -> Maybe Interface
 lookupInterface qn (InterfaceSet iset) = Map.lookup qn iset
 

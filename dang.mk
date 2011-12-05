@@ -35,6 +35,7 @@ SLASH_MODS := \
     ModuleSystem/Imports \
     ModuleSystem/Interface \
     ModuleSystem/Resolve \
+    ModuleSystem/ScopeCheck \
     ModuleSystem/Types \
     Pretty \
     Prim \

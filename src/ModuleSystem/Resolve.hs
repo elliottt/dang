@@ -2,6 +2,7 @@ module ModuleSystem.Resolve (
 
     -- * Resolved Names
     ResolvedNames
+  , emptyResolvedNames
   , mergeResolvedNames
   , Resolved(..), isBound, shadows
   , mergeResolved
@@ -15,7 +16,7 @@ module ModuleSystem.Resolve (
 
 import ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
 import ModuleSystem.Imports (UseSet,Use(..))
-import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName)
+import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
 import QualName
     (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
     ,qualNamespace,qualSymbol)
@@ -35,13 +36,16 @@ import qualified Data.Set as Set
 -- import environment.
 type ResolvedNames = CM.ClashMap UsedName Resolved
 
+emptyResolvedNames :: ResolvedNames
+emptyResolvedNames  = CM.empty
+
 -- | Lexical scope numbering.
 type Level = Int
 
 -- | Names resolved by an interface, or function environment.
 data Resolved
-  = Resolved Level UsedName -- ^ A resolved, top-level name
-  | Bound UsedName          -- ^ A resolved bound name
+  = Resolved Level QualName -- ^ A resolved, top-level name
+  | Bound Name              -- ^ A resolved bound name
     deriving (Eq,Show)
 
 -- | True when the resolved name is a bound variable.
@@ -89,8 +93,9 @@ declResolvedNames simple k qualify d =
   [ (k (simpleName n), res), (u, res) ]
   where
   n   = simple d
-  u   = k (qualify n)
-  res = Resolved 0 u
+  qn  = qualify n
+  u   = k qn
+  res = Resolved 0 qn
 
 -- | The resolved names from a data declaration.
 dataDeclNames :: Namespace -> DataDecl -> [(UsedName,Resolved)]
@@ -129,7 +134,7 @@ resolveUses iset = foldl' step CM.empty . Set.toList
 
 -- | Resolve a qualified name into a used name.
 resolveQualName :: (QualName -> UsedName) -> QualName -> ResolvedNames
-resolveQualName k qn = CM.singleton (k qn) (Resolved 0 (k qn))
+resolveQualName k qn = CM.singleton (k qn) (Resolved 0 qn)
 
 -- | Resolve an open declaration into a set of resolved names.
 resolveOpen :: InterfaceSet -> Open -> ResolvedNames
@@ -151,7 +156,7 @@ resolveModule iset m = case lookupInterface m iset of
     CM.fromListWith mergeResolved (map step (ifaceNames iface))
   Nothing    -> error "ModuleSystem.Resolve.resolveModule: inconceivable"
   where
-  step u = (simpleUsedName u, Resolved 0 u)
+  step u = (simpleUsedName u, Resolved 0 (usedQualName u))
 
 -- | Resolve an open declaration that hides some names, and optionally renames
 -- the module.
@@ -177,10 +182,10 @@ resolveOnly ns os syms = CM.intersection syms (CM.fromList (concatMap step os))
 -- resolved name.
 openTerm :: Namespace -> Name -> (UsedName,Resolved)
 openTerm ns n =
-  (UsedTerm (simpleName n), Resolved 0 (UsedTerm (qualName ns n)))
+  (UsedTerm (simpleName n), Resolved 0 (qualName ns n))
 
 -- | Construct an element of a clash map that resolves a used name to its
 -- resolved name.
 openType :: Namespace -> Name -> (UsedName,Resolved)
 openType ns n =
-  (UsedType (simpleName n), Resolved 0 (UsedTerm (qualName ns n)))
+  (UsedType (simpleName n), Resolved 0 (qualName ns n))

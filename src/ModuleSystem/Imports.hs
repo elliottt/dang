@@ -19,7 +19,8 @@ module ModuleSystem.Imports (
   ) where
 
 import Dang.Monad (Dang,Exception,raiseE)
-import Interface (openInterface,InterfaceSet,emptyInterfaceSet,addInterface)
+import ModuleSystem.Interface
+    (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import QualName (QualName,isSimpleName,qualModule)
 import Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
@@ -152,7 +153,7 @@ loadInterfaces :: BaseM m Dang => ImportSet -> m InterfaceSet
 loadInterfaces  = inBase . F.foldlM step emptyInterfaceSet
   where
   step is m = do
-    e <- try (openInterface m)
+    e <- try (readInterface m)
     case e of
       Right iface -> return (addInterface iface is)
       Left{}      -> missingInterface m
