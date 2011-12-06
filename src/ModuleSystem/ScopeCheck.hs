@@ -14,11 +14,11 @@ import Pretty (pretty)
 import QualName
 import Syntax.AST
     (Module(..),PrimTerm(..),UntypedDecl(..),TypedDecl(..),Match(..)
-    ,DataDecl(..),Term(..))
+    ,DataDecl(..),Term(..),Pat(..),Literal(..))
 import TypeChecker.Types (Type(..),Forall(..))
 import qualified Data.ClashMap as CM
 
-import Control.Applicative (Applicative,(<$>))
+import Control.Applicative (Applicative,(<$>),(<*>))
 import Control.Monad ((<=<))
 import MonadLib
 
@@ -50,6 +50,24 @@ withResolved :: ResolvedNames -> Scope a -> Scope a
 withResolved names m = Scope $ do
   ro <- ask
   local (ro { roNames = names `mergeResolvedNames` roNames ro }) (unScope m)
+
+bindLocals :: [Name] -> Scope a -> Scope a
+bindLocals ns m = Scope $ do
+  ro <- ask
+  let bound = CM.fromList [ (UsedTerm (simpleName n), Bound n) | n <- ns ]
+  local (ro { roNames = bound `mergeResolvedNames` roNames ro }) (unScope m)
+
+bindGlobals :: [QualName] -> Scope a -> Scope a
+bindGlobals qns m = Scope $ do
+  ro <- ask
+  let resolved = CM.fromList [ (UsedTerm qn, Resolved (roLevel ro) qn)
+                             | qn <- qns ]
+  local (ro { roNames = resolved `mergeResolvedNames` roNames ro }) (unScope m)
+
+newLevel :: Scope a -> Scope a
+newLevel m = Scope $ do
+  ro <- ask
+  local (ro { roLevel = roLevel ro + 1 }) (unScope m)
 
 resolve :: UsedName -> Scope Resolved
 resolve u = Scope $ do
@@ -157,4 +175,31 @@ scType ty = case ty of
 -- Terms -----------------------------------------------------------------------
 
 scMatch :: Match -> Scope Match
-scMatch m = fail "scMatch"
+scMatch m = case m of
+  MPat p m' -> scPat p (\p' -> MPat p' <$> scMatch m')
+  MTerm tm  -> MTerm <$> scTerm tm
+
+scPat :: Pat -> (Pat -> Scope a) -> Scope a
+scPat p k = case p of
+  PWildcard -> k p
+  PVar n    -> bindLocals [n] (k p)
+
+scTerm :: Term -> Scope Term
+scTerm tm = case tm of
+  Abs m -> Abs <$> scMatch m
+
+  Let ts us e -> newLevel $ do
+    let tqs = map (simpleName . typedName)   ts
+        uqs = map (simpleName . untypedName) us
+    bindGlobals (tqs ++ uqs) $ do
+      ts' <- mapM scTypedDecl ts
+      us' <- mapM scUntypedDecl us
+      e'  <- scTerm e
+      return (Let ts' us' e')
+
+  App f xs -> App <$> scTerm f <*> mapM scTerm xs
+
+  Local n   -> resolveTerm (simpleName n)
+  Global qn -> resolveTerm qn
+
+  Lit _ -> return tm
