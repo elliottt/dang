@@ -112,8 +112,9 @@ scopeCheckModule m = do
   let resolved = resolveUses iset uses
   logDebug (show resolved)
 
-  withResolved resolved (scModule m)
-  undefined
+  m' <- withResolved resolved (scModule m)
+
+  return (iset,m')
 
 scModule :: Module -> Scope Module
 scModule m = do
