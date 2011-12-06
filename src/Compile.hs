@@ -7,7 +7,7 @@ import Core.AST
 import Dang.IO
 import Dang.Monad
 import Dang.Tool
-import Interface
+import ModuleSystem.Interface (InterfaceSet)
 import Pretty
 
 import System.IO (hPrint,hFlush)

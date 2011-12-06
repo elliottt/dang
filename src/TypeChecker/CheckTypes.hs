@@ -5,7 +5,7 @@ module TypeChecker.CheckTypes where
 import Core.AST
 import Dang.IO
 import Dang.Monad
-import Interface (IsInterface,funSymbols,funType)
+import ModuleSystem.Interface (HasInterface,funSymbols,funType)
 import Pretty
 import QualName
 import TypeChecker.Env

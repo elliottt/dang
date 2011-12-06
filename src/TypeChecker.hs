@@ -2,7 +2,7 @@ module TypeChecker where
 
 import Dang.IO (logStage,logDebug,logInfo)
 import Dang.Monad (Dang)
-import Interface (InterfaceSet)
+import ModuleSystem.Interface (InterfaceSet)
 import Pretty (pretty)
 import TypeChecker.CheckKinds (kcModule)
 import TypeChecker.CheckTypes (tcModule)

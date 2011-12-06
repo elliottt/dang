@@ -9,13 +9,12 @@ module CodeGen (
 import Core.AST (Module)
 import Dang.IO (logStage)
 import Dang.Monad (Dang,whenDebugOpt,dbgDumpLLVM,io)
-import Interface (InterfaceSet,Interface)
+import ModuleSystem.Interface (InterfaceSet,Interface)
 import Pretty (Doc,empty)
-import ReadWrite (RW)
 
 import Text.LLVM (ppModule,runLLVM)
 
-codeGen :: InterfaceSet -> Interface RW -> Module ->  Dang Doc
+codeGen :: InterfaceSet -> Interface -> Module ->  Dang Doc
 codeGen env iface ds = do
   logStage "code-generator"
   return empty

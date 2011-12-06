@@ -28,7 +28,6 @@ SLASH_MODS := \
     Dang/Monad \
     Dang/Tool \
     Data/ClashMap \
-    Interface \
     Link \
     Main \
     ModuleSystem \
