@@ -21,13 +21,18 @@ import qualified Data.ByteString as S
 
 -- Interface Interaction -------------------------------------------------------
 
-type Lookup i a = QualName -> i -> Maybe a
+type Lookup  i a = QualName -> i -> Maybe a
+type Listing i a = i -> [(QualName,a)]
 
 class HasInterface i where
-  lookupSymbol   :: Lookup i Symbol
-  lookupData     :: Lookup i DataDecl
-  lookupPrimType :: Lookup i PrimType
-  lookupPrimTerm :: Lookup i PrimTerm
+  lookupSymbol   :: Lookup  i Symbol
+  getSymbols     :: Listing i Symbol
+  lookupData     :: Lookup  i DataDecl
+  getDatas       :: Listing i DataDecl
+  lookupPrimType :: Lookup  i PrimType
+  getPrimTypes   :: Listing i PrimType
+  lookupPrimTerm :: Lookup  i PrimTerm
+  getPrimTerms   :: Listing i PrimTerm
 
 
 -- Defined Symbols -------------------------------------------------------------
@@ -81,9 +86,16 @@ ifaceNames iface = concat
 
 instance HasInterface Interface where
   lookupSymbol   qn = Map.lookup qn . ifaceSymbols
+  getSymbols        = Map.toList    . ifaceSymbols
+
   lookupData     qn = Map.lookup qn . ifaceDatas
+  getDatas          = Map.toList    . ifaceDatas
+
   lookupPrimType qn = Map.lookup qn . ifacePrimTypes
+  getPrimTypes      = Map.toList    . ifacePrimTypes
+
   lookupPrimTerm qn = Map.lookup qn . ifacePrimTerms
+  getPrimTerms      = Map.toList    . ifacePrimTerms
 
 
 -- Interface Sets --------------------------------------------------------------
@@ -102,17 +114,25 @@ addInterface iface (InterfaceSet iset) =
 lookupInterface :: QualName -> InterfaceSet -> Maybe Interface
 lookupInterface qn (InterfaceSet iset) = Map.lookup qn iset
 
-liftInterfaceSet :: Lookup Interface a -> Lookup InterfaceSet a
-liftInterfaceSet k qn iset = do
+liftLookup :: Lookup Interface a -> Lookup InterfaceSet a
+liftLookup k qn iset = do
   m     <- qualModule qn
   iface <- lookupInterface m iset
   k qn iface
 
+liftListing :: Listing Interface a -> Listing InterfaceSet a
+liftListing k = concatMap k . Map.elems . getInterfaces
+
+
 instance HasInterface InterfaceSet where
-  lookupSymbol   = liftInterfaceSet lookupSymbol
-  lookupData     = liftInterfaceSet lookupData
-  lookupPrimType = liftInterfaceSet lookupPrimType
-  lookupPrimTerm = liftInterfaceSet lookupPrimTerm
+  lookupSymbol   = liftLookup  lookupSymbol
+  getSymbols     = liftListing getSymbols
+  lookupData     = liftLookup  lookupData
+  getDatas       = liftListing getDatas
+  lookupPrimType = liftLookup  lookupPrimType
+  getPrimTypes   = liftListing getPrimTypes
+  lookupPrimTerm = liftLookup  lookupPrimTerm
+  getPrimTerms   = liftListing getPrimTerms
 
 
 -- Interface Serialization -----------------------------------------------------

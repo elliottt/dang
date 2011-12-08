@@ -4,7 +4,7 @@ module TypeChecker.CheckKinds where
 
 import Dang.IO
 import Dang.Monad
-import ModuleSystem.Interface (HasInterface,kinds)
+import ModuleSystem.Interface (HasInterface(..))
 import Pretty
 import QualName
 import Syntax.AST
@@ -36,8 +36,10 @@ kindError  = raiseE . KindError
 type KindAssumps = Assumps Kind
 
 interfaceAssumps :: HasInterface iset => iset -> KindAssumps
-interfaceAssumps  = foldl step emptyAssumps . kinds
+interfaceAssumps iset = foldl step emptyAssumps kinds
   where
+  -- XXX this needs to incorporate data type kinds
+  kinds           = [ (qn, primTypeKind pt) | (qn,pt) <- getPrimTypes iset ]
   step env (qa,k) = addAssump qa (Assump Nothing k) env
 
 kindAssump :: QualName -> KindAssumps -> TC Kind
@@ -64,7 +66,7 @@ addPrimType ns env pty = addKindAssump env name kind
 
 -- | Check the kinds of all type usages in a Module.  Return a Module that
 -- contains all it's declarations with fixed kinds.
-kcModule :: IsInterface iset => iset -> Module -> TC Module
+kcModule :: HasInterface iset => iset -> Module -> TC Module
 kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
   let ns = modNamespace m

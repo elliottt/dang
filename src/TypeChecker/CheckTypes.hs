@@ -5,7 +5,7 @@ module TypeChecker.CheckTypes where
 import Core.AST
 import Dang.IO
 import Dang.Monad
-import ModuleSystem.Interface (HasInterface,funSymbols,funType)
+import ModuleSystem.Interface (HasInterface(..),Symbol(..))
 import Pretty
 import QualName
 import TypeChecker.Env
@@ -29,10 +29,10 @@ assume qn qt env = do
   return (addAssump qn (Assump Nothing qt) env)
 
 -- | Turn an interface into an initial set of assumptions.
-interfaceAssumps :: IsInterface iset => iset -> TypeAssumps
-interfaceAssumps  = foldl step emptyAssumps . funSymbols
+interfaceAssumps :: HasInterface iset => iset -> TypeAssumps
+interfaceAssumps  = foldl step emptyAssumps . getSymbols
   where
-  step env (qn,sym) = addAssump qn (Assump Nothing (funType sym)) env
+  step env (qn,sym) = addAssump qn (Assump Nothing (symType sym)) env
 
 -- | Lookup a type assumption in the environment.
 typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
@@ -58,7 +58,7 @@ typedAssumps ns ts env0 = foldM step env0 ts
 -- Modules ---------------------------------------------------------------------
 
 -- | Type-check a module, producing a list of fully-qualified declarations.
-tcModule :: IsInterface i => i -> Syn.Module -> TC Module
+tcModule :: HasInterface i => i -> Syn.Module -> TC Module
 tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
