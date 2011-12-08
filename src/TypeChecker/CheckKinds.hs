@@ -4,7 +4,7 @@ module TypeChecker.CheckKinds where
 
 import Dang.IO
 import Dang.Monad
-import ModuleSystem.Interface (HasInterface(..))
+import ModuleSystem.Interface (HasInterface,getKinds)
 import Pretty
 import QualName
 import Syntax.AST
@@ -36,10 +36,8 @@ kindError  = raiseE . KindError
 type KindAssumps = Assumps Kind
 
 interfaceAssumps :: HasInterface iset => iset -> KindAssumps
-interfaceAssumps iset = foldl step emptyAssumps kinds
+interfaceAssumps  = foldl step emptyAssumps . getKinds
   where
-  -- XXX this needs to incorporate data type kinds
-  kinds           = [ (qn, primTypeKind pt) | (qn,pt) <- getPrimTypes iset ]
   step env (qa,k) = addAssump qa (Assump Nothing k) env
 
 kindAssump :: QualName -> KindAssumps -> TC Kind

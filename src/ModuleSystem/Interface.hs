@@ -34,6 +34,19 @@ class HasInterface i where
   lookupPrimTerm :: Lookup  i PrimTerm
   getPrimTerms   :: Listing i PrimTerm
 
+getTypes :: HasInterface i => Listing i Scheme
+getTypes i = concat
+  [ [ (qn, symType sym)     | (qn,sym) <- getSymbols i   ]
+  , [ (qn, primTermType pt) | (qn,pt)  <- getPrimTerms i ]
+    -- XXX add constructors
+  ]
+
+getKinds :: HasInterface i => Listing i Kind
+getKinds i = concat
+  [ [ (qn, primTypeKind pt) | (qn,pt)  <- getPrimTypes i ]
+    -- XXX add data types
+  ]
+
 
 -- Defined Symbols -------------------------------------------------------------
 

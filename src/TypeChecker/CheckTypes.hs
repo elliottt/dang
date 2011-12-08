@@ -5,7 +5,7 @@ module TypeChecker.CheckTypes where
 import Core.AST
 import Dang.IO
 import Dang.Monad
-import ModuleSystem.Interface (HasInterface(..),Symbol(..))
+import ModuleSystem.Interface (HasInterface,getTypes)
 import Pretty
 import QualName
 import TypeChecker.Env
@@ -30,9 +30,9 @@ assume qn qt env = do
 
 -- | Turn an interface into an initial set of assumptions.
 interfaceAssumps :: HasInterface iset => iset -> TypeAssumps
-interfaceAssumps  = foldl step emptyAssumps . getSymbols
+interfaceAssumps  = foldl step emptyAssumps . getTypes
   where
-  step env (qn,sym) = addAssump qn (Assump Nothing (symType sym)) env
+  step env (qn,sc) = addAssump qn (Assump Nothing sc) env
 
 -- | Lookup a type assumption in the environment.
 typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
