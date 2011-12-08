@@ -122,10 +122,12 @@ scModule m = do
   ptms <- mapM scPrimTerm    (modPrimTerms m)
   ts   <- mapM scTypedDecl   (modTyped m)
   us   <- mapM scUntypedDecl (modUntyped m)
+  ds   <- mapM scDataDecl    (modDatas m)
   return m
     { modPrimTerms = ptms
     , modTyped     = ts
     , modUntyped   = us
+    , modDatas     = ds
     }
 
 
