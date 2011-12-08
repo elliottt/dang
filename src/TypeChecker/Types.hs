@@ -187,11 +187,11 @@ getKind  = getType
 
 -- | The kind of types.
 kstar :: Kind
-kstar  = TCon (primName ["Prelude"] "*")
+kstar  = TCon (primName [] "*")
 
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
-karrow  = TInfix arrowConstr
+karrow  = TInfix (primName [] "->")
 infixr 9 `karrow`
 
 
