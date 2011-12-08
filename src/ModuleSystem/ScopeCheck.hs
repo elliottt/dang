@@ -109,7 +109,8 @@ scopeCheckModule m = do
   iset <- loadInterfaces needed
 
   logDebug "resolved uses"
-  let resolved = resolveUses iset uses
+  let modNames = modResolvedNames m
+  let resolved = resolveUses iset uses `mergeResolvedNames` modNames
   logDebug (show resolved)
 
   m' <- withResolved resolved (scModule m)
@@ -119,9 +120,11 @@ scopeCheckModule m = do
 scModule :: Module -> Scope Module
 scModule m = do
   ptms <- mapM scPrimTerm    (modPrimTerms m)
+  ts   <- mapM scTypedDecl   (modTyped m)
   us   <- mapM scUntypedDecl (modUntyped m)
   return m
     { modPrimTerms = ptms
+    , modTyped     = ts
     , modUntyped   = us
     }
 

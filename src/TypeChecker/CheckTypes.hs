@@ -68,9 +68,9 @@ tcModule i m = do
   (env',us) <- tcUntypedDecls ns env (Syn.modUntyped m)
   ts        <- mapM (tcTypedDecl ns env') (Syn.modTyped m)
 
-  return Module
-    { modName  = Syn.modName m
-    , modDecls = ts ++ us
+  return (emptyModule (Syn.modName m))
+    { modDecls     = ts ++ us
+    , modPrimTypes = Syn.modPrimTypes m
     }
 
 

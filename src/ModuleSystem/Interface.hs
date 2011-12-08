@@ -14,7 +14,7 @@ import Control.Applicative ((<$>),(<*>))
 import Data.Serialize
     (runPut,Putter,putMapOf,putListOf,runGet,Get,getMapOf,getListOf)
 import MonadLib (BaseM)
-import System.FilePath ((</>))
+import System.FilePath ((</>),(<.>))
 import qualified Data.Map as Map
 import qualified Data.ByteString as S
 
@@ -71,6 +71,15 @@ data Interface = Interface
   , ifacePrimTypes :: NameMap PrimType
   , ifacePrimTerms :: NameMap PrimTerm
   } deriving (Show)
+
+emptyInterface :: QualName -> Interface
+emptyInterface qn = Interface
+  { ifaceName      = qn
+  , ifaceSymbols   = Map.empty
+  , ifaceDatas     = Map.empty
+  , ifacePrimTypes = Map.empty
+  , ifacePrimTerms = Map.empty
+  }
 
 symbolNames :: Interface -> [UsedName]
 symbolNames  = map UsedTerm . Map.keys . ifaceSymbols
@@ -151,7 +160,7 @@ instance HasInterface InterfaceSet where
 -- Interface Serialization -----------------------------------------------------
 
 modInterface :: QualName -> FilePath
-modInterface qn = foldr (</>) (qualSymbol qn) (qualPrefix qn)
+modInterface qn = foldr (</>) (qualSymbol qn <.> "di") (qualPrefix qn)
 
 writeInterface :: BaseM m Dang => Interface -> m ()
 writeInterface iface =

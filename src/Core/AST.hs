@@ -2,25 +2,38 @@ module Core.AST (
     module Core.AST
   , Var
   , Literal(..)
+  , PrimType(..)
+  , Export(..)
   ) where
 
 import Pretty
-import QualName (QualName,simpleName)
-import TypeChecker.Types (Type,Forall(..),forallData)
-import Syntax.AST (Var,Literal(..),Export)
+import QualName (QualName,simpleName,Name)
+import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
+import Syntax.AST (Var,Literal(..),Export(..),PrimType(..))
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import qualified Data.Set as Set
 
 
 data Module = Module
-  { modName  :: QualName
-  , modDecls :: [Decl]
+  { modName      :: QualName
+  , modPrimTypes :: [PrimType]
+  , modDecls     :: [Decl]
   } deriving (Show)
+
+emptyModule :: QualName -> Module
+emptyModule qn = Module
+  { modName      = qn
+  , modPrimTypes = []
+  , modDecls     = []
+  }
 
 instance Pretty Module where
   pp _ m = text "module" <+> ppr (modName m)
-       $+$ declBlock (map ppr (modDecls m))
+       $+$ declBlock decls
+    where
+    decls = map ppr (modPrimTypes m)
+         ++ map ppr (modDecls m)
 
 -- | Pretty print a list of type parameters for a type application/definition.
 ppTyApp :: Pretty a => [a] -> Doc
@@ -54,6 +67,11 @@ ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
 hasArgs :: Decl -> Bool
 hasArgs  = not . isMTerm . forallData . declBody
 
+declType :: Decl -> Scheme
+declType d = Forall ps (matchType m)
+  where
+  Forall ps m = declBody d
+
 
 -- | Typed variable introduction.
 data Match
@@ -68,6 +86,11 @@ instance FreeVars Match where
 instance Pretty Match where
   pp _ (MTerm t ty)  = ppr t <+> text "::" <+> ppr ty
   pp _ (MPat p m) = char '\\' <+> pp 1 p <+> text "->" <+> pp 0 m
+
+matchType :: Match -> Type
+matchType m = case m of
+  MTerm _ ty -> ty
+  MPat p m   -> patType p `tarrow` matchType m
 
 -- | Pretty-print the arguments with precedence 1, and the body with precedence
 -- 0.
@@ -89,6 +112,11 @@ data Pat
   = PVar Var Type
   | PWildcard Type
     deriving (Show)
+
+patType :: Pat -> Type
+patType p = case p of
+  PVar _ ty    -> ty
+  PWildcard ty -> ty
 
 patVars :: Pat -> [Var]
 patVars (PVar n _) = [n]

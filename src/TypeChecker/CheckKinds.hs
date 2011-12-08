@@ -69,6 +69,7 @@ kcModule iset m = do
   logInfo ("Checking module: " ++ pretty (modName m))
   let ns = modNamespace m
   env        <- addPrimTypes ns (interfaceAssumps iset) (modPrimTypes m)
+  logDebug (show env)
   (env',ds') <- kcDataDecls ns env (modDatas m)
   pts'       <- mapM (kcPrimTerm env')    (modPrimTerms m)
   ts'        <- mapM (kcTypedDecl env')   (modTyped m)

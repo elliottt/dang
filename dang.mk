@@ -23,6 +23,7 @@ SLASH_MODS := \
     Compile/LambdaLift \
     Compile/Rename \
     Core/AST \
+    Core/Interface \
     Dang/FileName \
     Dang/IO \
     Dang/Monad \
