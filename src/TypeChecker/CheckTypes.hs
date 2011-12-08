@@ -291,7 +291,7 @@ tcTerm env tm = case tm of
 
 tcLit :: Syn.Literal -> TC (Type,Term)
 tcLit l = case l of
-  Syn.LInt{} -> return (TCon (primName ["Prim","Type"] "Int"), Lit l)
+  Syn.LInt{} -> return (TCon (primName ["Prelude"] "Int"), Lit l)
 
 
 -- Generalization --------------------------------------------------------------
