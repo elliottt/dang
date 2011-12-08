@@ -93,7 +93,7 @@ instance Pretty Match where
 matchType :: Match -> Type
 matchType m = case m of
   MTerm _ ty -> ty
-  MPat p m   -> patType p `tarrow` matchType m
+  MPat p m'  -> patType p `tarrow` matchType m'
 
 -- | Pretty-print the arguments with precedence 1, and the body with precedence
 -- 0.
