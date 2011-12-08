@@ -71,6 +71,7 @@ tcModule i m = do
   return (emptyModule (Syn.modName m))
     { modDecls     = ts ++ us
     , modPrimTypes = Syn.modPrimTypes m
+    , modPrimTerms = Syn.modPrimTerms m
     }
 
 

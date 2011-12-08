@@ -1,6 +1,7 @@
 module Core.Interface where
 
-import Core.AST (Module(..),Export(..),Decl(..),declType,PrimType(..))
+import Core.AST
+    (Module(..),Export(..),Decl(..),declType,PrimType(..),PrimTerm(..))
 import ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
 import QualName (mangle,QualName,primName,qualNamespace,Namespace)
 
@@ -12,6 +13,7 @@ moduleInterface :: Module -> Interface
 moduleInterface m = (emptyInterface qn)
   { ifaceSymbols   = foldl  addDecl         Map.empty (modDecls m)
   , ifacePrimTypes = foldl (addPrimType ns) Map.empty (modPrimTypes m)
+  , ifacePrimTerms = foldl (addPrimTerm ns) Map.empty (modPrimTerms m)
   }
   where
   qn = modName m
@@ -36,3 +38,6 @@ declSymbol qn d = Symbol
 
 addPrimType :: Namespace -> NameMap PrimType -> PrimType -> NameMap PrimType
 addPrimType ns pts pt = Map.insert (primName ns (primTypeName pt)) pt pts
+
+addPrimTerm :: Namespace -> NameMap PrimTerm -> PrimTerm -> NameMap PrimTerm
+addPrimTerm ns pts pt = Map.insert (primName ns (primTermName pt)) pt pts

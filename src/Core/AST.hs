@@ -3,13 +3,14 @@ module Core.AST (
   , Var
   , Literal(..)
   , PrimType(..)
+  , PrimTerm(..)
   , Export(..)
   ) where
 
 import Pretty
-import QualName (QualName,simpleName,Name)
+import QualName (QualName,simpleName)
 import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
-import Syntax.AST (Var,Literal(..),Export(..),PrimType(..))
+import Syntax.AST (Var,Literal(..),Export(..),PrimType(..),PrimTerm(..))
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import qualified Data.Set as Set
@@ -18,6 +19,7 @@ import qualified Data.Set as Set
 data Module = Module
   { modName      :: QualName
   , modPrimTypes :: [PrimType]
+  , modPrimTerms :: [PrimTerm]
   , modDecls     :: [Decl]
   } deriving (Show)
 
@@ -25,6 +27,7 @@ emptyModule :: QualName -> Module
 emptyModule qn = Module
   { modName      = qn
   , modPrimTypes = []
+  , modPrimTerms = []
   , modDecls     = []
   }
 
