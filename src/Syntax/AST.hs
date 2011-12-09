@@ -3,7 +3,7 @@
 module Syntax.AST where
 
 import ModuleSystem.Export
-    (Exported(..),Export(..),isExported,ppPublic,ppPrivate)
+    (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
 import Pretty
 import QualName
 import TypeChecker.Types
@@ -177,18 +177,20 @@ instance Pretty PrimType where
 -- Data Declarations -----------------------------------------------------------
 
 data DataDecl = DataDecl
-  { dataName    :: Name
-  , dataArity   :: Int
-  , dataExport  :: Export
-  , dataResults :: [Forall ConstrResult]
+  { dataName   :: Name
+  , dataKind   :: Kind
+  , dataExport :: Export
+  , dataGroups :: [Forall ConstrGroup]
   } deriving (Show)
 
 instance Pretty DataDecl where
   pp _ d = text "data"
-      <+> nest 0 (vcat (map (ppr . forallData) (dataResults d)))
+       <+> nest 0 (vcat (map step (dataGroups d)))
+    where
+    step = ppConstrGroup (dataExport d) . forallData
 
 instance FreeVars DataDecl where
-  freeVars = freeVars . dataResults
+  freeVars d = Set.delete (simpleName (dataName d)) (freeVars (dataGroups d))
 
 instance DefinesName DataDecl where
   definedName = dataName
@@ -197,19 +199,19 @@ instance Exported DataDecl where
   exportSpec = dataExport
 
 
--- Constructor Result Groups ---------------------------------------------------
+-- Constructor Groups ----------------------------------------------------------
 
-data ConstrResult = ConstrResult
-  { resultType    :: Type
-  , resultConstrs :: [Constr]
+data ConstrGroup = ConstrGroup
+  { groupType    :: Type
+  , groupConstrs :: [Constr]
   } deriving (Show)
 
-instance Pretty ConstrResult where
- pp _ r = (ppr (resultType r) <+> text "where")
-       $$ nest 2 (constrBlock (resultConstrs r))
+ppConstrGroup :: Export -> ConstrGroup -> Doc
+ppConstrGroup e g = ppr (groupType g) <+> text "where"
+                 $$ nest 2 (constrBlock (not (isExported e)) (groupConstrs g))
 
-instance FreeVars ConstrResult where
-  freeVars r = freeVars (resultType r) `Set.union` freeVars (resultConstrs r)
+instance FreeVars ConstrGroup where
+  freeVars g = freeVars (groupType g) `Set.union` freeVars (groupConstrs g)
 
 
 -- Data Constructors -----------------------------------------------------------
@@ -220,12 +222,14 @@ data Constr = Constr
   , constrFields :: [Type]
   } deriving (Show)
 
-constrBlock :: [Constr] -> Doc
-constrBlock cs = case partition isExported cs of
-  (us,rs) -> render "public" us $$ render "private" rs
+constrBlock :: Bool -> [Constr] -> Doc
+constrBlock quiet = vcat . map step . groupByExport
   where
-  render l [] = empty
-  render l rs = text l <+> nest 0 (vcat (map ppr rs))
+  step cs@(c:_) = export (vcat (map ppr cs))
+    where
+    export | quiet        = id
+           | isExported c = ppPublic
+           | otherwise    = ppPrivate
 
 instance Pretty Constr where
   pp _ c = ppr (constrName c) <+> hsep (map ppr (constrFields c))
@@ -241,13 +245,13 @@ instance Exported Constr where
   exportSpec = constrExport
 
 test = DataDecl
-  { dataName    = "Foo"
-  , dataArity   = 1
-  , dataExport  = Public
-  , dataResults =
-    [ Forall [] ConstrResult
-      { resultType    = TCon (simpleName "Foo") `tapp` TCon (simpleName "Int")
-      , resultConstrs =
+  { dataName   = "Foo"
+  , dataArity  = 1
+  , dataExport = Public
+  , dataGroups =
+    [ Forall [] ConstrGroup
+      { groupType    = TCon (simpleName "Foo") `tapp` TCon (simpleName "Int")
+      , groupConstrs =
         [ Constr
           { constrName   = "Just"
           , constrExport = Private
@@ -255,17 +259,22 @@ test = DataDecl
           }
         ]
       }
-    , Forall [a] ConstrResult
-      { resultType    = TCon (simpleName "Foo") `tapp` TVar (GVar a)
-      , resultConstrs =
+    , Forall [a] ConstrGroup
+      { groupType    = TCon (simpleName "Foo") `tapp` TVar (GVar a)
+      , groupConstrs =
         [ Constr
           { constrName   = "Nothing"
-          , constrExport = Private
+          , constrExport = Public
           , constrFields = [TVar (GVar a)]
           }
         , Constr
           { constrName   = "Something"
-          , constrExport = Private
+          , constrExport = Public
+          , constrFields = []
+          }
+        , Constr
+          { constrName   = "Other"
+          , constrExport = Public
           , constrFields = []
           }
         ]
