@@ -2,12 +2,13 @@
 
 module Syntax.AST where
 
-import ModuleSystem.Export (Exported(..),Export(..))
+import ModuleSystem.Export (Exported(..),Export(..),isExported)
 import Pretty
 import QualName
 import TypeChecker.Types
 import Variables
 
+import Data.List (partition)
 import qualified Data.Set as Set
 
 
@@ -168,45 +169,108 @@ instance Pretty PrimType where
 
 data DataDecl = DataDecl
   { dataName    :: Name
-  , dataConstrs :: Forall [Constr]
+  , dataArity   :: Int
+  , dataExport  :: Export
+  , dataResults :: [Forall ConstrResult]
   } deriving (Show)
 
 instance Pretty DataDecl where
-  pp _ d = text "data" <+> ppr (dataName d)
-       <+> vcat (map ppr ps) <+> text "where"
-       $+$ nest 2 (constrBlock cs)
-    where
-    Forall ps cs = dataConstrs d
+  pp _ d = text "data"
+      <+> nest 0 (vcat (map (ppr . forallData) (dataResults d)))
 
 instance FreeVars DataDecl where
-  freeVars = freeVars . dataConstrs
+  freeVars = freeVars . dataResults
 
 instance DefinesName DataDecl where
   definedName = dataName
+
+instance Exported DataDecl where
+  exportSpec = dataExport
+
+
+-- Constructor Result Groups ---------------------------------------------------
+
+data ConstrResult = ConstrResult
+  { resultType    :: Type
+  , resultConstrs :: [Constr]
+  } deriving (Show)
+
+instance Pretty ConstrResult where
+ pp _ r = (ppr (resultType r) <+> text "where")
+       $$ nest 2 (constrBlock (resultConstrs r))
+
+instance FreeVars ConstrResult where
+  freeVars r = freeVars (resultType r) `Set.union` freeVars (resultConstrs r)
 
 
 -- Data Constructors -----------------------------------------------------------
 
 data Constr = Constr
-  { constrName :: Name
-  , constrType :: Type
+  { constrName   :: Name
+  , constrExport :: Export
+  , constrFields :: [Type]
   } deriving (Show)
 
 constrBlock :: [Constr] -> Doc
-constrBlock []     = empty
-constrBlock (c:cs) = foldl step (ppr c) cs
+constrBlock cs = case partition isExported cs of
+  (us,rs) -> render "public" us $$ render "private" rs
   where
-  step d constr = d $+$ ppr constr
+  render l [] = empty
+  render l rs = text l <+> nest 0 (vcat (map ppr rs))
 
 instance Pretty Constr where
-  pp _ c = ppr (constrName c) <+> text "::" <+> ppr (constrType c)
+  pp _ c = ppr (constrName c) <+> hsep (map ppr (constrFields c))
 
 instance FreeVars Constr where
   freeVars c =
-    Set.delete (simpleName (constrName c)) (freeVars (constrType c))
+    Set.delete (simpleName (constrName c)) (freeVars (constrFields c))
 
 instance DefinesName Constr where
   definedName = constrName
+
+instance Exported Constr where
+  exportSpec = constrExport
+
+test = DataDecl
+  { dataName    = "Foo"
+  , dataArity   = 1
+  , dataExport  = Public
+  , dataResults =
+    [ Forall [] ConstrResult
+      { resultType    = TCon (simpleName "Foo") `tapp` TCon (simpleName "Int")
+      , resultConstrs =
+        [ Constr
+          { constrName   = "Just"
+          , constrExport = Private
+          , constrFields = [TCon (simpleName "Int")]
+          }
+        ]
+      }
+    , Forall [a] ConstrResult
+      { resultType    = TCon (simpleName "Foo") `tapp` TVar (GVar a)
+      , resultConstrs =
+        [ Constr
+          { constrName   = "Nothing"
+          , constrExport = Private
+          , constrFields = [TVar (GVar a)]
+          }
+        , Constr
+          { constrName   = "Something"
+          , constrExport = Private
+          , constrFields = []
+          }
+        ]
+      }
+    ]
+  }
+
+  where
+  a = TParam
+    { paramIndex      = 0
+    , paramFromSource = True
+    , paramName       = "a"
+    , paramKind       = kstar
+    }
 
 
 -- Variable Introduction -------------------------------------------------------
