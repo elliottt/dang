@@ -246,7 +246,7 @@ instance Exported Constr where
 
 test = DataDecl
   { dataName   = "Foo"
-  , dataArity  = 1
+  , dataKind   = kstar `karrow` kstar
   , dataExport = Public
   , dataGroups =
     [ Forall [] ConstrGroup
