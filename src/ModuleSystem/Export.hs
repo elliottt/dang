@@ -1,6 +1,6 @@
 module ModuleSystem.Export where
 
-import Pretty (Pretty(..),text)
+import Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 
 
 -- Export Specifications -------------------------------------------------------
@@ -19,3 +19,11 @@ isExported :: Exported a => a -> Bool
 isExported a = case exportSpec a of
   Public -> True
   _      -> False
+
+ppPublic :: Doc -> Doc
+ppPublic d | isEmpty d = empty
+           | otherwise = text "public" $$ nest 2 d
+
+ppPrivate :: Doc -> Doc
+ppPrivate d | isEmpty d = empty
+            | otherwise = text "private" $$ nest 2 d

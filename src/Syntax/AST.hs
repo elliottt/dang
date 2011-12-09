@@ -2,7 +2,8 @@
 
 module Syntax.AST where
 
-import ModuleSystem.Export (Exported(..),Export(..),isExported)
+import ModuleSystem.Export
+    (Exported(..),Export(..),isExported,ppPublic,ppPrivate)
 import Pretty
 import QualName
 import TypeChecker.Types
@@ -32,8 +33,17 @@ instance Pretty Module where
          ++ map       ppr         (modPrimTypes m)
          ++ map       ppr         (modPrimTerms m)
          ++ map       ppr         (modDatas m)
-         ++ map       ppTypedDecl (modTyped m)
-         ++ map       ppr         (modUntyped m)
+         ++ [ ppPublic  (vcat public)
+            , ppPrivate (vcat private)
+            ]
+    (uus,rus) = partition isExported (modUntyped m)
+    (uts,rts) = partition isExported (modTyped m)
+
+    public = map ppTypedDecl uts
+          ++ map ppr         uus
+
+    private = map ppTypedDecl rts
+           ++ map ppr         rus
 
 modNamespace :: Module -> [Name]
 modNamespace  = qualNamespace . modName
@@ -94,7 +104,7 @@ ppTypedDecl :: TypedDecl -> Doc
 ppTypedDecl  = ppTypedDecl' empty
 
 ppTypedDecl' :: Doc -> TypedDecl -> Doc
-ppTypedDecl' exp d = exp <+> nest 0 (vcat [sig,body])
+ppTypedDecl' export d = export <+> nest 0 (vcat [sig,body])
   where
   sig    = text (typedName d) <+> text "::" <+> ppr (typedType d)
   body   = text (typedName d) <+> hsep as <+> char '=' <+> b
@@ -122,8 +132,7 @@ instance FreeVars UntypedDecl where
   freeVars = freeVars . untypedBody
 
 instance Pretty UntypedDecl where
-  pp _ d = ppr (untypedExport d) <+> text (untypedName d)
-       <+> hsep as <+> char '=' <+> b
+  pp _ d = text (untypedName d) <+> hsep as <+> char '=' <+> b
     where
     (as,b) = ppMatch (untypedBody d)
   ppList _ ds = semis (map ppr ds)
