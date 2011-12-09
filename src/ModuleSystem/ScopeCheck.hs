@@ -14,12 +14,11 @@ import Pretty (pretty)
 import QualName
 import Syntax.AST
     (Module(..),PrimTerm(..),UntypedDecl(..),TypedDecl(..),Match(..)
-    ,DataDecl(..),Term(..),Pat(..),Literal(..))
+    ,DataDecl(..),Term(..),Pat(..))
 import TypeChecker.Types (Type(..),Forall(..))
 import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>),(<*>))
-import Control.Monad ((<=<))
 import MonadLib
 
 
@@ -82,15 +81,15 @@ resolveType :: QualName -> Scope QualName
 resolveType qn = do
   r <- resolve (UsedType qn)
   case r of
-    Resolved _ qn -> return qn
-    Bound _       -> fail "Unknown bound variable in type"
+    Resolved _ rqn -> return rqn
+    Bound _        -> fail "Unknown bound variable in type"
 
 resolveTerm :: QualName -> Scope Term
 resolveTerm qn = do
   r <- resolve (UsedTerm qn)
   case r of
-    Resolved _ qn -> return (Global qn)
-    Bound n       -> return (Local n)
+    Resolved _ rqn -> return (Global rqn)
+    Bound n        -> return (Local n)
 
 
 -- Modules ---------------------------------------------------------------------
@@ -150,7 +149,7 @@ scTypedDecl t = do
   return t { typedType = sc, typedBody = m }
 
 scDataDecl :: DataDecl -> Scope DataDecl
-scDataDecl dd = fail "scDataDecl"
+scDataDecl _dd = fail "scDataDecl"
 
 
 -- Types -----------------------------------------------------------------------

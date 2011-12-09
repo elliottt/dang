@@ -19,7 +19,7 @@ import ModuleSystem.Imports (UseSet,Use(..))
 import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
 import QualName
     (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
-    ,qualNamespace,qualSymbol)
+    ,qualNamespace)
 import Syntax.AST
     (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
     ,TypedDecl(..),DataDecl(..),Constr(..),Open(..),OpenSymbol(..))
@@ -142,7 +142,7 @@ resolveOpen iset o = rename resolved
   where
   ns                      = qualNamespace (openMod o)
   syms                    = resolveModule iset (openMod o)
-  resolved | openHiding o = resolveHiding ns (openSymbols o) syms
+  resolved | openHiding o = resolveHiding (openSymbols o) syms
            | otherwise    = resolveOnly   ns (openSymbols o) syms
   rename = case openAs o of
     Nothing -> id
@@ -160,8 +160,8 @@ resolveModule iset m = case lookupInterface m iset of
 
 -- | Resolve an open declaration that hides some names, and optionally renames
 -- the module.
-resolveHiding :: Namespace -> [OpenSymbol] -> ResolvedNames -> ResolvedNames
-resolveHiding ns os syms = foldl step syms os
+resolveHiding :: [OpenSymbol] -> ResolvedNames -> ResolvedNames
+resolveHiding os syms = foldl step syms os
   where
   step m o = case o of
     OpenTerm n    -> CM.delete (UsedTerm (simpleName n)) m
