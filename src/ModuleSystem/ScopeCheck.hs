@@ -20,6 +20,7 @@ import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>),(<*>))
 import MonadLib
+import qualified Data.Set as Set
 
 
 -- Scope Checking Monad --------------------------------------------------------
@@ -101,7 +102,7 @@ scopeCheckModule m = do
   logDebug (show uses)
 
   logInfo "minimal imports"
-  let needed = minimalImports uses
+  let needed = Set.delete (modName m) (minimalImports uses)
   logInfo (pretty needed)
 
   logInfo "opening interfaces"
