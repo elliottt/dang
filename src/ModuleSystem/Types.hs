@@ -3,6 +3,8 @@ module ModuleSystem.Types where
 import QualName (QualName,simpleName,qualSymbol)
 
 
+-- Name Uses -------------------------------------------------------------------
+
 data UsedName
   = UsedType QualName
   | UsedTerm QualName

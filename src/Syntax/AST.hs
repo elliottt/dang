@@ -57,6 +57,8 @@ instance Pretty Open where
     symList = parens (commas (map ppr (openSymbols o)))
 
 
+-- Symbol Imports --------------------------------------------------------------
+
 data OpenSymbol
   = OpenTerm Name
   | OpenType Name [Name]

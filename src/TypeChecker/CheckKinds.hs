@@ -20,39 +20,51 @@ import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
 
--- Utilities -------------------------------------------------------------------
+-- Kind Variables --------------------------------------------------------------
 
 freshKindVar :: TC Kind
 freshKindVar  = freshVar setSort
+
+
+-- Errors ----------------------------------------------------------------------
 
 data KindError = KindError String
     deriving (Typeable,Show)
 
 instance Exception KindError
 
+-- | Raise a kind-checking error.
 kindError :: String -> TC a
 kindError  = raiseE . KindError
 
+
+-- Kind Assumptions ------------------------------------------------------------
+
 type KindAssumps = Assumps Kind
 
+-- | Add the kind assumptions provided by an interface.
 interfaceAssumps :: HasInterface iset => iset -> KindAssumps
 interfaceAssumps  = foldl step emptyAssumps . getKinds
   where
   step env (qa,k) = addAssump qa (Assump Nothing k) env
 
+-- | Find a kind in the set of kind assumptions.
 kindAssump :: QualName -> KindAssumps -> TC Kind
 kindAssump qn env = case lookupAssump qn env of
   Just a  -> return (aData a)
   Nothing -> unboundIdentifier qn
 
+-- | Assume that a constructor has the given kind.
 addKindAssump :: KindAssumps -> QualName -> Kind -> TC KindAssumps
 addKindAssump env qn k = do
   logInfo ("  Assuming: " ++ pretty qn ++ " :: " ++ pretty k)
   return (addAssump qn (Assump Nothing k) env)
 
+-- | Add a group of primitive types to the kind assumptions.
 addPrimTypes :: Namespace -> KindAssumps -> [PrimType] -> TC KindAssumps
 addPrimTypes ns = foldM (addPrimType ns)
 
+-- | Add the kind of a primitive type to the set of assumptions.
 addPrimType :: Namespace -> KindAssumps -> PrimType -> TC KindAssumps
 addPrimType ns env pty = addKindAssump env name kind
   where
