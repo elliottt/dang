@@ -25,13 +25,13 @@ data Module = Module
 
 instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
-       $+$ vcat decls
+        $$ vcat decls
     where
     decls = map       ppr         (modOpens m)
          ++ map       ppr         (modPrimTypes m)
          ++ map       ppr         (modPrimTerms m)
          ++ map       ppr         (modDatas m)
-         ++ concatMap ppTypedDecl (modTyped m)
+         ++ map       ppTypedDecl (modTyped m)
          ++ map       ppr         (modUntyped m)
 
 modNamespace :: Module -> [Name]
@@ -89,13 +89,15 @@ instance DefinesName TypedDecl where
 instance Exported TypedDecl where
   exportSpec = typedExport
 
-ppTypedDecl :: TypedDecl -> [Doc]
-ppTypedDecl d = [sig,body]
+ppTypedDecl :: TypedDecl -> Doc
+ppTypedDecl  = ppTypedDecl' empty
+
+ppTypedDecl' :: Doc -> TypedDecl -> Doc
+ppTypedDecl' exp d = exp <+> nest 0 (vcat [sig,body])
   where
-  sig    = prefix <+> text "::" <+> ppr (typedType d)
-  prefix = ppr (typedExport d) <+> text (typedName d)
+  sig    = text (typedName d) <+> text "::" <+> ppr (typedType d)
+  body   = text (typedName d) <+> hsep as <+> char '=' <+> b
   (as,b) = ppMatch (typedBody d)
-  body   = prefix <+> hsep as <+> char '=' <+> b
 
 -- | Create a typed declaration from an untyped one.
 mkTypedDecl :: UntypedDecl -> Forall Type -> TypedDecl
@@ -289,9 +291,9 @@ instance Pretty Term where
     Lit l       -> ppr l
 
 ppLet :: [TypedDecl] -> [UntypedDecl] -> Term -> Doc
-ppLet ts us e = text "let" <+> declBlock decls <+> text "in" <+> ppr e
+ppLet ts us e = text "let" <+> nest 0 (vcat decls) $$ text " in" <+> ppr e
   where
-  decls = concatMap ppTypedDecl ts ++ map ppr us
+  decls = map ppTypedDecl ts ++ map ppr us
 
 ppAbs :: Match -> Doc
 ppAbs m = case ppMatch m of
