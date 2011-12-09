@@ -48,9 +48,9 @@ data Open = Open
   } deriving (Eq,Ord,Show)
 
 instance Pretty Open where
-  pp _ o = text "open" <+> pp 0 (openMod o) <+> name <+> hiding
+  pp _ o = text "open" <+> ppr (openMod o) <+> name <+> hiding
     where
-    name = maybe empty (pp 0) (openAs o)
+    name = maybe empty ppr (openAs o)
     hiding | openHiding o && null (openSymbols o) = empty
            | openHiding o                         = text "hiding" <+> symList
            | otherwise                            = symList
