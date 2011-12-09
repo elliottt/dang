@@ -5,6 +5,7 @@
 module Syntax.ParserCore where
 
 import Data.ClashMap as CM
+import ModuleSystem.Export (Export(..))
 import QualName
 import Syntax.AST
 import TypeChecker.Types

@@ -4,13 +4,13 @@ module Core.AST (
   , Literal(..)
   , PrimType(..)
   , PrimTerm(..)
-  , Export(..)
   ) where
 
+import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
 import QualName (QualName,simpleName)
+import Syntax.AST (Var,Literal(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
-import Syntax.AST (Var,Literal(..),Export(..),PrimType(..),PrimTerm(..))
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import qualified Data.Set as Set
@@ -49,6 +49,9 @@ data Decl = Decl
   , declExport :: Export
   , declBody   :: Forall Match
   } deriving (Show)
+
+instance Exported Decl where
+  exportSpec = declExport
 
 instance DefinesQualName Decl where
   definedQualName = declName

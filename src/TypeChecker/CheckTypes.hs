@@ -5,6 +5,7 @@ module TypeChecker.CheckTypes where
 import Core.AST
 import Dang.IO
 import Dang.Monad
+import ModuleSystem.Export (Export(..))
 import ModuleSystem.Interface (HasInterface,getTypes)
 import Pretty
 import QualName
@@ -174,7 +175,7 @@ untypedAssumps ns bodies us env0 = foldM step env0 us
 
 data PartialDecl = PartialDecl
   { partialName   :: QualName
-  , partialExport :: Syn.Export
+  , partialExport :: Export
   , partialType   :: Type
   , partialBody   :: Match
   } deriving Show
@@ -245,7 +246,7 @@ tcTerm env tm = case tm of
         name = simpleName n
         decl = Decl
           { declName   = name
-          , declExport = Syn.Private
+          , declExport = Private
           , declBody   = body
           }
 

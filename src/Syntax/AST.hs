@@ -2,6 +2,7 @@
 
 module Syntax.AST where
 
+import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
 import QualName
 import TypeChecker.Types
@@ -68,14 +69,6 @@ instance Pretty OpenSymbol where
     OpenType n ns -> ppr n <> parens (commas (map ppr ns))
 
 
-data Export = Public | Private
-    deriving (Eq,Show,Ord)
-
-instance Pretty Export where
-  pp _ Public  = text "public"
-  pp _ Private = text "private"
-
-
 -- Typed Declarations ----------------------------------------------------------
 
 data TypedDecl = TypedDecl
@@ -90,6 +83,9 @@ instance FreeVars TypedDecl where
 
 instance DefinesName TypedDecl where
   definedName = typedName
+
+instance Exported TypedDecl where
+  exportSpec = typedExport
 
 ppTypedDecl :: TypedDecl -> [Doc]
 ppTypedDecl d = [sig,body]
@@ -129,6 +125,9 @@ instance Pretty UntypedDecl where
 
 instance DefinesName UntypedDecl where
   definedName = untypedName
+
+instance Exported UntypedDecl where
+  exportSpec = untypedExport
 
 
 -- Primitive Term Declarations -------------------------------------------------

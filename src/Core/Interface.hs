@@ -1,7 +1,8 @@
 module Core.Interface where
 
 import Core.AST
-    (Module(..),Export(..),Decl(..),declType,PrimType(..),PrimTerm(..))
+    (Module(..),Decl(..),declType,PrimType(..),PrimTerm(..))
+import ModuleSystem.Export (isExported)
 import ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
 import QualName (mangle,QualName,primName,qualNamespace,Namespace)
 
@@ -22,8 +23,8 @@ moduleInterface m = (emptyInterface qn)
 -- | Add a declaration to a symbol map.
 addDecl :: NameMap Symbol -> Decl -> NameMap Symbol
 addDecl syms d
-  | declExport d == Public = Map.insert qn sym syms
-  | otherwise              =                   syms
+  | isExported d = Map.insert qn sym syms
+  | otherwise    =                   syms
   where
   qn  = declName d
   sym = declSymbol qn d

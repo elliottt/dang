@@ -32,6 +32,7 @@ SLASH_MODS := \
     Link \
     Main \
     ModuleSystem \
+    ModuleSystem/Export \
     ModuleSystem/Imports \
     ModuleSystem/Interface \
     ModuleSystem/Resolve \

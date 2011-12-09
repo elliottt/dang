@@ -5,6 +5,7 @@
 
 module Syntax.Parser where
 
+import ModuleSystem.Export
 import ModuleSystem.Types
 import QualName
 import Syntax.AST
