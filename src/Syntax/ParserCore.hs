@@ -246,6 +246,7 @@ beginsLayout tok = case tok of
   TReserved "where"   -> True
   TReserved "public"  -> True
   TReserved "private" -> True
+  TReserved "data"    -> True
   _                   -> False
 
 opensBlock :: Token -> Bool
