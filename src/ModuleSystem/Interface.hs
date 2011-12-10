@@ -5,12 +5,13 @@ module ModuleSystem.Interface where
 
 import Dang.IO (withROBinaryFile,withWOBinaryFile)
 import Dang.Monad (Dang,io)
+import ModuleSystem.Export (Export(..))
 import ModuleSystem.Types (UsedName(..))
 import QualName
 import Syntax.AST
 import TypeChecker.Types
 
-import Control.Applicative ((<$>),(<*>))
+import Control.Applicative (pure,(<$>),(<*>))
 import Data.Serialize
     (runPut,Putter,putMapOf,putListOf,runGet,Get,getMapOf,getListOf)
 import MonadLib (BaseM)
@@ -90,7 +91,13 @@ dataNames iface = Map.foldlWithKey step [] (ifaceDatas iface)
   ns           = qualNamespace (ifaceName iface)
   step us qn d = UsedType qn : cs ++ us
     where
-    cs = map (UsedTerm . qualName ns . constrName) (forallData (dataConstrs d))
+    cs = concatMap (constrGroupNames ns . forallData) (dataGroups d)
+
+constrGroupNames :: Namespace -> ConstrGroup -> [UsedName]
+constrGroupNames ns cg = map (constrNames ns) (groupConstrs cg)
+
+constrNames :: Namespace -> Constr -> UsedName
+constrNames ns = UsedTerm . qualName ns . constrName
 
 primTypeNames :: Interface -> [UsedName]
 primTypeNames  = map UsedType . Map.keys . ifacePrimTypes
@@ -208,19 +215,32 @@ getSymbol  = Symbol <$> getName <*> getName <*> getForall getType
 
 putData :: Putter DataDecl
 putData d = do
-  putName                         (dataName d)
-  putForall (putListOf putConstr) (dataConstrs d)
+  putName                              (dataName d)
+  putKind                              (dataKind d)
+  putListOf (putForall putConstrGroup) (dataGroups d)
 
 getData :: Get DataDecl
-getData  = DataDecl <$> getName <*> getForall (getListOf getConstr)
+getData  = DataDecl
+       <$> getName
+       <*> getKind
+       <*> pure Public
+       <*> getListOf (getForall getConstrGroup)
+
+putConstrGroup :: Putter ConstrGroup
+putConstrGroup cg = do
+  putType             (groupType cg)
+  putListOf putConstr (groupConstrs cg)
+
+getConstrGroup :: Get ConstrGroup
+getConstrGroup  = ConstrGroup <$> getType <*> getListOf getConstr
 
 putConstr :: Putter Constr
 putConstr c = do
-  putName (constrName c)
-  putType (constrType c)
+  putName           (constrName c)
+  putListOf putType (constrFields c)
 
 getConstr :: Get Constr
-getConstr  = Constr <$> getName <*> getType
+getConstr  = Constr <$> getName <*> pure Public <*> getListOf getType
 
 putPrimType :: Putter PrimType
 putPrimType p = do
