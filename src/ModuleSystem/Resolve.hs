@@ -22,7 +22,8 @@ import QualName
     ,qualNamespace)
 import Syntax.AST
     (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
-    ,TypedDecl(..),DataDecl(..),Constr(..),Open(..),OpenSymbol(..))
+    ,TypedDecl(..),DataDecl(..),ConstrGroup(..),Constr(..),Open(..)
+    ,OpenSymbol(..))
 import TypeChecker.Types (forallData)
 import qualified Data.ClashMap as CM
 
@@ -100,7 +101,11 @@ declResolvedNames simple k qualify d =
 -- | The resolved names from a data declaration.
 dataDeclNames :: Namespace -> DataDecl -> [(UsedName,Resolved)]
 dataDeclNames ns d = declResolvedNames dataName UsedType (qualName ns) d
-                  ++ concatMap (constrNames ns) (forallData (dataConstrs d))
+                  ++ concatMap (constrGroupNames ns . forallData) (dataGroups d)
+
+-- | The resolved names from a group of constructors.
+constrGroupNames :: Namespace -> ConstrGroup -> [(UsedName,Resolved)]
+constrGroupNames ns = concatMap (constrNames ns) . groupConstrs
 
 -- | The resolved names from a data constructor.
 constrNames :: Namespace -> Constr -> [(UsedName,Resolved)]
