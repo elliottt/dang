@@ -45,6 +45,7 @@ SLASH_MODS := \
     Syntax \
     Syntax/AST \
     Syntax/ParserCore \
+    Syntax/Renumber \
     TypeChecker \
     TypeChecker/CheckKinds \
     TypeChecker/CheckTypes \

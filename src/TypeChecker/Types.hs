@@ -17,6 +17,9 @@ import Data.Serialize
     ,putListOf)
 import qualified Data.Set as Set
 
+
+-- Type Indices ----------------------------------------------------------------
+
 type Index = Int
 
 putIndex :: Putter Index
@@ -25,6 +28,8 @@ putIndex  = putWord32be . toEnum
 getIndex :: Get Index
 getIndex  = fromEnum <$> getWord32be
 
+
+-- Types -----------------------------------------------------------------------
 
 data Type
   = TApp Type Type
@@ -72,6 +77,43 @@ mapTVar f = loop
   loop (TInfix qn a b) = TInfix qn (loop a) (loop b)
   loop (TVar p)        = TVar (f p)
   loop ty              = ty
+
+-- | Type-application introduction.
+tapp :: Type -> Type -> Type
+tapp  = TApp
+
+-- | Arrow introduction.
+tarrow :: Type -> Type -> Type
+tarrow  = TInfix arrowConstr
+infixr 9 `tarrow`
+
+arrowConstr :: QualName
+arrowConstr  = primName ["Prelude"] "->"
+
+destInfix :: Type -> Maybe (QualName,Type,Type)
+destInfix (TInfix qn l r) = return (qn,l,r)
+destInfix _               = Nothing
+
+destArrow :: Type -> Maybe (Type,Type)
+destArrow ty = do
+  (qn,l,r) <- destInfix ty
+  guard (qn == arrowConstr)
+  return (l,r)
+
+destArgs :: Type -> [Type]
+destArgs ty = fromMaybe [ty] $ do
+  (l,r) <- destArrow ty
+  return (l:destArgs r)
+
+destUVar :: Type -> Maybe TParam
+destUVar (TVar (UVar p)) = return p
+destUVar _               = Nothing
+
+-- | Count the number of arguments to a function.
+typeArity :: Type -> Int
+typeArity ty = maybe 0 rec (destArrow ty)
+  where
+  rec (_,r) = 1 + typeArity r
 
 
 -- Type Variables --------------------------------------------------------------
@@ -140,42 +182,8 @@ putTParam p = putIndex (paramIndex p)
 getTParam :: Get TParam
 getTParam  = TParam <$> getIndex <*> get <*> get <*> getKind
 
--- | Type-application introduction.
-tapp :: Type -> Type -> Type
-tapp  = TApp
 
--- | Arrow introduction.
-tarrow :: Type -> Type -> Type
-tarrow  = TInfix arrowConstr
-infixr 9 `tarrow`
-
-arrowConstr :: QualName
-arrowConstr  = primName ["Prelude"] "->"
-
-destInfix :: Type -> Maybe (QualName,Type,Type)
-destInfix (TInfix qn l r) = return (qn,l,r)
-destInfix _               = Nothing
-
-destArrow :: Type -> Maybe (Type,Type)
-destArrow ty = do
-  (qn,l,r) <- destInfix ty
-  guard (qn == arrowConstr)
-  return (l,r)
-
-destArgs :: Type -> [Type]
-destArgs ty = fromMaybe [ty] $ do
-  (l,r) <- destArrow ty
-  return (l:destArgs r)
-
-destUVar :: Type -> Maybe TParam
-destUVar (TVar (UVar p)) = return p
-destUVar _               = Nothing
-
--- | Count the number of arguments to a function.
-typeArity :: Type -> Int
-typeArity ty = maybe 0 rec (destArrow ty)
-  where
-  rec (_,r) = 1 + typeArity r
+-- Kinds -----------------------------------------------------------------------
 
 type Kind = Type
 

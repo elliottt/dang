@@ -207,7 +207,7 @@ data ConstrGroup = ConstrGroup
   } deriving (Show)
 
 ppConstrGroup :: Export -> ConstrGroup -> Doc
-ppConstrGroup e g = ppr (groupType g) <+> text "where"
+ppConstrGroup _ g = ppr (groupType g) <+> text "where"
                  $$ nest 2 (constrBlock (groupConstrs g))
 
 instance FreeVars ConstrGroup where
@@ -225,6 +225,7 @@ data Constr = Constr
 constrBlock :: [Constr] -> Doc
 constrBlock  = vcat . map step . groupByExport
   where
+  step []       = empty
   step cs@(c:_) = export (vcat (map ppr cs))
     where
     export | isExported c = ppPublic

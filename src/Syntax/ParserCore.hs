@@ -8,16 +8,14 @@ import Data.ClashMap as CM
 import ModuleSystem.Export (Export(..))
 import QualName
 import Syntax.AST
+import Syntax.Renumber (renumber)
 import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
-import Control.Monad.ST.Strict (runST)
 import Data.Monoid (Monoid(..))
-import Data.STRef.Strict (newSTRef,readSTRef,writeSTRef)
 import MonadLib
 import qualified Data.Text.Lazy as L
-import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 
@@ -205,6 +203,7 @@ layout scan = loop
         False -> case compare (posCol pos) (levIndent level) of
           EQ -> delayLexeme l >> return (sep pos)
           GT -> return l
+          -- this needs to pop blocks until it hits one at the correct level.
           LT -> do
             popLevel
             when (levBlock level) (delayLexeme (sep pos))
@@ -352,28 +351,17 @@ mkTypeDecl n t = mempty { parsedPDecls = singleton n (DeclType t) }
 mkForall :: Type -> Forall Type
 mkForall ty = quantify (Set.toList (typeVars ty')) ty'
   where
-  ty' = numberTypeVars ty
+  ty' = renumber ty
 
--- | Syntactic numbering of type variables.
-numberTypeVars :: Type -> Type
-numberTypeVars ty = runST body
+mkConstrGroup :: Name -> [Type] -> [Constr] -> Forall ConstrGroup
+mkConstrGroup n tys cs = quantify vars ConstrGroup
+  { groupType    = ty
+  , groupConstrs = renumber cs
+  }
   where
-  body = do
-    ref <- newSTRef (0,Map.empty)
-    loop ref ty
-
-  loop ref (TApp l r)      = TApp      `fmap` loop ref l `ap` loop ref r
-  loop ref (TInfix op l r) = TInfix op `fmap` loop ref l `ap` loop ref r
-  loop _   t@TCon{}        = return t
-  loop _   t@(TVar GVar{}) = return t
-  loop ref (TVar (UVar p)) = do
-    (n,m) <- readSTRef ref
-    let var = paramName p
-    case Map.lookup var m of
-      Just ix -> return (uvar p { paramIndex = ix })
-      Nothing -> do
-        writeSTRef ref (n+1,Map.insert var n m)
-        return (uvar p { paramIndex = n })
+  tys' = renumber tys
+  ty   = foldl tarrow (TCon (simpleName n)) tys'
+  vars = Set.toList (typeVars tys')
 
 
 addDecl :: UntypedDecl -> PDecls -> PDecls

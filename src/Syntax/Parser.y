@@ -195,7 +195,7 @@ constr_group_body :: { Name -> Forall ConstrGroup }
   |        constr_group_tail { \ n -> $1 n [] }
 
 constr_group_tail :: { Name -> [Type] -> Forall ConstrGroup }
-  : 'where' '{' constrs '}' { \n tys -> undefined }
+  : 'where' '{' constrs '}' { \n tys -> mkConstrGroup n tys $3 }
 
 constrs :: { [Constr] }
   : constrs ';' constr { $3 : $1 }

@@ -8,6 +8,7 @@ import Core.AST
 import Dang.Monad
 import Pretty
 import TypeChecker.Types
+import Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)
@@ -162,6 +163,24 @@ instance Types Term where
     Global _  -> Set.empty
     Local _   -> Set.empty
     Lit _     -> Set.empty
+
+instance Types DataDecl where
+  apply' b s d = d { dataGroups = map (apply' b s) (dataGroups d) }
+
+  typeVars = typeVars . dataGroups
+
+instance Types ConstrGroup where
+  apply' b s cg = cg
+    { groupType    = apply' b s (groupType cg)
+    , groupConstrs = apply' b s (groupConstrs cg)
+    }
+
+  typeVars cg = typeVars (groupType cg) `Set.union` typeVars (groupConstrs cg)
+
+instance Types Constr where
+  apply' b s c = c { constrFields = apply' b s (constrFields c) }
+
+  typeVars = typeVars . constrFields
 
 
 -- Unification -----------------------------------------------------------------
