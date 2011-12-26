@@ -9,6 +9,7 @@ import ModuleSystem.Export
 import ModuleSystem.Types
 import QualName
 import Syntax.AST
+import Syntax.Lexeme
 import Syntax.Lexer
 import Syntax.ParserCore
 import TypeChecker.Types
@@ -287,7 +288,17 @@ akind :: { Kind }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
-lexer k = k =<< layout scan
+lexer k = do
+  ps <- get
+  case psTokens ps of
+
+    l:ls -> do
+      set $! ps { psTokens = ls }
+      k l
+
+    [l] -> parseError l
+
+    [] -> happyError
 
 happyError :: Parser a
 happyError  = raiseP "Happy error" nullPosition

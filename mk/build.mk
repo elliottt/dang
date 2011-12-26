@@ -27,7 +27,7 @@ ALEX      = alex
 ALEXFLAGS =
 
 quiet_cmd_alex_hs_x = ALEX    $@
-      cmd_alex_hs_x = $(ALEX) $(ALEXFLAGS) -i -o $@ $<
+      cmd_alex_hs_x = $(ALEX) $(ALEXFLAGS) -g -i -o $@ $<
 
 define alex_target
 $(GHC_DIR)/$1.hs : src/$1.x

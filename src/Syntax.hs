@@ -1,8 +1,16 @@
-module Syntax where
+module Syntax (
+    loadModule
+  , parseSource
+
+  , Lexeme(..)
+  , testLexer
+  ) where
 
 import Dang.IO (logStage,logInfo,logDebug,onFileNotFound,loadFile)
 import Dang.Monad (Dang,io,raiseE)
 import Pretty (pretty)
+import Syntax.Lexeme (Lexeme(..))
+import Syntax.Lexer (scan)
 import Syntax.Parser (parseModule)
 import Syntax.ParserCore (runParser)
 import Syntax.AST (Module)
@@ -24,7 +32,9 @@ loadModule path = do
 
 parseSource :: FilePath -> L.Text -> Dang Module
 parseSource path source =
-  case runParser path source parseModule of
+  case runParser (scan path source) parseModule of
     Left err -> io (putStrLn (show err)) >> fail "Parse error"
     Right m  -> return m
 
+testLexer :: FilePath -> String -> [Lexeme]
+testLexer path = scan path . L.pack

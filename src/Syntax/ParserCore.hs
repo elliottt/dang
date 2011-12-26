@@ -8,6 +8,7 @@ import Data.ClashMap as CM
 import ModuleSystem.Export (Export(..))
 import QualName
 import Syntax.AST
+import Syntax.Lexeme
 import Syntax.Renumber (renumber)
 import TypeChecker.Types
 import TypeChecker.Unify
@@ -15,63 +16,10 @@ import TypeChecker.Unify
 import Control.Applicative (Applicative)
 import Data.Monoid (Monoid(..))
 import MonadLib
-import qualified Data.Text.Lazy as L
 import qualified Data.Set as Set
-import qualified Data.Sequence as Seq
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
-
-data Position = Position
-  { posOff  :: !Int
-  , posLine :: !Int
-  , posCol  :: !Int
-  , posFile :: FilePath
-  } deriving Show
-
-initPosition :: FilePath -> Position
-initPosition path = Position
-  { posOff  = 0
-  , posLine = 1
-  , posCol  = 1
-  , posFile = path
-  }
-
-nullPosition :: Position
-nullPosition  = Position
-  { posOff  = 0
-  , posLine = 1
-  , posCol  = 1
-  , posFile = "<unknown>"
-  }
-
-movePos :: Position -> Char -> Position
-movePos (Position a line col path) c =
-  case c of
-    '\t' -> Position (a+1) line (col+8) path
-    '\n' -> Position (a+1) (line+1) 1 path
-    _    -> Position (a+1) line (col+1) path
-
-data Token
-  = TReserved String
-  | TConIdent String
-  | TSymIdent String
-  | TOperIdent String
-  | TInt Integer
-  | TEof
-    deriving (Eq,Show)
-
-isEof :: Token -> Bool
-isEof TEof = True
-isEof _    = False
-
-data Lexeme = Lexeme
-  { lexPos   :: !Position
-  , lexToken :: Token
-  } deriving Show
-
-instance Eq Lexeme where
-  a == b = lexToken a == lexToken b
 
 data ErrorType
   = LexerError
@@ -80,37 +28,13 @@ data ErrorType
 
 data Error = Error ErrorType String Position deriving Show
 
-data Level = Level
-  { levBlock  :: Bool
-  , levIndent :: !Int
-  } deriving Show
-
-zeroLevel :: Level
-zeroLevel  = Level { levBlock = False, levIndent = 0 }
-
 data ParserState = ParserState
-  { psInput   :: !L.Text
-  , psChar    :: !Char
-  , psPos     :: !Position
-  , psLexCode :: !Int
-  , psIndex   :: !Index
-  , psLevels  :: [Level]
-  , psBegin   :: Bool
-  , psBlock   :: Bool
-  , psDelay   :: Seq.Seq Lexeme
+  { psTokens  :: [Lexeme]
   } deriving Show
 
-initParserState :: FilePath -> L.Text -> ParserState
-initParserState path bs = ParserState
-  { psInput   = bs
-  , psChar    = '\n'
-  , psPos     = initPosition path
-  , psLexCode = 0
-  , psIndex   = 0
-  , psLevels  = [zeroLevel]
-  , psBegin   = False
-  , psBlock   = False
-  , psDelay   = Seq.empty
+initParserState :: [Lexeme] -> ParserState
+initParserState ls = ParserState
+  { psTokens  = ls
   }
 
 newtype Parser a = Parser
@@ -139,20 +63,14 @@ instance WriterM Parser [ParserError] where
 instance RunWriterM Parser [ParserError] where
   collect = Parser . collect . unParser
 
--- | Raise an exception from the lexer.
-raiseL :: String -> Parser a
-raiseL msg = do
-  st <- get
-  raise (Error LexerError msg (psPos st))
-
 -- | Raise an exception from the parser.
 raiseP :: String -> Position -> Parser a
 raiseP msg pos = raise (Error ParserError msg pos)
 
 -- | Run the parser over the file given.
-runParser :: FilePath -> L.Text -> Parser a -> Either Error a
-runParser path bs m =
-  case runM (unParser body) (initParserState path bs) of
+runParser :: [Lexeme] -> Parser a -> Either Error a
+runParser ls m =
+  case runM (unParser body) (initParserState ls) of
     Right ((a,_),_) -> Right a
     Left err        -> Left err
   where
@@ -161,133 +79,6 @@ runParser path bs m =
     unless (null errs)
         (raiseP ("definition errors: " ++ show errs) nullPosition)
     return res
-
-testFile :: Parser a -> FilePath -> IO (Either Error a)
-testFile p file = testParser p `fmap` readFile file
-
--- | For testing parsers within ghci.
-testParser :: Parser a -> String -> Either Error a
-testParser p str = runParser "<interactive>" (L.pack str) p
-
-
--- Layout Processing -----------------------------------------------------------
-
-layout :: Parser Lexeme -> Parser Lexeme
-layout scan = loop
-  where
-  open  pos = Lexeme { lexPos = pos, lexToken = TReserved "{" }
-  sep   pos = Lexeme { lexPos = pos, lexToken = TReserved ";" }
-  close pos = Lexeme { lexPos = pos, lexToken = TReserved "}" }
-
-  loop = checkDelayed >>= \mb -> case mb of
-
-    -- nothing delayed, proceed.
-    Nothing -> do
-      l <- scan
-      let tok = lexToken l
-          pos = lexPos l
-
-      -- act on a new layout level
-      level <- getLevel
-      ps    <- get
-      l'    <- case psBegin ps of
-
-        _res | isEof tok -> do
-          ls <- getLevels
-          let c = close pos
-          -- we never close the last level, and we close the current one, so 2.
-          replicateM_ (length ls - 2) (delayLexeme c)
-          delayLexeme l
-          return c
-
-        False -> case compare (posCol pos) (levIndent level) of
-          EQ -> delayLexeme l >> return (sep pos)
-          GT -> return l
-          -- this needs to pop blocks until it hits one at the correct level.
-          LT -> do
-            popLevel
-            when (levBlock level) (delayLexeme (sep pos))
-            delayLexeme l
-            return (close pos)
-
-        True -> do
-          pushLevel (posCol pos)
-          clearBegin
-          delayLexeme l
-          return (open pos)
-
-      -- schedule a new layout level
-      when (beginsLayout tok) (nextBeginsLayout tok)
-
-      return l'
-
-    -- not common that a token gets delayed by a layout token
-    Just l -> return l
-
-checkDelayed :: Parser (Maybe Lexeme)
-checkDelayed  = do
-  ps <- get
-  case Seq.viewl (psDelay ps) of
-    Seq.EmptyL  -> return Nothing
-    l Seq.:< ls -> do
-      set ps { psDelay = ls }
-      return (Just l)
-
-delayLexeme :: Lexeme -> Parser ()
-delayLexeme l = do
-  ps <- get
-  set ps { psDelay = psDelay ps Seq.|> l }
-
-beginsLayout :: Token -> Bool
-beginsLayout tok = case tok of
-  TReserved "let"     -> True
-  TReserved "do"      -> True
-  TReserved "where"   -> True
-  TReserved "public"  -> True
-  TReserved "private" -> True
-  TReserved "data"    -> True
-  _                   -> False
-
-opensBlock :: Token -> Bool
-opensBlock tok = case tok of
-  TReserved "public"  -> True
-  TReserved "private" -> True
-  TReserved "where"   -> True
-  _                   -> False
-
--- | Signal that the next token begins a level of indentation.
-nextBeginsLayout :: Token -> Parser ()
-nextBeginsLayout tok = do
-  ps <- get
-  set ps { psBegin = True, psBlock = opensBlock tok }
-
-clearBegin :: Parser ()
-clearBegin  = do
-  ps <- get
-  set ps { psBegin = False, psBlock = False }
-
-getLevels :: Parser [Level]
-getLevels  = psLevels `fmap` get
-
-getLevel :: Parser Level
-getLevel  = do
-  ls <- getLevels
-  case ls of
-    l:_ -> return l
-    []  -> fail "Syntax.ParserCore.getLevel: the unexpected happened"
-
-pushLevel :: Int -> Parser ()
-pushLevel l = do
-  ps <- get
-  let lev = Level { levIndent = l, levBlock = psBlock ps }
-  set $! ps { psLevels = lev : psLevels ps }
-
-popLevel :: Parser ()
-popLevel  = do
-  ps <- get
-  case psLevels ps of
-    _:ls -> set ps { psLevels = ls }
-    []   -> fail "Syntax.ParserCore.popLevel: the unexpected happened"
 
 
 -- Parsed Syntax ---------------------------------------------------------------
