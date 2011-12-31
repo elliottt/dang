@@ -2,18 +2,10 @@
 {-# LANGUAGE PatternGuards #-}
 
 module Syntax.Layout (
-    testLayout
-  , layout
+    layout
   ) where
 
-import Syntax.Lexer (scan)
 import Syntax.Lexeme
-
-import qualified Data.Text.Lazy.IO as L
-
-testLayout path = do
-  source <- L.readFile path
-  mapM_ print (map lexToken (layout (scan path source)))
 
 
 -- Layout Levels ---------------------------------------------------------------
