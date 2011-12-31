@@ -34,6 +34,7 @@ import MonadLib
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
+  '|'  { Lexeme $$ (TReserved "|")  }
 
 -- special operators
   '->' { Lexeme $$ (TOperIdent "->") }
@@ -196,14 +197,20 @@ constr_group_body :: { Name -> Forall ConstrGroup }
   |        constr_group_tail { \ n -> $1 n [] }
 
 constr_group_tail :: { Name -> [Type] -> Forall ConstrGroup }
-  : 'where' '{' constrs '}' { \n tys -> mkConstrGroup n tys $3 }
+  : '=' '{' constrs '}' { \n tys -> mkConstrGroup n tys $3 }
+  | {- empty -} { \n tys -> mkConstrGroup n tys [] }
 
 constrs :: { [Constr] }
-  : constrs ';' constr { $3 : $1 }
+  : constrs '|' constr { $3 : $1 }
   | constr             { [$1] }
 
 constr :: { Constr }
-  : CONIDENT atypes { Constr { constrName = $1, constrFields = $2 } }
+  : CONIDENT constr_tail
+    { Constr { constrName = $1, constrFields = $2 } }
+
+constr_tail :: { [Type] }
+  : atypes      { reverse $1 }
+  | {- empty -} { [] }
 
 
 -- Terms -----------------------------------------------------------------------
