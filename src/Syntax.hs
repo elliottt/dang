@@ -30,9 +30,8 @@ loadModule path = do
     io (putStrLn ("Unable to open file: " ++ p))
     raiseE x
   m <- parseSource path source
-  logInfo "Parsed module"
+  logInfo ("Parsed module\n" ++ pretty m)
   logDebug (show m)
-  logInfo ('\n' : pretty m)
   return m
 
 parseSource :: FilePath -> L.Text -> Dang Module
