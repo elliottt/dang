@@ -114,7 +114,8 @@ scan source text = fst (runId (runStateT st0 (unLexer loop)))
         alexSetInput inp'
         loop
 
-      AlexEOF -> return [Lexeme { lexPos = pos, lexToken = TEof }]
+      AlexEOF ->
+        return [Lexeme { lexPos = pos { posCol = 0 }, lexToken = TEof }]
 
       AlexError inp' -> return [Lexeme pos (TError "Lexical error")]
 
