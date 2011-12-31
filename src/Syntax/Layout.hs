@@ -70,6 +70,14 @@ pushLevel lev st = levCont lev (lev:st)
 start :: Position -> Lexeme
 start pos = Lexeme { lexPos = pos, lexToken = TReserved "{" }
 
+-- | Emit a separator if a token falls on a level boundary.
+sep :: State -> Lexeme -> [Lexeme]
+sep st lx = case st of
+  l:_ | levIndent l == posCol pos -> [Lexeme pos (levSep l),lx]
+  _                               -> [lx]
+  where
+  pos = lexPos lx
+
 -- | Create a block closing token.
 close :: Position -> Lexeme
 close pos = Lexeme { lexPos = pos, lexToken = TReserved "}" }
@@ -92,9 +100,11 @@ startsConstr lx = case lexToken lx of
 -- | Lexemes that begin normal layout.
 startsBlock :: Lexeme -> Bool
 startsBlock lx = case lexToken lx of
-  TReserved "where" -> True
-  TReserved "let"   -> True
-  _                 -> False
+  TReserved "where"   -> True
+  TReserved "let"     -> True
+  TReserved "public"  -> True
+  TReserved "private" -> True
+  _                   -> False
 
 -- | Close levels, if there are levels to close.
 closesBlock :: State -> Lexeme -> Maybe ([Lexeme],State)
@@ -104,18 +114,14 @@ closesBlock st lx = case closeLevels st pos of
   where
   pos = lexPos lx
 
--- | Emit a separator if a token falls on a level boundary.
-sep :: State -> Lexeme -> [Lexeme]
-sep st lx = case st of
-  l:_ | levIndent l == posCol pos -> [Lexeme pos (levSep l),lx]
-  _                               -> [lx]
-  where
-  pos = lexPos lx
-
 
 -- Layout Processing -----------------------------------------------------------
 
-newtype Layout = Layout { stepLayout :: Lexeme -> ([Lexeme],Layout) }
+data Result
+  = Done  [Lexeme] Layout
+  | Delay [Lexeme] Layout
+
+newtype Layout = Layout { stepLayout :: Lexeme -> Result }
 
 type Processor = State -> Layout
 
@@ -124,25 +130,26 @@ layout :: [Lexeme] -> [Lexeme]
 layout  = loop (normal emptyState)
   where
   loop l ls = case ls of
-    lx:rest -> let (out,l') = stepLayout l lx
-                in out ++ loop l' rest
+    lx:rest -> case stepLayout l lx of
+      Done  out l' -> out ++ loop l' rest
+      Delay out l' -> out ++ loop l' ls
     []      -> []
 
 -- | Process tokens normally.
 normal :: Processor
 normal st = Layout go
   where
-  go lx | startsData  lx                     = (sep st lx, startData st)
-        | startsBlock lx                     = (sep st lx, startBlock st)
-        | Just (cs,st') <- closesBlock st lx = (cs ++ sep st' lx, continue st')
-        | otherwise                          = (sep st lx, normal st)
+  go lx | startsData  lx                     = Done (sep st lx) (startData st)
+        | startsBlock lx                     = Done (sep st lx) (startBlock st)
+        | Just (cs,st') <- closesBlock st lx = Delay cs (continue st')
+        | otherwise                          = Done (sep st lx) (normal st)
 
 -- | Begin a layout block that is started by a data token.  This allows for
 -- different processing of the ``='' token.
 startData :: Processor
 startData st = Layout go
   where
-  go lx = ([start pos, lx], pushLevel (semiLevel pos dataGroups) st)
+  go lx = Done [start pos, lx] (pushLevel (semiLevel pos dataGroups) st)
     where
     pos = lexPos lx
 
@@ -150,26 +157,30 @@ startData st = Layout go
 dataGroups :: Processor
 dataGroups st = Layout go
   where
-  go lx | startsConstr lx = (sep st lx, startConstr st)
-        | otherwise       = (sep st lx, dataGroups st)
+  go lx | startsConstr lx = Done (sep st lx) (startConstr st)
+        | otherwise       = Done (sep st lx) (dataGroups st)
 
 -- | Begin processing data constructors.
 startConstr :: Processor
 startConstr st = Layout go
   where
-  go lx = ([lx], pushLevel (pipeLevel (lexPos lx) constr) st)
+  go lx = Done [start pos,lx] (pushLevel (pipeLevel pos constr) st)
+    where
+    pos = lexPos lx
 
 -- | Layout processing for data constructors.
 constr :: Processor
 constr st = Layout go
   where
-  go lx | Just (cs,st') <- closesBlock st lx = (cs ++ sep st' lx, continue st')
-        | otherwise                          = (sep st lx, constr st)
+  go lx | Just (cs,st') <- closesBlock st lx = Delay cs (continue st')
+        | otherwise                          = Done (sep st lx) (constr st)
 
 -- | Begin a layout level started by a normal layout token.
 startBlock :: Processor
 startBlock st = Layout go
   where
-  go lx = ([start pos,lx], pushLevel (semiLevel pos normal) st)
+  go lx = Done [start pos,lx] (pushLevel (semiLevel pos next) st)
     where
     pos = lexPos lx
+    next | startsBlock lx = startBlock
+         | otherwise      = normal
