@@ -26,10 +26,6 @@ $symbol      = [\- \> \< \: \*]
 :-
 
 -- No nested comments, currently
-<main,comment> {
-"{-"            { begin comment }
-}
-
 <comment> {
 "-}"            { begin 0 }
 .               ;
@@ -40,6 +36,7 @@ $symbol      = [\- \> \< \: \*]
 -- skip whitespace
 $white          ;
 "--".*$         ;
+"{-"            { begin comment }
 
 \\              { reserved }
 "="             { reserved }

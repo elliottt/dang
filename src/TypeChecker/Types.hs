@@ -105,6 +105,15 @@ destArgs ty = fromMaybe [ty] $ do
   (l,r) <- destArrow ty
   return (l:destArgs r)
 
+destTApp :: Type -> Maybe (Type,Type)
+destTApp (TApp l r) = Just (l,r)
+destTApp _          = Nothing
+
+destTCon :: Type -> [Type]
+destTCon ty = fromMaybe [ty] $ do
+  (l,r) <- destTApp ty
+  return (l:destTCon r)
+
 destUVar :: Type -> Maybe TParam
 destUVar (TVar (UVar p)) = return p
 destUVar _               = Nothing

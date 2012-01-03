@@ -14,6 +14,7 @@ import TypeChecker.Types
 import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
+import Data.List (nub)
 import Data.Monoid (Monoid(..))
 import MonadLib
 import qualified Data.Set as Set
@@ -145,14 +146,14 @@ mkForall ty = quantify (Set.toList (typeVars ty')) ty'
   ty' = renumber ty
 
 mkConstrGroup :: Name -> [Type] -> [Constr] -> Forall ConstrGroup
-mkConstrGroup n tys cs = quantify vars ConstrGroup
+mkConstrGroup n args cs = quantify vars ConstrGroup
   { groupType    = ty
   , groupConstrs = renumber cs
   }
   where
-  tys' = renumber tys
-  ty   = foldl tarrow (TCon (simpleName n)) tys'
-  vars = Set.toList (typeVars tys')
+  args' = renumber args
+  ty    = foldl TApp (TCon (simpleName n)) args
+  vars  = Set.toList (typeVars args')
 
 
 addDecl :: UntypedDecl -> PDecls -> PDecls
@@ -182,8 +183,29 @@ mkPrimTerm d = mempty { parsedPrimTerms = singleton (primTermName d) d }
 mkPrimType :: PrimType -> PDecls
 mkPrimType d = mempty { parsedPrimTypes = singleton (primTypeName d) d }
 
-mkDataDecl :: DataDecl -> PDecls
-mkDataDecl d = mempty { parsedDataDecls = [d] }
+mkDataDecl :: Position -> [Forall ConstrGroup] -> Parser PDecls
+mkDataDecl pos qgs = do
+  when (null qgs) (raiseP "No types defined by data declaration" pos)
+  n <- groupName pos (zip (repeat pos) qgs)
+  let d = DataDecl
+        { dataName   = n
+        , dataKind   = setSort
+        , dataExport = Public
+        , dataGroups = qgs
+        }
+  return mempty { parsedDataDecls = [d] }
+
+groupName :: Position -> [(Position,Forall ConstrGroup)] -> Parser Name
+groupName pos = agree <=< mapM typeName
+  where
+
+  agree ns = case nub ns of
+    [n] -> return n
+    _   -> raiseP "Type names don't agree" pos
+
+  typeName (gpos,qcg) = case destTCon (groupType (forallData qcg)) of
+    TCon n:_ -> return (qualSymbol n)
+    x        -> raiseP ("Invalid type constructor " ++ show x)  gpos
 
 resolveNamed :: NameMap a -> Parser [a]
 resolveNamed nm = do

@@ -183,7 +183,7 @@ open_type_members :: { [Name] }
 -- Data Declarations -----------------------------------------------------------
 
 data :: { PDecls }
-  : 'data' '{' constr_groups '}' { mkDataDecl undefined }
+  : 'data' '{' constr_groups '}' {% mkDataDecl $2 (reverse $3) }
 
 constr_groups :: { [Forall ConstrGroup] }
   : constr_groups ';' constr_group { $3 : $1 }
@@ -197,8 +197,8 @@ constr_group_body :: { Name -> Forall ConstrGroup }
   |        constr_group_tail { \ n -> $1 n [] }
 
 constr_group_tail :: { Name -> [Type] -> Forall ConstrGroup }
-  : '=' '{' constrs '}' { \n tys -> mkConstrGroup n tys $3 }
-  | {- empty -} { \n tys -> mkConstrGroup n tys [] }
+  : '=' '{' constrs '}' { \n tys -> mkConstrGroup n tys (reverse $3) }
+  | {- empty -}         { \n tys -> mkConstrGroup n tys [] }
 
 constrs :: { [Constr] }
   : constrs '|' constr { $3 : $1 }
@@ -206,7 +206,7 @@ constrs :: { [Constr] }
 
 constr :: { Constr }
   : CONIDENT constr_tail
-    { Constr { constrName = $1, constrFields = $2 } }
+    { Constr { constrName = $1, constrExport = Public, constrFields = $2 } }
 
 constr_tail :: { [Type] }
   : atypes      { reverse $1 }

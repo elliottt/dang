@@ -207,7 +207,7 @@ data ConstrGroup = ConstrGroup
   } deriving (Show)
 
 ppConstrGroup :: Export -> ConstrGroup -> Doc
-ppConstrGroup _ g = ppr (groupType g) <+> text "where"
+ppConstrGroup _ g = ppr (groupType g) <+> char '='
                  $$ nest 2 (constrBlock (groupConstrs g))
 
 instance FreeVars ConstrGroup where
