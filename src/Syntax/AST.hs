@@ -207,8 +207,8 @@ data ConstrGroup = ConstrGroup
   } deriving (Show)
 
 ppConstrGroup :: Export -> ConstrGroup -> Doc
-ppConstrGroup _ g = ppr (groupType g) <+> char '='
-                 $$ nest 2 (constrBlock (groupConstrs g))
+ppConstrGroup x g = ppr (groupType g) <+> char '='
+                 $$ nest 2 (ppConstrBlock (Just x) (groupConstrs g))
 
 instance FreeVars ConstrGroup where
   freeVars g = freeVars (groupType g) `Set.union` freeVars (groupConstrs g)
@@ -222,13 +222,19 @@ data Constr = Constr
   , constrFields :: [Type]
   } deriving (Show)
 
-constrBlock :: [Constr] -> Doc
-constrBlock  = vcat . map step . groupByExport
+ppConstrBlock :: Maybe Export -> [Constr] -> Doc
+ppConstrBlock mb = vcat . map step . groupByExport
   where
+
+  hideExport = case mb of
+    Nothing -> const False
+    Just x  -> \ c -> exportSpec c == x
+
   step []       = empty
   step cs@(c:_) = export (vcat (map ppr cs))
     where
-    export | isExported c = ppPublic
+    export | hideExport c = id
+           | isExported c = ppPublic
            | otherwise    = ppPrivate
 
 instance Pretty Constr where
