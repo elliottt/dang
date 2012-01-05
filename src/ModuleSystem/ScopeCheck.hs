@@ -14,7 +14,7 @@ import Pretty (pretty)
 import QualName
 import Syntax.AST
     (Module(..),PrimTerm(..),UntypedDecl(..),TypedDecl(..),Match(..)
-    ,DataDecl(..),Term(..),Pat(..))
+    ,DataDecl(..),ConstrGroup(..),Constr(..),Term(..),Pat(..))
 import TypeChecker.Types (Type(..),Forall(..))
 import qualified Data.ClashMap as CM
 
@@ -149,7 +149,23 @@ scTypedDecl t = do
   return t { typedType = sc, typedBody = m }
 
 scDataDecl :: DataDecl -> Scope DataDecl
-scDataDecl _dd = fail "scDataDecl"
+scDataDecl dd = do
+  gs <- mapM (scForall scConstrGroup) (dataGroups dd)
+  return dd { dataGroups = gs }
+
+scConstrGroup :: ConstrGroup -> Scope ConstrGroup
+scConstrGroup cg = do
+  ty <- scType (groupType cg)
+  cs <- mapM scConstr (groupConstrs cg)
+  return cg
+    { groupType    = ty
+    , groupConstrs = cs
+    }
+
+scConstr :: Constr -> Scope Constr
+scConstr c = do
+  fs <- mapM scType (constrFields c)
+  return c { constrFields = fs }
 
 
 -- Types -----------------------------------------------------------------------
