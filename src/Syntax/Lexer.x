@@ -1,14 +1,16 @@
 {
 {-# OPTIONS_GHC -w #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- vim: filetype=haskell
 module Syntax.Lexer where
 
-import Syntax.ParserCore
+import Syntax.Lexeme
 
 import Data.Int (Int64)
 import MonadLib
 import qualified Data.Text.Lazy as L
-
 }
 
 $digit       = [0-9]
@@ -24,10 +26,6 @@ $symbol      = [\- \> \< \: \*]
 :-
 
 -- No nested comments, currently
-<main,comment> {
-"{-"            { begin comment }
-}
-
 <comment> {
 "-}"            { begin 0 }
 .               ;
@@ -38,6 +36,7 @@ $symbol      = [\- \> \< \: \*]
 -- skip whitespace
 $white          ;
 "--".*$         ;
+"{-"            { begin comment }
 
 \\              { reserved }
 "="             { reserved }
@@ -69,96 +68,112 @@ $digit+         { emitS (TInt . read) }
 }
 
 {
-type AlexAction result = AlexInput -> Int -> result
 
--- | Emit a token from the lexer
-emitT :: Token -> AlexAction (Parser Lexeme)
-emitT tok (pos,_,_) _ = return $! Lexeme
-  { lexPos   = pos
-  , lexToken = tok
-  }
+newtype Lexer a = Lexer
+  { unLexer :: StateT LexerState Id a
+  } deriving (Functor,Monad)
 
-emitS :: (String -> Token) -> AlexAction (Parser Lexeme)
-emitS mk (pos,c,bs) len = return $! Lexeme
-  { lexPos   = pos
-  , lexToken = mk (L.unpack (L.take (fromIntegral len) bs))
-  }
+instance StateM Lexer LexerState where
+  get = Lexer   get
+  set = Lexer . set
 
-reserved :: AlexAction (Parser Lexeme)
-reserved  = emitS TReserved
+data LexerState = LexerState
+  { lexerPosn  :: !Position
+  , lexerChar  :: !Char
+  , lexerInput :: !L.Text
+  , lexerState :: !Int
+  } deriving Show
 
-scan :: Parser Lexeme
-scan  = do
-  inp@(pos,_,_) <- alexGetInput
-  sc            <- alexGetStartCode
-  case alexScan inp (fromEnum sc) of
-    AlexEOF -> return $! Lexeme
-      { lexPos   = pos
-      , lexToken = TEof
-      }
+scan :: FilePath -> L.Text -> [Lexeme]
+scan source text = fst (runId (runStateT st0 (unLexer loop)))
+  where
+  st0  = LexerState
+    { lexerPosn  = initPosition source
+    , lexerInput = text
+    , lexerChar  = '\n'
+    , lexerState = 0
+    }
 
-    AlexError inp' -> alexError "Lexical error"
+  loop = do
+    inp@(pos,_,_) <- alexGetInput
+    sc            <- alexGetStartCode
+    case alexScan inp sc of
 
-    AlexSkip inp' len -> do
-      alexSetInput inp'
-      scan
+      AlexToken inp' len action -> do
+        alexSetInput inp'
+        mb   <- action inp len
+        rest <- loop
+        case mb of
+          Just lex -> return (lex:rest)
+          Nothing  -> return rest
 
-    AlexToken inp' len action -> do
-      alexSetInput inp'
-      action inp len
+      AlexSkip inp' len -> do
+        alexSetInput inp'
+        loop
+
+      AlexEOF ->
+        return [Lexeme { lexPos = pos { posCol = 0 }, lexToken = TEof }]
+
+      AlexError inp' -> return [Lexeme pos (TError "Lexical error")]
+
+
+-- Input -----------------------------------------------------------------------
 
 type AlexInput = (Position,Char,L.Text)
 
-alexGetInput :: Parser AlexInput
-alexGetInput  = do
-  s <- get
-  return (psPos s, psChar s, psInput s)
+alexSetInput ::AlexInput -> Lexer ()
+alexSetInput (pos,c,text) = do
+  st <- get
+  set $! st { lexerPosn = pos, lexerChar = c, lexerInput = text }
 
-alexSetInput :: AlexInput -> Parser ()
-alexSetInput (pos,c,bs) = do
-  s <- get
-  set $! s
-    { psPos   = pos
-    , psChar  = c
-    , psInput = bs
-    }
+alexGetInput :: Lexer AlexInput
+alexGetInput  = do
+  st <- get
+  return (lexerPosn st, lexerChar st, lexerInput st)
+
+alexInputPrevChar :: AlexInput -> Char
+alexInputPrevChar (_,c,_) = c
 
 alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
 alexGetChar (p,_,bs) = do
   (c,bs') <- L.uncons bs
   return (c, (movePos p c, c, bs'))
 
-alexInputPrevChar :: AlexInput -> Char
-alexInputPrevChar (_,c,_) = c
 
-alexError :: String -> Parser a
-alexError  = raiseL
+-- Start Codes -----------------------------------------------------------------
 
-alexGetStartCode :: Parser Int
-alexGetStartCode  = psLexCode `fmap` get
+alexGetStartCode :: Lexer Int
+alexGetStartCode  = lexerState `fmap` get
 
-alexSetStartCode :: Int -> Parser ()
+alexSetStartCode :: Int -> Lexer ()
 alexSetStartCode code = do
   s <- get
-  set $! s { psLexCode = code }
+  set $! s { lexerState = code }
 
-begin :: Int -> AlexAction (Parser Lexeme)
-begin code _ _ = alexSetStartCode code >> scan
 
--- | For testing the lexer within ghci.
-testLexer :: Parser [Lexeme]
-testLexer  = do
-  lex <- scan
-  if lexToken lex == TEof
-    then return []
-    else (lex :) `fmap` testLexer
+-- Actions ---------------------------------------------------------------------
 
-testLexerLayout :: Parser [Lexeme]
-testLexerLayout  = do
-  lex <- layout scan
-  if lexToken lex == TEof
-    then return []
-    else (lex :) `fmap` testLexerLayout
+
+type AlexAction result = AlexInput -> Int -> result
+
+-- | Emit a token from the lexer
+emitT :: Token -> AlexAction (Lexer (Maybe Lexeme))
+emitT tok (pos,_,_) _ = return $ Just $! Lexeme
+  { lexPos   = pos
+  , lexToken = tok
+  }
+
+emitS :: (String -> Token) -> AlexAction (Lexer (Maybe Lexeme))
+emitS mk (pos,c,bs) len = return $ Just $! Lexeme
+  { lexPos   = pos
+  , lexToken = mk (L.unpack (L.take (fromIntegral len) bs))
+  }
+
+reserved :: AlexAction (Lexer (Maybe Lexeme))
+reserved  = emitS TReserved
+
+begin :: Int -> AlexAction (Lexer (Maybe Lexeme))
+begin code _ _ = alexSetStartCode code >> return Nothing
 
 }
 

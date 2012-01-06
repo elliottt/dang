@@ -3,7 +3,7 @@
 module Syntax.AST where
 
 import ModuleSystem.Export
-    (Exported(..),Export(..),isExported,ppPublic,ppPrivate)
+    (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
 import Pretty
 import QualName
 import TypeChecker.Types
@@ -177,46 +177,124 @@ instance Pretty PrimType where
 -- Data Declarations -----------------------------------------------------------
 
 data DataDecl = DataDecl
-  { dataName    :: Name
-  , dataConstrs :: Forall [Constr]
+  { dataName   :: Name
+  , dataKind   :: Kind
+  , dataExport :: Export
+  , dataGroups :: [Forall ConstrGroup]
   } deriving (Show)
 
 instance Pretty DataDecl where
-  pp _ d = text "data" <+> ppr (dataName d)
-       <+> vcat (map ppr ps) <+> text "where"
-       $+$ nest 2 (constrBlock cs)
+  pp _ d = text "data"
+       <+> nest 0 (vcat (map step (dataGroups d)))
     where
-    Forall ps cs = dataConstrs d
+    step = ppConstrGroup (dataExport d) . forallData
 
 instance FreeVars DataDecl where
-  freeVars = freeVars . dataConstrs
+  freeVars d = Set.delete (simpleName (dataName d)) (freeVars (dataGroups d))
 
 instance DefinesName DataDecl where
   definedName = dataName
+
+instance Exported DataDecl where
+  exportSpec = dataExport
+
+
+-- Constructor Groups ----------------------------------------------------------
+
+data ConstrGroup = ConstrGroup
+  { groupType    :: Type
+  , groupConstrs :: [Constr]
+  } deriving (Show)
+
+ppConstrGroup :: Export -> ConstrGroup -> Doc
+ppConstrGroup x g = ppr (groupType g) <+> char '='
+                 $$ nest 2 (ppConstrBlock (Just x) (groupConstrs g))
+
+instance FreeVars ConstrGroup where
+  freeVars g = freeVars (groupType g) `Set.union` freeVars (groupConstrs g)
 
 
 -- Data Constructors -----------------------------------------------------------
 
 data Constr = Constr
-  { constrName :: Name
-  , constrType :: Type
+  { constrName   :: Name
+  , constrExport :: Export
+  , constrFields :: [Type]
   } deriving (Show)
 
-constrBlock :: [Constr] -> Doc
-constrBlock []     = empty
-constrBlock (c:cs) = foldl step (ppr c) cs
+ppConstrBlock :: Maybe Export -> [Constr] -> Doc
+ppConstrBlock mb = vcat . map step . groupByExport
   where
-  step d constr = d $+$ ppr constr
+
+  hideExport = case mb of
+    Nothing -> const False
+    Just x  -> \ c -> exportSpec c == x
+
+  step []       = empty
+  step cs@(c:_) = export (vcat (map ppr cs))
+    where
+    export | hideExport c = id
+           | isExported c = ppPublic
+           | otherwise    = ppPrivate
 
 instance Pretty Constr where
-  pp _ c = ppr (constrName c) <+> text "::" <+> ppr (constrType c)
+  pp _ c = ppr (constrName c) <+> hsep (map ppr (constrFields c))
 
 instance FreeVars Constr where
   freeVars c =
-    Set.delete (simpleName (constrName c)) (freeVars (constrType c))
+    Set.delete (simpleName (constrName c)) (freeVars (constrFields c))
 
 instance DefinesName Constr where
   definedName = constrName
+
+instance Exported Constr where
+  exportSpec = constrExport
+
+test = DataDecl
+  { dataName   = "Foo"
+  , dataKind   = kstar `karrow` kstar
+  , dataExport = Private
+  , dataGroups =
+    [ Forall [] ConstrGroup
+      { groupType    = TCon (simpleName "Foo") `tapp` TCon (simpleName "Int")
+      , groupConstrs =
+        [ Constr
+          { constrName   = "Just"
+          , constrExport = Private
+          , constrFields = [TCon (simpleName "Int")]
+          }
+        ]
+      }
+    , Forall [a] ConstrGroup
+      { groupType    = TCon (simpleName "Foo") `tapp` TVar (GVar a)
+      , groupConstrs =
+        [ Constr
+          { constrName   = "Nothing"
+          , constrExport = Public
+          , constrFields = [TVar (GVar a)]
+          }
+        , Constr
+          { constrName   = "Something"
+          , constrExport = Private
+          , constrFields = []
+          }
+        , Constr
+          { constrName   = "Other"
+          , constrExport = Public
+          , constrFields = []
+          }
+        ]
+      }
+    ]
+  }
+
+  where
+  a = TParam
+    { paramIndex      = 0
+    , paramFromSource = True
+    , paramName       = "a"
+    , paramKind       = kstar
+    }
 
 
 -- Variable Introduction -------------------------------------------------------

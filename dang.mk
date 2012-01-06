@@ -44,7 +44,10 @@ SLASH_MODS := \
     ReadWrite \
     Syntax \
     Syntax/AST \
+    Syntax/Layout \
+    Syntax/Lexeme \
     Syntax/ParserCore \
+    Syntax/Renumber \
     TypeChecker \
     TypeChecker/CheckKinds \
     TypeChecker/CheckTypes \

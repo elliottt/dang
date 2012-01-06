@@ -108,18 +108,7 @@ kcDataDecls ns env0 = foldM step (env0, [])
 -- kind-checking environment with the inferred kind.
 kcDataDecl :: Namespace -> KindAssumps -> DataDecl -> TC (KindAssumps,DataDecl)
 kcDataDecl ns env d = do
-  let name = qualName ns (dataName d)
-  logInfo ("Checking: " ++ pretty name)
-
-  res <- freshKindVar
-  let assump = Assump { aBody = Nothing, aData = res }
-
-  let Forall ps cs = dataConstrs d
-  declEnv <- dataVars ps (addAssump name assump env)
-
-  cs' <- mapM (kcConstr declEnv) cs
-
-  undefined
+  fail "kcDataDecl"
 
 kcConstr :: KindAssumps -> Constr -> TC Constr
 kcConstr env c = do

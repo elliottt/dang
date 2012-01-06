@@ -2,6 +2,9 @@ module ModuleSystem.Export where
 
 import Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 
+import Data.Function (on)
+import Data.List (groupBy)
+
 
 -- Export Specifications -------------------------------------------------------
 
@@ -15,10 +18,16 @@ instance Pretty Export where
 class Exported a where
   exportSpec :: a -> Export
 
+instance Exported Export where
+  exportSpec = id
+
 isExported :: Exported a => a -> Bool
 isExported a = case exportSpec a of
   Public -> True
   _      -> False
+
+groupByExport :: Exported a => [a] -> [[a]]
+groupByExport  = groupBy ((==) `on` exportSpec)
 
 ppPublic :: Doc -> Doc
 ppPublic d | isEmpty d = empty

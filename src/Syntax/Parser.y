@@ -9,6 +9,7 @@ import ModuleSystem.Export
 import ModuleSystem.Types
 import QualName
 import Syntax.AST
+import Syntax.Lexeme
 import Syntax.Lexer
 import Syntax.ParserCore
 import TypeChecker.Types
@@ -33,6 +34,7 @@ import MonadLib
   ';'  { Lexeme $$ (TReserved ";")  }
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
+  '|'  { Lexeme $$ (TReserved "|")  }
 
 -- special operators
   '->' { Lexeme $$ (TOperIdent "->") }
@@ -181,23 +183,34 @@ open_type_members :: { [Name] }
 -- Data Declarations -----------------------------------------------------------
 
 data :: { PDecls }
-  : data_decl { mkDataDecl $1 }
+  : 'data' '{' constr_groups '}' {% mkDataDecl $2 (reverse $3) }
 
-data_decl :: { DataDecl }
-  : 'data' CONIDENT tparams 'where' '{' constrs '}'
-    { DataDecl
-      { dataName    = $2
-      , dataConstrs = Forall (reverse $3) (reverse $6)
-      }
-    }
+constr_groups :: { [Forall ConstrGroup] }
+  : constr_groups ';' constr_group { $3 : $1 }
+  | constr_group                   { [$1] }
+
+constr_group :: { Forall ConstrGroup }
+  : CONIDENT constr_group_body { $2 $1 }
+
+constr_group_body :: { Name -> Forall ConstrGroup }
+  : atypes constr_group_tail { \ n -> $2 n $1 }
+  |        constr_group_tail { \ n -> $1 n [] }
+
+constr_group_tail :: { Name -> [Type] -> Forall ConstrGroup }
+  : '=' '{' constrs '}' { \n tys -> mkConstrGroup n tys (reverse $3) }
+  | {- empty -}         { \n tys -> mkConstrGroup n tys [] }
 
 constrs :: { [Constr] }
-  : constrs ';' constr { $3:$1 }
+  : constrs '|' constr { $3 : $1 }
   | constr             { [$1] }
-  | {- empty -}        { [] }
 
 constr :: { Constr }
-  : CONIDENT '::' type { Constr { constrName = $1, constrType = $3 } }
+  : CONIDENT constr_tail
+    { Constr { constrName = $1, constrExport = Public, constrFields = $2 } }
+
+constr_tail :: { [Type] }
+  : atypes      { reverse $1 }
+  | {- empty -} { [] }
 
 
 -- Terms -----------------------------------------------------------------------
@@ -249,16 +262,13 @@ atype :: { Type }
   | CONIDENT     { TCon (simpleName $1) }
   | '(' type ')' { $2 }
 
+atypes :: { [Type] }
+  : atypes atype { $2 : $1 }
+  | atype        { [$1] }
+
 -- XXX fix the type parameters
 qual_type :: { Forall Type }
   : type { mkForall $1 }
-
-tparams :: { [TParam] }
-  : tparams tparam { $2 : $1 }
-  | tparam         { [$1] }
-
-tparam :: { TParam }
-  : IDENT { TParam 0 True $1 setSort }
 
 tycon :: { String }
   : CONIDENT     { $1 }
@@ -285,7 +295,17 @@ akind :: { Kind }
 
 {
 lexer :: (Lexeme -> Parser a) -> Parser a
-lexer k = k =<< layout scan
+lexer k = do
+  ps <- get
+  case psTokens ps of
+
+    l:ls -> do
+      set $! ps { psTokens = ls }
+      k l
+
+    [l] -> parseError l
+
+    [] -> happyError
 
 happyError :: Parser a
 happyError  = raiseP "Happy error" nullPosition
