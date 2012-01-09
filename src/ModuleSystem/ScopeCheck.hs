@@ -156,10 +156,10 @@ scDataDecl dd = do
 
 scConstrGroup :: ConstrGroup -> Scope ConstrGroup
 scConstrGroup cg = do
-  ty <- scType (groupType cg)
-  cs <- mapM scConstr (groupConstrs cg)
+  tys <- mapM scType (groupArgs cg)
+  cs  <- mapM scConstr (groupConstrs cg)
   return cg
-    { groupType    = ty
+    { groupArgs    = tys
     , groupConstrs = cs
     }
 

@@ -94,7 +94,7 @@ instance UsesModules DataDecl where
   getUses = getUses . dataGroups
 
 instance UsesModules ConstrGroup where
-  getUses cg = getUses (groupType cg) `Set.union` getUses (groupConstrs cg)
+  getUses cg = getUses (groupArgs cg) `Set.union` getUses (groupConstrs cg)
 
 instance UsesModules Constr where
   getUses = getUses . constrFields

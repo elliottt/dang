@@ -145,14 +145,13 @@ mkForall ty = quantify (Set.toList (typeVars ty')) ty'
   where
   ty' = renumber ty
 
-mkConstrGroup :: Name -> [Type] -> [Constr] -> Forall ConstrGroup
-mkConstrGroup n args cs = quantify vars ConstrGroup
-  { groupType    = ty
+mkConstrGroup :: [Type] -> [Constr] -> Forall ConstrGroup
+mkConstrGroup args cs = quantify vars ConstrGroup
+  { groupArgs    = args'
   , groupConstrs = renumber cs
   }
   where
   args' = renumber args
-  ty    = foldl TApp (TCon (simpleName n)) args
   vars  = Set.toList (typeVars args')
 
 
@@ -183,29 +182,34 @@ mkPrimTerm d = mempty { parsedPrimTerms = singleton (primTermName d) d }
 mkPrimType :: PrimType -> PDecls
 mkPrimType d = mempty { parsedPrimTypes = singleton (primTypeName d) d }
 
-mkDataDecl :: Position -> [Forall ConstrGroup] -> Parser PDecls
-mkDataDecl pos qgs = do
-  when (null qgs) (raiseP "No types defined by data declaration" pos)
-  n <- groupName pos (zip (repeat pos) qgs)
+mkDataDecl :: Position -> [(Name,Forall ConstrGroup)] -> Parser PDecls
+mkDataDecl pos groups = do
+  let (ns,qgs) = unzip groups
+  when (null groups) (raiseP "No types defined by data declaration" pos)
+  n <- groupName pos ns
+  a <- groupArity pos qgs
   let d = DataDecl
         { dataName   = n
+        , dataArity  = a
         , dataKind   = setSort
         , dataExport = Public
         , dataGroups = qgs
         }
   return mempty { parsedDataDecls = [d] }
 
-groupName :: Position -> [(Position,Forall ConstrGroup)] -> Parser Name
-groupName pos = agree <=< mapM typeName
-  where
-
-  agree ns = case nub ns of
+groupName :: Position -> [Name] -> Parser Name
+groupName pos ns =
+  case nub ns of
     [n] -> return n
     _   -> raiseP "Type names don't agree" pos
 
-  typeName (gpos,qcg) = case destTCon (groupType (forallData qcg)) of
-    TCon n:_ -> return (qualSymbol n)
-    x        -> raiseP ("Invalid type constructor " ++ show x)  gpos
+groupArity :: Position -> [Forall ConstrGroup] -> Parser Int
+groupArity pos gs =
+  case nub (map arity gs) of
+    [n] -> return n
+    _   -> raiseP "Type group arities don't agree" pos
+  where
+  arity = length . groupArgs . forallData
 
 resolveNamed :: NameMap a -> Parser [a]
 resolveNamed nm = do

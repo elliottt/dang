@@ -185,20 +185,20 @@ open_type_members :: { [Name] }
 data :: { PDecls }
   : 'data' '{' constr_groups '}' {% mkDataDecl $2 (reverse $3) }
 
-constr_groups :: { [Forall ConstrGroup] }
+constr_groups :: { [(Name,Forall ConstrGroup)] }
   : constr_groups ';' constr_group { $3 : $1 }
   | constr_group                   { [$1] }
 
-constr_group :: { Forall ConstrGroup }
-  : CONIDENT constr_group_body { $2 $1 }
+constr_group :: { (Name,Forall ConstrGroup) }
+  : CONIDENT constr_group_body { ($1,$2) }
 
-constr_group_body :: { Name -> Forall ConstrGroup }
-  : atypes constr_group_tail { \ n -> $2 n $1 }
-  |        constr_group_tail { \ n -> $1 n [] }
+constr_group_body :: { Forall ConstrGroup }
+  : atypes constr_group_tail { $2 $1 }
+  |        constr_group_tail { $1 [] }
 
-constr_group_tail :: { Name -> [Type] -> Forall ConstrGroup }
-  : '=' '{' constrs '}' { \n tys -> mkConstrGroup n tys (reverse $3) }
-  | {- empty -}         { \n tys -> mkConstrGroup n tys [] }
+constr_group_tail :: { [Type] -> Forall ConstrGroup }
+  : '=' '{' constrs '}' { \tys -> mkConstrGroup tys (reverse $3) }
+  | {- empty -}         { \tys -> mkConstrGroup tys [] }
 
 constrs :: { [Constr] }
   : constrs '|' constr { $3 : $1 }

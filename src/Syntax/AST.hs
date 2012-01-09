@@ -178,6 +178,7 @@ instance Pretty PrimType where
 
 data DataDecl = DataDecl
   { dataName   :: Name
+  , dataArity  :: !Int
   , dataKind   :: Kind
   , dataExport :: Export
   , dataGroups :: [Forall ConstrGroup]
@@ -187,7 +188,7 @@ instance Pretty DataDecl where
   pp _ d = text "data"
        <+> nest 0 (vcat (map step (dataGroups d)))
     where
-    step = ppConstrGroup (dataExport d) . forallData
+    step = ppConstrGroup (dataExport d) (simpleName (dataName d)). forallData
 
 instance FreeVars DataDecl where
   freeVars d = Set.delete (simpleName (dataName d)) (freeVars (dataGroups d))
@@ -202,16 +203,18 @@ instance Exported DataDecl where
 -- Constructor Groups ----------------------------------------------------------
 
 data ConstrGroup = ConstrGroup
-  { groupType    :: Type
+  { groupArgs    :: [Type]
   , groupConstrs :: [Constr]
   } deriving (Show)
 
-ppConstrGroup :: Export -> ConstrGroup -> Doc
-ppConstrGroup x g = ppr (groupType g) <+> char '='
-                 $$ nest 2 (ppConstrBlock (Just x) (groupConstrs g))
+ppConstrGroup :: Export -> QualName -> ConstrGroup -> Doc
+ppConstrGroup x qn g = ppr ty <+> char '='
+                    $$ nest 2 (ppConstrBlock (Just x) (groupConstrs g))
+  where
+  ty = foldr TApp (TCon qn) (groupArgs g)
 
 instance FreeVars ConstrGroup where
-  freeVars g = freeVars (groupType g) `Set.union` freeVars (groupConstrs g)
+  freeVars g = freeVars (groupArgs g) `Set.union` freeVars (groupConstrs g)
 
 
 -- Data Constructors -----------------------------------------------------------
@@ -252,11 +255,12 @@ instance Exported Constr where
 
 test = DataDecl
   { dataName   = "Foo"
+  , dataArity  = 1
   , dataKind   = kstar `karrow` kstar
   , dataExport = Private
   , dataGroups =
     [ Forall [] ConstrGroup
-      { groupType    = TCon (simpleName "Foo") `tapp` TCon (simpleName "Int")
+      { groupArgs    = [TCon (simpleName "Int")]
       , groupConstrs =
         [ Constr
           { constrName   = "Just"
@@ -266,7 +270,7 @@ test = DataDecl
         ]
       }
     , Forall [a] ConstrGroup
-      { groupType    = TCon (simpleName "Foo") `tapp` TVar (GVar a)
+      { groupArgs    = [TVar (GVar a)]
       , groupConstrs =
         [ Constr
           { constrName   = "Nothing"

@@ -13,7 +13,7 @@ import TypeChecker.Types
 
 import Control.Applicative (pure,(<$>),(<*>))
 import Data.Serialize
-    (runPut,Putter,putMapOf,putListOf,runGet,Get,getMapOf,getListOf)
+    (runPut,Putter,putMapOf,putListOf,runGet,Get,getMapOf,getListOf,get,put)
 import MonadLib (BaseM)
 import System.FilePath ((</>),(<.>))
 import qualified Data.Map as Map
@@ -216,23 +216,25 @@ getSymbol  = Symbol <$> getName <*> getName <*> getForall getType
 putData :: Putter DataDecl
 putData d = do
   putName                              (dataName d)
+  put                                  (dataArity d)
   putKind                              (dataKind d)
   putListOf (putForall putConstrGroup) (dataGroups d)
 
 getData :: Get DataDecl
 getData  = DataDecl
        <$> getName
+       <*> get
        <*> getKind
        <*> pure Public
        <*> getListOf (getForall getConstrGroup)
 
 putConstrGroup :: Putter ConstrGroup
 putConstrGroup cg = do
-  putType             (groupType cg)
+  putListOf putType   (groupArgs cg)
   putListOf putConstr (groupConstrs cg)
 
 getConstrGroup :: Get ConstrGroup
-getConstrGroup  = ConstrGroup <$> getType <*> getListOf getConstr
+getConstrGroup  = ConstrGroup <$> getListOf getType <*> getListOf getConstr
 
 putConstr :: Putter Constr
 putConstr c = do

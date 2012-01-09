@@ -60,10 +60,10 @@ instance Renumber a => Renumber (Forall a) where
 
 instance Renumber ConstrGroup where
   renumberVars st cg = do
-    ty' <- renumberVars st (groupType cg)
-    cs' <- T.mapM (renumberVars st) (groupConstrs cg)
+    tys' <- renumberVars st (groupArgs cg)
+    cs'  <- T.mapM (renumberVars st) (groupConstrs cg)
     return cg
-      { groupType    = ty'
+      { groupArgs    = tys'
       , groupConstrs = cs'
       }
 

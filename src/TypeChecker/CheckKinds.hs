@@ -15,7 +15,7 @@ import TypeChecker.Unify as Types
 import Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))
-import Control.Monad (foldM)
+import Control.Monad (foldM,mapAndUnzipM,replicateM)
 import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
@@ -108,11 +108,61 @@ kcDataDecls ns env0 = foldM step (env0, [])
 -- kind-checking environment with the inferred kind.
 kcDataDecl :: Namespace -> KindAssumps -> DataDecl -> TC (KindAssumps,DataDecl)
 kcDataDecl ns env d = do
-  fail "kcDataDecl"
+  let qn = qualName ns (dataName d)
+  logInfo ("Checking: " ++ pretty qn)
 
+  gen <- dataGenKind d
+
+  let env' = addAssump qn (Assump Nothing gen) env
+  gs' <- mapM (kcQualConstrGroup qn gen env') (dataGroups d)
+
+  k <- applySubst gen
+  let d' = d { dataKind = k, dataGroups = gs' }
+  return (addAssump qn (Assump Nothing k) env, d')
+
+-- | General kind for a data declaration.
+dataGenKind :: DataDecl -> TC Kind
+dataGenKind d = mk `fmap` replicateM (dataArity d) freshKindVar
+  where
+  mk = foldr karrow kstar
+
+-- | Check a qualified group of constructors.
+kcQualConstrGroup :: QualName -> Kind -> KindAssumps -> Forall ConstrGroup
+                  -> TC (Forall ConstrGroup)
+kcQualConstrGroup qn gen env qcg = do
+  let ps = forallParams qcg
+      cg = forallData qcg
+      ty = foldl TApp (TCon qn) (groupArgs cg)
+  logInfo ("  Group: " ++ pretty ty)
+  vars    <- replicateM (length ps) freshKindVar
+  let step e (p,v) = addAssump (simpleName (paramName p)) (Assump Nothing v) e
+      env'         = foldl step env (zip ps vars)
+  (k,cg') <- kcConstrGroup env' cg
+  unify gen k
+  return qcg { forallData = cg' }
+
+-- | Check a group of constructors, returning the inferred kind.
+kcConstrGroup :: KindAssumps -> ConstrGroup -> TC (Kind,ConstrGroup)
+kcConstrGroup env cg = do
+  (ks,tys') <- mapAndUnzipM (inferKind env) (groupArgs cg)
+  let k = foldr karrow kstar ks
+  cs'     <- mapM (kcConstr env) (groupConstrs cg)
+  let cg' = cg
+        { groupArgs    = tys'
+        , groupConstrs = cs'
+        }
+  return (k,cg')
+
+-- | Check the fields of a constructor, unifying all of them to *.
 kcConstr :: KindAssumps -> Constr -> TC Constr
 kcConstr env c = do
-  undefined
+  fs' <- mapM step (constrFields c)
+  return c { constrFields = fs' }
+  where
+  step ty = do
+    (k,ty') <- inferKind env ty
+    unify kstar k
+    return ty'
 
 
 -- | Augment a kind-checking environment, adding the type variables of the data
@@ -125,7 +175,6 @@ dataVars ps env0 = foldM step env0 ps
     let assump = Assump { aBody = Nothing, aData = var }
         name   = simpleName (paramName p)
     return (addAssump name assump env)
-
 
 -- | Check the kind of a primitive term.  This should contain no variables, so
 -- it's basically a sanity check.
@@ -225,7 +274,9 @@ inferKindTVar env tv = case tv of
     k' <- kindAssump (simpleName (paramName p)) env
     return (k', UVar p { paramKind = k' })
 
-  GVar{} -> kindError "Unexpected generic variable"
+  GVar p -> do
+    k' <- kindAssump (simpleName (paramName p)) env
+    return (k', GVar p { paramKind = k' })
 
 
 -- Type Helpers ----------------------------------------------------------------

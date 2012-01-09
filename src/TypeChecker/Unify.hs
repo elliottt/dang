@@ -171,11 +171,11 @@ instance Types DataDecl where
 
 instance Types ConstrGroup where
   apply' b s cg = cg
-    { groupType    = apply' b s (groupType cg)
+    { groupArgs    = apply' b s (groupArgs cg)
     , groupConstrs = apply' b s (groupConstrs cg)
     }
 
-  typeVars cg = typeVars (groupType cg) `Set.union` typeVars (groupConstrs cg)
+  typeVars cg = typeVars (groupArgs cg) `Set.union` typeVars (groupConstrs cg)
 
 instance Types Constr where
   apply' b s c = c { constrFields = apply' b s (constrFields c) }
