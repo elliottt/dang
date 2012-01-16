@@ -253,53 +253,6 @@ instance DefinesName Constr where
 instance Exported Constr where
   exportSpec = constrExport
 
-test = DataDecl
-  { dataName   = "Foo"
-  , dataArity  = 1
-  , dataKind   = kstar `karrow` kstar
-  , dataExport = Private
-  , dataGroups =
-    [ Forall [] ConstrGroup
-      { groupArgs    = [TCon (simpleName "Int")]
-      , groupConstrs =
-        [ Constr
-          { constrName   = "Just"
-          , constrExport = Private
-          , constrFields = [TCon (simpleName "Int")]
-          }
-        ]
-      }
-    , Forall [a] ConstrGroup
-      { groupArgs    = [TVar (GVar a)]
-      , groupConstrs =
-        [ Constr
-          { constrName   = "Nothing"
-          , constrExport = Public
-          , constrFields = [TVar (GVar a)]
-          }
-        , Constr
-          { constrName   = "Something"
-          , constrExport = Private
-          , constrFields = []
-          }
-        , Constr
-          { constrName   = "Other"
-          , constrExport = Public
-          , constrFields = []
-          }
-        ]
-      }
-    ]
-  }
-
-  where
-  a = TParam
-    { paramIndex      = 0
-    , paramFromSource = True
-    , paramName       = "a"
-    , paramKind       = kstar
-    }
-
 
 -- Variable Introduction -------------------------------------------------------
 
