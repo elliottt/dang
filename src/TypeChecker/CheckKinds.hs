@@ -54,11 +54,14 @@ kindAssump qn env = case lookupAssump qn env of
   Just a  -> return (aData a)
   Nothing -> unboundIdentifier qn
 
+assume :: QualName -> Kind -> KindAssumps -> KindAssumps
+assume qn k = addAssump qn (Assump Nothing k)
+
 -- | Assume that a constructor has the given kind.
 addKindAssump :: KindAssumps -> QualName -> Kind -> TC KindAssumps
 addKindAssump env qn k = do
   logInfo ("  Assuming: " ++ pretty qn ++ " :: " ++ pretty k)
-  return (addAssump qn (Assump Nothing k) env)
+  return (assume qn k env)
 
 -- | Add a group of primitive types to the kind assumptions.
 addPrimTypes :: Namespace -> KindAssumps -> [PrimType] -> TC KindAssumps
@@ -98,27 +101,39 @@ kcModule iset m = do
 -- environment with their kinds.
 kcDataDecls :: Namespace -> KindAssumps -> [DataDecl]
             -> TC (KindAssumps,[DataDecl])
-kcDataDecls ns env0 = foldM step (env0, [])
+kcDataDecls ns env0 = foldM step (env0, []) . sccFreeNames ns
   where
-  step (env,ds) d = do
-    (env',d') <- kcDataDecl ns env d
-    return (env', d':ds)
+  step (env,cs) scc = do
+    let ds = sccToList scc
+    ks <- mapM dataGenKind ds
+    let ext e (d,k) = assume (qualName ns (dataName d)) k e
+        dks         = zip ds ks
+        envVar      = foldl ext env dks
+
+    kds <- mapM (uncurry (kcDataDecl ns envVar)) dks
+
+    let add e (k,d) = do
+          k' <- applySubst k
+          let qn = qualName ns (dataName d)
+          logInfo ("  " ++ pretty qn ++ " :: " ++ pretty k')
+          return (assume qn k' e)
+    env' <- foldM add env kds
+    return (env', map snd kds ++ cs)
 
 -- | Kind check the constructors of a data declaration, returning a modified
 -- kind-checking environment with the inferred kind.
-kcDataDecl :: Namespace -> KindAssumps -> DataDecl -> TC (KindAssumps,DataDecl)
-kcDataDecl ns env d = do
+kcDataDecl :: Namespace -> KindAssumps -> DataDecl -> Kind
+           -> TC (Kind,DataDecl)
+kcDataDecl ns env d gen = do
   let qn = qualName ns (dataName d)
   logInfo ("Checking: " ++ pretty qn)
-
-  gen <- dataGenKind d
 
   let env' = addAssump qn (Assump Nothing gen) env
   gs' <- mapM (kcQualConstrGroup qn gen env') (dataGroups d)
 
   k <- applySubst gen
   let d' = d { dataKind = k, dataGroups = gs' }
-  return (addAssump qn (Assump Nothing k) env, d')
+  return (k, d')
 
 -- | General kind for a data declaration.
 dataGenKind :: DataDecl -> TC Kind
