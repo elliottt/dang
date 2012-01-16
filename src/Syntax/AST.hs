@@ -211,7 +211,7 @@ ppConstrGroup :: Export -> QualName -> ConstrGroup -> Doc
 ppConstrGroup x qn g = ppr ty <+> char '='
                     $$ nest 2 (ppConstrBlock (Just x) (groupConstrs g))
   where
-  ty = foldr TApp (TCon qn) (groupArgs g)
+  ty = foldl TApp (TCon qn) (groupArgs g)
 
 instance FreeVars ConstrGroup where
   freeVars g = freeVars (groupArgs g) `Set.union` freeVars (groupConstrs g)
