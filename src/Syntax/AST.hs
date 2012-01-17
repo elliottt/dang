@@ -351,6 +351,7 @@ type Var = String
 
 data Term
   = Abs Match
+  | Case Term Match
   | Let [TypedDecl] [UntypedDecl] Term
   | App Term [Term]
   | Local Name
@@ -361,6 +362,7 @@ data Term
 instance Lift Term where
   lift tm = case tm of
     Abs m       -> [| Abs    $(lift m)                       |]
+    Case e m    -> [| Case   $(lift e)  $(lift m)            |]
     Let ts us e -> [| Let    $(lift ts) $(lift us) $(lift e) |]
     App f xs    -> [| App    $(lift f)  $(lift xs)           |]
     Local n     -> [| Local  $(lift n)                       |]
@@ -368,17 +370,20 @@ instance Lift Term where
     Lit l       -> [| Lit    $(lift l)                       |]
 
 instance FreeVars Term where
-  freeVars (Abs m)       = freeVars m
-  freeVars (Let ts us t) = ignoreVars (letBinds ts us)
-                         $ Set.unions [freeVars ts, freeVars us, freeVars t]
-  freeVars (App f xs)    = freeVars f `Set.union` freeVars xs
-  freeVars (Lit l)       = freeVars l
-  freeVars (Local x)     = Set.singleton (simpleName x)
-  freeVars (Global qn)   = Set.singleton qn
+  freeVars tm = case tm of
+    Abs m       -> freeVars m
+    Case e m    -> freeVars e `Set.union` freeVars m
+    Let ts us t -> ignoreVars (letBinds ts us)
+                 $ Set.unions [freeVars ts, freeVars us, freeVars t]
+    App f xs    -> freeVars f `Set.union` freeVars xs
+    Lit l       -> freeVars l
+    Local x     -> Set.singleton (simpleName x)
+    Global qn   -> Set.singleton qn
 
 instance Pretty Term where
   pp p t = case t of
     Abs m       -> optParens (p > 0) (ppAbs m)
+    Case e m    -> optParens (p > 0) (ppCase e m)
     Let ts us e -> optParens (p > 0) (ppLet ts us e)
     App f xs    -> optParens (p > 0) (ppr f <+> ppList 1 xs)
     Local n     -> ppr n
@@ -393,6 +398,10 @@ ppLet ts us e = text "let" <+> nest 0 (vcat decls) $$ text " in" <+> ppr e
 ppAbs :: Match -> Doc
 ppAbs m = case ppMatch m of
   (as,b) -> char '\\' <> hsep as <+> text "->" <+> b
+
+ppCase :: Term -> Match -> Doc
+ppCase e m = text "case" <+> ppr e <+> text "of"
+          $$ ppr m
 
 letBinds :: [TypedDecl] -> [UntypedDecl] -> [Var]
 letBinds ts us = map typedName ts ++ map untypedName us

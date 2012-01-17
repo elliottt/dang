@@ -52,6 +52,8 @@ import MonadLib
   'primitive' { Lexeme $$ (TReserved "primitive") }
   'type'      { Lexeme $$ (TReserved "type")      }
   'data'      { Lexeme $$ (TReserved "data")      }
+  'case'      { Lexeme $$ (TReserved "case")      }
+  'of'        { Lexeme $$ (TReserved "of")        }
 
 -- identifiers
   CONIDENT { Lexeme _ (TConIdent $$)  }

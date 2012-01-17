@@ -60,6 +60,8 @@ $white          ;
 "forall"        { reserved }
 "primitive"     { reserved }
 "type"          { reserved }
+"case"          { reserved }
+"of"            { reserved }
 
 @conident       { emitS TConIdent     }
 @symident       { emitS TSymIdent     }

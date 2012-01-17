@@ -96,6 +96,7 @@ startsBlock lx = case lexToken lx of
   TReserved "let"     -> True
   TReserved "public"  -> True
   TReserved "private" -> True
+  TReserved "of"      -> True
   _                   -> False
 
 -- | Close levels, if there are levels to close.
