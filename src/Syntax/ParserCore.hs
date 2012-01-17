@@ -8,6 +8,8 @@ import Data.ClashMap as CM
 import ModuleSystem.Export (Export(..))
 import QualName
 import Syntax.AST
+import Syntax.Layout (layout)
+import Syntax.Lexer (scan)
 import Syntax.Lexeme
 import Syntax.Renumber (renumber)
 import TypeChecker.Types
@@ -16,18 +18,16 @@ import TypeChecker.Unify
 import Control.Applicative (Applicative)
 import Data.List (nub)
 import Data.Monoid (Monoid(..))
+import Language.Haskell.TH (Q)
+import Language.Haskell.TH.Syntax (Loc(loc_filename),location)
 import MonadLib
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy as L
 
 
 -- Lexer/Parser Monad ----------------------------------------------------------
 
-data ErrorType
-  = LexerError
-  | ParserError
-    deriving Show
-
-data Error = Error ErrorType String Position deriving Show
+data Error = Error String Position deriving Show
 
 data ParserState = ParserState
   { psTokens  :: [Lexeme]
@@ -66,7 +66,7 @@ instance RunWriterM Parser [ParserError] where
 
 -- | Raise an exception from the parser.
 raiseP :: String -> Position -> Parser a
-raiseP msg pos = raise (Error ParserError msg pos)
+raiseP msg pos = raise (Error msg pos)
 
 -- | Run the parser over the file given.
 runParser :: [Lexeme] -> Parser a -> Either Error a
@@ -80,6 +80,15 @@ runParser ls m =
     unless (null errs)
         (raiseP ("definition errors: " ++ show errs) nullPosition)
     return res
+
+-- | Run the parser over a string in the Q monad.
+runParserQ :: Parser a -> String -> Q a
+runParserQ m str = do
+  loc <- location
+  let tokens = layout (scan (loc_filename loc) (L.pack str))
+  case runParser tokens m of
+    Right a            -> return a
+    Left (Error err _) -> fail err
 
 
 -- Parsed Syntax ---------------------------------------------------------------

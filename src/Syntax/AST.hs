@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Syntax.AST where
@@ -10,6 +11,8 @@ import TypeChecker.Types
 import Variables
 
 import Data.List (partition)
+import Data.Monoid (Monoid(..))
+import Language.Haskell.TH.Syntax (liftString,Lift(..))
 import qualified Data.Set as Set
 
 
@@ -91,6 +94,14 @@ data TypedDecl = TypedDecl
   , typedBody   :: Match
   } deriving (Eq,Show,Ord)
 
+instance Lift TypedDecl where
+  lift td = [| TypedDecl
+    { typedName   = $(liftString (typedName td))
+    , typedType   = $(lift       (typedType td))
+    , typedExport = $(lift       (typedExport td))
+    , typedBody   = $(lift       (typedBody td))
+    } |]
+
 instance FreeVars TypedDecl where
   freeVars = freeVars . typedBody
 
@@ -127,6 +138,13 @@ data UntypedDecl = UntypedDecl
   , untypedName   :: Name
   , untypedBody   :: Match
   } deriving (Eq,Show,Ord)
+
+instance Lift UntypedDecl where
+  lift ud = [| UntypedDecl
+    { untypedExport = untypedExport ud
+    , untypedName   = untypedName   ud
+    , untypedBody   = untypedBody   ud
+    } |]
 
 instance FreeVars UntypedDecl where
   freeVars = freeVars . untypedBody
@@ -257,9 +275,22 @@ instance Exported Constr where
 -- Variable Introduction -------------------------------------------------------
 
 data Match
-  = MTerm Term      -- ^ Body of a match
-  | MPat  Pat Match -- ^ Pattern matching
+  = MTerm  Term        -- ^ Body of a match
+  | MPat   Pat   Match -- ^ Pattern matching
+  | MSplit Match Match -- ^ Choice
+  | MFail              -- ^ Unconditional failure
     deriving (Eq,Show,Ord)
+
+instance Lift Match where
+  lift m = case m of
+    MTerm tm   -> [| MTerm  $(lift tm)           |]
+    MPat p m'  -> [| MPat p $(lift m')           |]
+    MSplit l r -> [| MSplit $(lift l)  $(lift r) |]
+    MFail      -> [| MFail                       |]
+
+instance Monoid Match where
+  mempty  = MFail
+  mappend = MSplit
 
 instance FreeVars Match where
   freeVars (MTerm tm) = freeVars tm
@@ -290,6 +321,11 @@ data Pat
   | PWildcard -- ^ The wildcard pattern
     deriving (Eq,Show,Ord)
 
+instance Lift Pat where
+  lift p = case p of
+    PVar n    -> [| PVar $(liftString n) |]
+    PWildcard -> [| PWildcard            |]
+
 instance FreeVars Pat where
   freeVars (PVar n)   = Set.singleton (simpleName n)
   freeVars  PWildcard = Set.empty
@@ -316,6 +352,15 @@ data Term
   | Global QualName
   | Lit Literal
     deriving (Eq,Show,Ord)
+
+instance Lift Term where
+  lift tm = case tm of
+    Abs m       -> [| Abs    $(lift m)                       |]
+    Let ts us e -> [| Let    $(lift ts) $(lift us) $(lift e) |]
+    App f xs    -> [| App    $(lift f)  $(lift xs)           |]
+    Local n     -> [| Local  $(lift n)                       |]
+    Global qn   -> [| Global $(lift qn)                      |]
+    Lit l       -> [| Lit    $(lift l)                       |]
 
 instance FreeVars Term where
   freeVars (Abs m)       = freeVars m
@@ -357,6 +402,10 @@ apply f xs = App f xs
 data Literal
   = LInt Integer
     deriving (Eq,Show,Ord)
+
+instance Lift Literal where
+  lift lit = case lit of
+    LInt i -> [| LInt $(lift i) |]
 
 instance FreeVars Literal where
   freeVars _ = Set.empty

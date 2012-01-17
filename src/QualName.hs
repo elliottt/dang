@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
 module QualName where
@@ -11,6 +12,7 @@ import Data.Char (isSpace)
 import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
 import Data.Typeable (Typeable)
 import Numeric (showHex)
+import Language.Haskell.TH.Syntax (Lift(..),liftString,Exp(ListE))
 
 
 type Name = String
@@ -21,6 +23,13 @@ data QualName
   = QualName Namespace Name
   | PrimName Namespace Name
     deriving (Ord,Eq,Show,Typeable)
+
+instance Lift QualName where
+  lift qn = case qn of
+    QualName ps n ->
+      [| QualName $(ListE `fmap` mapM liftString ps) $(liftString n) |]
+    PrimName ps n ->
+      [| PrimName $(ListE `fmap` mapM liftString ps) $(liftString n) |]
 
 instance Pretty QualName where
   pp _ (QualName ns n) = ppWithNamespace ns (text n)

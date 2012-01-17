@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module TypeChecker.Types where
 
@@ -15,6 +17,7 @@ import Data.Ord (comparing)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
     ,putListOf)
+import Language.Haskell.TH.Syntax (Lift(..),liftString)
 import qualified Data.Set as Set
 
 
@@ -37,6 +40,13 @@ data Type
   | TCon QualName
   | TVar TVar
     deriving (Eq,Show,Ord)
+
+instance Lift Type where
+  lift ty = case ty of
+    TApp f x      -> [| TApp   $(lift f)  $(lift x)           |]
+    TInfix qn l r -> [| TInfix $(lift qn) $(lift l) $(lift r) |]
+    TCon qn       -> [| TCon   $(lift qn)                     |]
+    TVar tv       -> [| TVar   $(lift tv)                     |]
 
 putType :: Putter Type
 putType (TApp l r)     = putWord8 0 >> putType l     >> putType r
@@ -132,6 +142,11 @@ data TVar
   | UVar TParam
     deriving (Show,Eq,Ord)
 
+instance Lift TVar where
+  lift tv = case tv of
+    UVar p -> [| UVar $(lift p) |]
+    GVar p -> [| GVar $(lift p) |]
+
 putTVar :: Putter TVar
 putTVar (GVar p) = putWord8 0 >> putTParam p
 putTVar (UVar p) = putWord8 1 >> putTParam p
@@ -165,6 +180,14 @@ data TParam = TParam
   , paramName       :: String
   , paramKind       :: Kind
   } deriving (Show)
+
+instance Lift TParam where
+  lift tp = [| TParam
+    { paramIndex      = $(lift       (paramIndex tp))
+    , paramFromSource = $(lift       (paramFromSource tp))
+    , paramName       = $(liftString (paramName tp))
+    , paramKind       = $(lift       (paramKind tp))
+    } |]
 
 instance Eq TParam where
   (==) = (==) `on` paramIndex
@@ -233,6 +256,12 @@ data Forall a = Forall
   { forallParams :: [TParam]
   , forallData   :: a
   } deriving (Show,Eq,Ord)
+
+instance Lift a => Lift (Forall a) where
+  lift qa = [| Forall
+    { forallParams = $(lift (forallParams qa))
+    , forallData   = $(lift (forallData qa))
+    } |]
 
 putForall :: Putter a -> Putter (Forall a)
 putForall p (Forall ps a) = putListOf putTParam ps >> p a

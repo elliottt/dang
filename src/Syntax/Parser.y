@@ -62,7 +62,12 @@ import MonadLib
 
 %monad { Parser } { (>>=) } { return }
 %error { parseError }
+
 %name parseModule top_module
+%name parseTerm   exp
+%name parseType   type
+%name parseScheme qual_type
+
 %tokentype { Lexeme }
 
 %lexer { lexer } { Lexeme initPosition TEof }

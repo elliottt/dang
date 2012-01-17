@@ -1,9 +1,12 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module ModuleSystem.Export where
 
 import Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 
 import Data.Function (on)
 import Data.List (groupBy)
+import Language.Haskell.TH.Syntax (Lift(..))
 
 
 -- Export Specifications -------------------------------------------------------
@@ -14,6 +17,11 @@ data Export = Public | Private
 instance Pretty Export where
   pp _ Public  = text "public"
   pp _ Private = text "private"
+
+instance Lift Export where
+  lift ex = case ex of
+    Public  -> [| Public  |]
+    Private -> [| Private |]
 
 class Exported a where
   exportSpec :: a -> Export
