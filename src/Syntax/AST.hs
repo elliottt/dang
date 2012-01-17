@@ -293,12 +293,16 @@ instance Monoid Match where
   mappend = MSplit
 
 instance FreeVars Match where
-  freeVars (MTerm tm) = freeVars tm
-  freeVars (MPat p m) = freeVars m Set.\\ freeVars p
+  freeVars (MTerm tm)   = freeVars tm
+  freeVars (MPat p m)   = freeVars m Set.\\ freeVars p
+  freeVars (MSplit l r) = freeVars l `Set.union` freeVars r
+  freeVars MFail        = Set.empty
 
 instance Pretty Match where
-  pp _ (MTerm tm) = ppr tm
-  pp _ (MPat p m) = pp 1 p <+> text "->" <+> ppr m
+  pp _ (MTerm tm)   = ppr tm
+  pp _ (MPat p m)   = pp 1 p <+> text "->" <+> ppr m
+  pp _ (MSplit l r) = ppr l $$ ppr r
+  pp _ MFail        = empty
 
 -- | Pretty printing of a @Match@, in the context of a declaration.
 matchDecl :: Match -> Doc
@@ -308,10 +312,11 @@ matchDecl m = case ppMatch m of
 
 -- | Pretty print the arguments, and body of a @Match@.
 ppMatch :: Match -> ([Doc],Doc)
-ppMatch (MTerm tm) = ([], ppr tm)
-ppMatch (MPat p m) = (pp 1 p:as, b)
-  where
-  (as,b) = ppMatch m
+ppMatch m = case m of
+  MPat p m' ->
+    let (as,b) = ppMatch m'
+     in (pp 1 p:as, b)
+  _         -> ([], ppr m)
 
 
 -- Pattern Matching ------------------------------------------------------------
