@@ -9,7 +9,9 @@ import ModuleSystem.Export (Export(..))
 import ModuleSystem.Types (UsedName(..))
 import QualName
 import Syntax.AST
+    (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types
+    (Kind,Scheme,Forall(..),putForall,getForall,putType,getType,putKind,getKind)
 
 import Control.Applicative (pure,(<$>),(<*>))
 import Data.Serialize
