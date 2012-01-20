@@ -14,7 +14,7 @@ import Syntax.Lexer
 import Syntax.ParserCore
 import TypeChecker.Types
 
-import Data.Monoid (mappend)
+import Data.Monoid (mappend,mconcat)
 import MonadLib
 }
 
@@ -35,6 +35,7 @@ import MonadLib
   ','  { Lexeme $$ (TReserved ",")  }
   '.'  { Lexeme $$ (TReserved ".")  }
   '|'  { Lexeme $$ (TReserved "|")  }
+  '_'  { Lexeme $$ (TReserved "_")  }
 
 -- special operators
   '->' { Lexeme $$ (TOperIdent "->") }
@@ -80,7 +81,7 @@ import MonadLib
 
 qual_name :: { QualName }
   : qual_name_prefix '.' IDENT { QualName (reverse $1) $3 }
-  | IDENT                      { QualName [] $1 }
+  | IDENT                      { simpleName $1 }
 
 mod_name :: { QualName }
   : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
@@ -152,8 +153,8 @@ fun_bind :: { UntypedDecl }
   : IDENT arg_list '=' exp { UntypedDecl Private $1 ($2 (MTerm $4)) }
 
 arg_list :: { Match -> Match }
-  : arg_list pat { $1 . MPat $2 }
-  | {- empty -}  { id }
+  : pats        { \z -> foldl (flip MPat) z $1 }
+  | {- empty -} { id }
 
 
 -- Module Imports --------------------------------------------------------------
@@ -200,7 +201,7 @@ constr_group :: { (Name,Forall ConstrGroup) }
   : CONIDENT constr_group_body { ($1,$2) }
 
 constr_group_body :: { Forall ConstrGroup }
-  : atypes constr_group_tail { $2 $1 }
+  : atypes constr_group_tail { $2 (reverse $1) }
   |        constr_group_tail { $1 [] }
 
 constr_group_tail :: { [Type] -> Forall ConstrGroup }
@@ -223,15 +224,8 @@ constr_tail :: { [Type] }
 -- Terms -----------------------------------------------------------------------
 
 exp :: { Term }
-  : '\\' abs_args '->' lexp { Abs ($2 (MTerm $4)) }
+  : '\\' arg_list '->' lexp { Abs ($2 (MTerm $4)) }
   | lexp                    { $1 }
-
-abs_args :: { Match -> Match  }
-  : abs_args pat { $1 . MPat $2 }
-  | pat          { MPat $1  }
-
-pat :: { Pat }
-  : IDENT { PVar $1 }
 
 lexp :: { Term }
   : 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
@@ -246,9 +240,43 @@ aexp_list :: { [Term] }
   | {- empty -}    { [] }
 
 aexp :: { Term }
-  : '(' exp ')' { $2 }
-  | qual_name   { Global $1 }
-  | INT         { Lit (LInt $1) }
+  : '(' exp ')'           { $2 }
+  | 'as'                  { Global (simpleName "as") }
+  | qual_name             { Global $1 }
+  | INT                   { Lit (LInt $1) }
+  | 'case' fexp 'of'
+    '{' case_branches '}' { Case $2 (foldr MSplit MFail (reverse $5)) }
+
+case_branches :: { [Match] }
+  : case_branches ';' case_branch { $3:$1 }
+  | case_branch                   { [$1]  }
+
+case_branch :: { Match }
+  : naked_pat '->' exp { MPat $1 (MTerm $3) }
+
+
+-- Patterns --------------------------------------------------------------------
+
+pat :: { Pat }
+  : simple_pat          { $1 }
+  | '(' complex_pat ')' { $2 }
+
+pats :: { [Pat] }
+  : pats pat { $2 : $1 }
+  | pat      { [$1] }
+
+naked_pat :: { Pat }
+  : simple_pat  { $1 }
+  | complex_pat { $1 }
+
+simple_pat :: { Pat }
+  : IDENT { PVar $1   }
+  | 'as'  { PVar "as" }
+  | '_'   { PWildcard }
+
+complex_pat :: { Pat }
+  : CONIDENT pats { PCon (simpleName $1) (reverse $2) }
+  | CONIDENT      { PCon (simpleName $1) [] }
 
 
 -- Types -----------------------------------------------------------------------

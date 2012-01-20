@@ -11,7 +11,6 @@ import TypeChecker.Types
 import Variables
 
 import Data.List (partition)
-import Data.Monoid (Monoid(..))
 import Language.Haskell.TH.Syntax (liftString,Lift(..))
 import qualified Data.Set as Set
 
@@ -288,10 +287,6 @@ instance Lift Match where
     MSplit l r -> [| MSplit $(lift l)  $(lift r) |]
     MFail      -> [| MFail                       |]
 
-instance Monoid Match where
-  mempty  = MFail
-  mappend = MSplit
-
 instance FreeVars Match where
   freeVars (MTerm tm)   = freeVars tm
   freeVars (MPat p m)   = freeVars m Set.\\ freeVars p
@@ -300,7 +295,7 @@ instance FreeVars Match where
 
 instance Pretty Match where
   pp _ (MTerm tm)   = ppr tm
-  pp _ (MPat p m)   = pp 1 p <+> text "->" <+> ppr m
+  pp p (MPat a m)   = pp p a <+> text "->" <+> ppr m
   pp _ (MSplit l r) = ppr l $$ ppr r
   pp _ MFail        = empty
 
@@ -322,27 +317,33 @@ ppMatch m = case m of
 -- Pattern Matching ------------------------------------------------------------
 
 data Pat
-  = PVar Name -- ^ Variable introduction
-  | PWildcard -- ^ The wildcard pattern
+  = PVar Name           -- ^ Variable introduction
+  | PCon QualName [Pat] -- ^ Constructor patterns
+  | PWildcard           -- ^ The wildcard pattern
     deriving (Eq,Show,Ord)
 
 instance Lift Pat where
   lift p = case p of
-    PVar n    -> [| PVar $(liftString n) |]
-    PWildcard -> [| PWildcard            |]
+    PVar n     -> [| PVar $(liftString n)            |]
+    PCon qn ps -> [| PCon $(lift qn)      $(lift ps) |]
+    PWildcard  -> [| PWildcard                       |]
 
 instance FreeVars Pat where
-  freeVars (PVar n)   = Set.singleton (simpleName n)
-  freeVars  PWildcard = Set.empty
+  freeVars (PVar n)     = Set.singleton (simpleName n)
+  freeVars (PCon qn ps) = Set.unions (Set.singleton qn : map freeVars ps)
+  freeVars  PWildcard   = Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar n)   = text n
-  pp _  PWildcard = char '_'
+  pp _ (PVar n)     = text n
+  pp p (PCon qn ps) = optParens (p > 0) (ppr qn <+> hsep (map ppr ps))
+  pp _  PWildcard   = char '_'
 
 -- | Variables introduced by a pattern.
 patVars :: Pat -> [Var]
-patVars (PVar n)  = [n]
-patVars PWildcard = []
+patVars p = case p of
+  PCon _ ps -> concatMap patVars ps
+  PVar n    -> [n]
+  PWildcard -> []
 
 
 -- Terms -----------------------------------------------------------------------
@@ -401,7 +402,7 @@ ppAbs m = case ppMatch m of
 
 ppCase :: Term -> Match -> Doc
 ppCase e m = text "case" <+> ppr e <+> text "of"
-          $$ ppr m
+          $$ nest 2 (ppr m)
 
 letBinds :: [TypedDecl] -> [UntypedDecl] -> [Var]
 letBinds ts us = map typedName ts ++ map untypedName us

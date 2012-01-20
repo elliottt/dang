@@ -48,6 +48,7 @@ $white          ;
 "."             { reserved }
 "=>"            { reserved }
 "|"             { reserved }
+"_"             { reserved }
 
 "data"          { reserved }
 "module"        { reserved }
