@@ -54,6 +54,7 @@ SLASH_MODS := \
     TypeChecker/CheckTypes \
     TypeChecker/Env \
     TypeChecker/Monad \
+    TypeChecker/Quote \
     TypeChecker/Types \
     TypeChecker/Unify \
     Utils \

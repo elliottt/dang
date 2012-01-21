@@ -2,10 +2,11 @@
 
 module TypeChecker.Quote where
 
-import Syntax.Parser (runParserQ)
+import Syntax.Parser (parseType,parseScheme)
+import Syntax.ParserCore (runParserQ)
 
 import Control.Monad ((<=<))
-import Language.Haskell.TH.Quote (QuasiQuoter)
+import Language.Haskell.TH.Quote (QuasiQuoter(..))
 import Language.Haskell.TH.Syntax (lift)
 
 typeQQ :: QuasiQuoter
