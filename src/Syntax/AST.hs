@@ -10,7 +10,7 @@ import QualName
 import TypeChecker.Types
 import Variables
 
-import Data.List (partition)
+import Data.List (partition,nub)
 import Language.Haskell.TH.Syntax (liftString,Lift(..))
 import qualified Data.Set as Set
 
@@ -341,7 +341,7 @@ instance Pretty Pat where
 -- | Variables introduced by a pattern.
 patVars :: Pat -> [Var]
 patVars p = case p of
-  PCon _ ps -> concatMap patVars ps
+  PCon _ ps -> nub (concatMap patVars ps)
   PVar n    -> [n]
   PWildcard -> []
 

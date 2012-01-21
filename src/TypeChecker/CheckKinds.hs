@@ -153,6 +153,7 @@ kcQualConstrGroup qn gen env qcg = do
   let step e (p,v) = addAssump (simpleName (paramName p)) (Assump Nothing v) e
       env'         = foldl step env (zip ps vars)
   (k,cg') <- kcConstrGroup env' cg
+  logInfo ("    :: " ++ pretty k)
   unify gen k
   return qcg { forallData = cg' }
 
@@ -176,6 +177,7 @@ kcConstr env c = do
   where
   step ty = do
     (k,ty') <- inferKind env ty
+    logInfo ("  " ++ pretty ty' ++ " :: " ++ pretty k)
     unify kstar k
     return ty'
 

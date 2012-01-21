@@ -14,7 +14,7 @@ import Pretty (pretty)
 import QualName
 import Syntax.AST
     (Module(..),PrimTerm(..),UntypedDecl(..),TypedDecl(..),Match(..)
-    ,DataDecl(..),ConstrGroup(..),Constr(..),Term(..),Pat(..))
+    ,DataDecl(..),ConstrGroup(..),Constr(..),Term(..),Pat(..),patVars)
 import TypeChecker.Types (Type(..),Forall(..))
 import qualified Data.ClashMap as CM
 
@@ -91,6 +91,13 @@ resolveTerm qn = do
   case r of
     Resolved _ rqn -> return (Global rqn)
     Bound n        -> return (Local n)
+
+resolveConstrName :: QualName -> Scope QualName
+resolveConstrName qn = do
+  r <- resolve (UsedTerm qn)
+  case r of
+    Resolved _ rqn -> return rqn
+    _              -> fail "Unknown bound variable in constructor name"
 
 
 -- Modules ---------------------------------------------------------------------
@@ -198,17 +205,27 @@ scType ty = case ty of
 
 scMatch :: Match -> Scope Match
 scMatch m = case m of
-  MPat p m' -> scPat p (\p' -> MPat p' <$> scMatch m')
-  MTerm tm  -> MTerm <$> scTerm tm
+  MPat p m'  -> scPat p (\p' -> MPat p' <$> scMatch m')
+  MSplit l r -> MSplit <$> scMatch l <*> scMatch r
+  MTerm tm   -> MTerm  <$> scTerm tm
+  MFail      -> return MFail
 
 scPat :: Pat -> (Pat -> Scope a) -> Scope a
 scPat p k = case p of
+
+  PVar _ -> bindLocals (patVars p) (k p)
+
+  PCon qn ps -> do
+    qn' <- resolveConstrName qn
+    bindLocals (patVars p) (k (PCon qn' ps))
+
   PWildcard -> k p
-  PVar n    -> bindLocals [n] (k p)
 
 scTerm :: Term -> Scope Term
 scTerm tm = case tm of
   Abs m -> Abs <$> scMatch m
+
+  Case e m -> Case <$> scTerm e <*> scMatch m
 
   Let ts us e -> newLevel $ do
     let tqs = map (simpleName . typedName)   ts

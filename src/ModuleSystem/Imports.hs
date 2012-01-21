@@ -111,16 +111,20 @@ instance UsesModules Type where
     TVar{}        -> Set.empty
 
 instance UsesModules Match where
-  getUses (MPat p m') = getUses p `Set.union` getUses m'
-  getUses (MTerm tm)  = getUses tm
+  getUses (MPat p m')  = getUses p `Set.union` getUses m'
+  getUses (MSplit l r) = getUses l `Set.union` getUses r
+  getUses (MTerm tm)   = getUses tm
+  getUses  MFail       = Set.empty
 
 instance UsesModules Pat where
-  getUses (PVar _)  = Set.empty
-  getUses PWildcard = Set.empty
+  getUses (PVar _)     = Set.empty
+  getUses (PCon qn ps) = globalName QualTerm qn `Set.union` getUses ps
+  getUses PWildcard    = Set.empty
 
 instance UsesModules Term where
   getUses tm = case tm of
     Abs m       -> getUses m
+    Case e m    -> getUses e `Set.union` getUses m
     Let ts us e -> Set.unions [getUses ts, getUses us, getUses e]
     App f xs    -> getUses f `Set.union` getUses xs
     Local _     -> Set.empty
