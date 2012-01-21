@@ -231,11 +231,12 @@ kcTypeSig env qt = introType env qt $ \ env' ty -> do
 -- | Check the kind structure of any types that show up in terms.
 kcTerm :: KindAssumps -> Term -> TC Term
 kcTerm env tm = case tm of
-  Abs m       -> Abs <$> kcMatch env m
-  Let ts us b -> Let <$> mapM (kcTypedDecl env) ts
-                     <*> mapM (kcUntypedDecl env) us
-                     <*> kcTerm env b
-  App f xs    -> App <$> kcTerm env f <*> mapM (kcTerm env) xs
+  Abs m       -> Abs  <$> kcMatch env m
+  Case e m    -> Case <$> kcTerm env e <*> kcMatch env m
+  Let ts us b -> Let  <$> mapM (kcTypedDecl env) ts
+                      <*> mapM (kcUntypedDecl env) us
+                      <*> kcTerm env b
+  App f xs    -> App  <$> kcTerm env f <*> mapM (kcTerm env) xs
   Local{}     -> return tm
   Global{}    -> return tm
   Lit{}       -> return tm
@@ -243,8 +244,10 @@ kcTerm env tm = case tm of
 -- | Check the kind structure of any types hiding under a binder.
 kcMatch :: KindAssumps -> Match -> TC Match
 kcMatch env m = case m of
-  MTerm t   -> MTerm  <$> kcTerm env t
-  MPat p m' -> MPat p <$> kcMatch env m'
+  MTerm t    -> MTerm  <$> kcTerm  env t
+  MSplit l r -> MSplit <$> kcMatch env l <*> kcMatch env r
+  MPat p m'  -> MPat p <$> kcMatch env m'
+  MFail      -> return MFail
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
 inferKind :: KindAssumps -> Type -> TC (Kind,Type)
