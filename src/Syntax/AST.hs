@@ -258,7 +258,7 @@ ppConstrBlock mb = vcat . map step . groupByExport
            | otherwise    = ppPrivate
 
 instance Pretty Constr where
-  pp _ c = ppr (constrName c) <+> hsep (map ppr (constrFields c))
+  pp _ c = ppr (constrName c) <+> hsep (map (pp 2) (constrFields c))
 
 instance FreeVars Constr where
   freeVars c =

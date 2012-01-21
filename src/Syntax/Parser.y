@@ -282,11 +282,11 @@ complex_pat :: { Pat }
 -- Types -----------------------------------------------------------------------
 
 type :: { Type }
-  : apptype type_tail { $2 (foldl1 (flip tapp) $1) }
+  : apptype type_tail { $2 (foldr1 (flip tapp) $1) }
 
 type_tail :: { Type -> Type }
   : {- empty -} { id }
-  | '->' type   { \a -> tarrow a $2 }
+  | '->' type   { (`tarrow` $2) }
 
 apptype :: { [Type] }
   : apptype atype { $2 : $1 }
