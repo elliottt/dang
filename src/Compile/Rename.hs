@@ -123,12 +123,15 @@ renameMatch :: Match -> Rename Match
 renameMatch m = case m of
   MPat p m'   -> avoid (map simpleName (patVars p))
                $ MPat p <$> renameMatch m'
+  MSplit l r  -> MSplit <$> renameMatch l <*> renameMatch r
   MTerm tm ty -> MTerm  <$> renameTerm tm <*> pure ty
+  MFail _     -> pure m
 
 renameTerm :: Term -> Rename Term
 renameTerm tm = case tm of
   AppT f tys -> AppT    <$> renameTerm f <*> pure tys
   App  f xs  -> App     <$> renameTerm f <*> mapM renameTerm xs
+  Case e m   -> Case    <$> renameTerm e <*> renameMatch m
   Let ds e   -> fresh (map declName ds)
               $ Let    <$> mapM renameDecl ds <*> renameTerm e
   Global qn  -> Global <$> subst qn

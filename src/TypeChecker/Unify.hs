@@ -131,26 +131,33 @@ instance Types a => Types (Forall a) where
 
 instance Types Match where
   apply' b s m = case m of
-    MTerm t ty -> MTerm (apply' b s t) (apply' b s ty)
-    MPat p m'  -> MPat  (apply' b s p) (apply' b s m')
+    MTerm t ty -> MTerm  (apply' b s t) (apply' b s ty)
+    MSplit l r -> MSplit (apply' b s l) (apply' b s r)
+    MPat p m'  -> MPat   (apply' b s p) (apply' b s m')
+    MFail ty   -> MFail  (apply' b s ty)
 
   typeVars m = case m of
     MTerm t ty -> typeVars t `Set.union` typeVars ty
+    MSplit l r -> typeVars l `Set.union` typeVars r
     MPat p m'  -> typeVars p `Set.union` typeVars m'
+    MFail ty   -> typeVars ty
 
 instance Types Pat where
   apply' b s p = case p of
-    PWildcard ty -> PWildcard (apply' b s ty)
-    PVar v ty    -> PVar v    (apply' b s ty)
+    PWildcard ty  -> PWildcard (apply' b s ty)
+    PCon qn ps ty -> PCon qn   (apply' b s ps) (apply' b s ty)
+    PVar v ty     -> PVar v    (apply' b s ty)
 
   typeVars p = case p of
     PWildcard ty -> typeVars ty
+    PCon _ ps ty -> typeVars ty `Set.union` typeVars ps
     PVar _ ty    -> typeVars ty
 
 instance Types Term where
   apply' b s tm = case tm of
     AppT f ts -> AppT (apply' b s f)  (apply' b s ts)
     App t ts  -> App  (apply' b s t)  (apply' b s ts)
+    Case e m  -> Case (apply' b s e)  (apply' b s m)
     Let ds e  -> Let  (apply' b s ds) (apply' b s e)
     Global qn -> Global qn
     Local n   -> Local n
@@ -159,6 +166,7 @@ instance Types Term where
   typeVars tm = case tm of
     AppT f ts -> typeVars f  `Set.union` typeVars ts
     App t ts  -> typeVars t  `Set.union` typeVars ts
+    Case e m  -> typeVars e  `Set.union` typeVars m
     Let ds e  -> typeVars ds `Set.union` typeVars e
     Global _  -> Set.empty
     Local _   -> Set.empty

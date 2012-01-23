@@ -13,6 +13,7 @@ import Syntax.AST (Var,Literal(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
+import Data.List (nub)
 import qualified Data.Set as Set
 
 
@@ -81,30 +82,46 @@ declType d = Forall ps (matchType m)
 
 -- | Typed variable introduction.
 data Match
- = MTerm Term Type
- | MPat Pat Match
+ = MTerm  Term  Type
+ | MSplit Match Match
+ | MPat   Pat   Match
+ | MFail  Type
    deriving (Show)
 
 instance FreeVars Match where
-  freeVars (MTerm t _) = freeVars t
-  freeVars (MPat p m)  = freeVars m Set.\\ freeVars p
+  freeVars m = case m of
+    MTerm t _  -> freeVars t
+    MSplit l r -> freeVars l `Set.union` freeVars r
+    MPat p m'  -> freeVars m' Set.\\ freeVars p
+    MFail _    -> Set.empty
 
 instance Pretty Match where
-  pp _ (MTerm t ty)  = ppr t <+> text "::" <+> ppr ty
-  pp _ (MPat p m) = char '\\' <+> pp 1 p <+> text "->" <+> pp 0 m
+  pp _ m = case m of
+    MTerm t ty -> ppr t <+> text "::" <+> ppr ty
+
+    MSplit l r ->
+      let lArm = ppMatch l
+          rArm = ppMatch r
+          ppArm (as,b) = hsep as <+> text "->" <+> b
+       in ppArm lArm $$ ppArm rArm
+
+    MPat p m' -> char '\\' <+> ppr p <+> text "->" <+> ppr m'
+
+    MFail _ -> empty
 
 matchType :: Match -> Type
 matchType m = case m of
   MTerm _ ty -> ty
+  MSplit l _ -> matchType l
   MPat p m'  -> patType p `tarrow` matchType m'
+  MFail ty   -> ty
 
 -- | Pretty-print the arguments with precedence 1, and the body with precedence
 -- 0.
 ppMatch :: Match -> ([Doc],Doc)
-ppMatch (MTerm t ty) = ([],ppr t <+> text "::" <+> ppr ty)
-ppMatch (MPat p m)   = (pp 1 p:as,b)
-  where
-  (as,b) = ppMatch m
+ppMatch m = case m of
+  MPat p m' -> let (as,b) = ppMatch m' in (pp 2 p:as, b)
+  _         -> ([], ppr m)
 
 isMTerm :: Match -> Bool
 isMTerm MTerm{} = True
@@ -116,29 +133,38 @@ isMPat _      = False
 
 data Pat
   = PVar Var Type
+  | PCon QualName [Pat] Type
   | PWildcard Type
     deriving (Show)
 
 patType :: Pat -> Type
 patType p = case p of
   PVar _ ty    -> ty
+  PCon _ _ ty  -> ty
   PWildcard ty -> ty
 
 patVars :: Pat -> [Var]
-patVars (PVar n _) = [n]
-patVars _          = []
+patVars p = case p of
+  PVar n _    -> [n]
+  PCon _ ps _ -> nub (concatMap patVars ps)
+  PWildcard _ -> []
 
 instance FreeVars Pat where
-  freeVars (PVar n _)    = Set.singleton (simpleName n)
-  freeVars (PWildcard _) = Set.empty
+  freeVars p = case p of
+    PVar n _     -> Set.singleton (simpleName n)
+    PCon qn ps _ -> Set.singleton qn `Set.union` freeVars ps
+    PWildcard _  -> Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar n ty)    = parens (ppr n    <+> text "::" <+> ppr ty)
-  pp _ (PWildcard ty) = parens (char '_' <+> text "::" <+> ppr ty)
+  pp _ p = parens $ case p of
+    PVar n ty     -> ppr n    <+> text "::"                       <+> ppr ty
+    PCon qn ps ty -> ppr qn   <+> hsep (map ppr ps) <+> text "::" <+> ppr ty
+    PWildcard ty  -> char '_' <+> text "::"                       <+> ppr ty
 
 data Term
   = AppT Term [Type]
   | App Term [Term]
+  | Case Term Match
   | Let [Decl] Term
   | Global QualName
   | Local Var
@@ -162,20 +188,25 @@ letIn [] e = e
 letIn ds e = Let ds e
 
 instance FreeVars Term where
-  freeVars (AppT f _)  = freeVars f
-  freeVars (App t as)  = freeVars (t:as)
-  freeVars (Let ds t)  = (freeVars t `Set.union` freeVars ds)
-                            Set.\\ Set.fromList (map declName ds)
-  freeVars (Global qn) = Set.singleton qn
-  freeVars (Local n)   = Set.singleton (simpleName n)
-  freeVars (Lit l)     = freeVars l
+  freeVars tm = case tm of
+    AppT f _  -> freeVars f
+    App t as  -> freeVars (t:as)
+    Case e m  -> freeVars e `Set.union` freeVars m
+    Let ds t  -> (freeVars t `Set.union` freeVars ds)
+                     Set.\\ Set.fromList (map declName ds)
+    Global qn -> Set.singleton qn
+    Local n   -> Set.singleton (simpleName n)
+    Lit l     -> freeVars l
 
 instance Pretty Term where
-  pp _ (AppT f vs) = pp 1 f <> char '@' <> brackets (commas (map ppr vs))
-  pp p (App f xs)  = optParens (p > 0) (ppr f <+> ppList 1 xs)
-  pp p (Let ds e)  = optParens (p > 0)
-                   $ text "let" <+> declBlock (map ppDecl ds)
-                 <+> text "in"  <+> ppr e
-  pp _ (Global qn) = ppr qn
-  pp _ (Local n)   = ppr n
-  pp _ (Lit l)     = ppr l
+  pp p tm = case tm of
+    AppT f vs -> pp 1 f <> char '@' <> brackets (commas (map ppr vs))
+    App f xs  -> optParens (p > 0) (ppr f <+> ppList 1 xs)
+    Case e m  -> optParens (p > 0)
+               $ text "case" <+> ppr e <+> text "of" $$ ppr m
+    Let ds e  -> optParens (p > 0)
+               $ text "let" <+> declBlock (map ppDecl ds)
+             <+> text "in"  <+> ppr e
+    Global qn -> ppr qn
+    Local n   -> ppr n
+    Lit l     -> ppr l

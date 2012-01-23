@@ -55,6 +55,37 @@ typedAssumps ns ts env0 = foldM step env0 ts
   where
   step env td = assume (qualName ns (Syn.typedName td)) (Syn.typedType td) env
 
+-- | Introduce the signature for a single data constructor.
+constrAssump :: Namespace -> [TParam] -> Type -> Syn.Constr -> TypeAssumps
+             -> TC TypeAssumps
+constrAssump ns ps res c = assume qn (Forall ps ty)
+  where
+  qn = qualName ns (Syn.constrName c)
+  ty = foldr tarrow res (Syn.constrFields c)
+
+-- | Introduce the signatures for a group of constructors.
+constrGroupAssumps :: Namespace -> QualName -> Forall Syn.ConstrGroup
+                   -> TypeAssumps -> TC TypeAssumps
+constrGroupAssumps ns resCon qcg env0 = foldM step env0 (Syn.groupConstrs cg)
+  where
+  cg         = forallData qcg
+  ps         = forallParams qcg
+  res        = foldl TApp (TCon resCon) (Syn.groupArgs cg)
+  step env c = constrAssump ns ps res c env
+
+-- | Introduce the signatures for a single data declaration.
+dataAssumps :: Namespace -> Syn.DataDecl -> TypeAssumps -> TC TypeAssumps
+dataAssumps ns d env0 = foldM step env0 (Syn.dataGroups d)
+  where
+  qn          = qualName ns (Syn.dataName d)
+  step env cg = constrGroupAssumps ns qn cg env
+
+-- | Introduce the signatures for a group of data declarations.
+dataDeclAssumps :: Namespace -> [Syn.DataDecl] -> TypeAssumps -> TC TypeAssumps
+dataDeclAssumps ns ds env0 = foldM step env0 ds
+  where
+  step env d = dataAssumps ns d env
+
 
 -- Modules ---------------------------------------------------------------------
 
@@ -63,8 +94,9 @@ tcModule :: HasInterface i => i -> Syn.Module -> TC Module
 tcModule i m = do
   logInfo ("Checking module: " ++ pretty (Syn.modName m))
   let ns = Syn.modNamespace m
-  env <- typedAssumps   ns (Syn.modTyped m)   =<<
-         primAssumps ns (Syn.modPrimTerms m) (interfaceAssumps i)
+  env <-  typedAssumps    ns (Syn.modTyped m)
+      =<< dataDeclAssumps ns (Syn.modDatas m)
+      =<< primAssumps     ns (Syn.modPrimTerms m) (interfaceAssumps i)
 
   (env',us) <- tcUntypedDecls ns env (Syn.modUntyped m)
   ts        <- mapM (tcTypedDecl ns env') (Syn.modTyped m)
@@ -213,26 +245,66 @@ tcMatch :: TypeAssumps -> Syn.Match -> TC (Type,Match)
 tcMatch env m = case m of
 
   Syn.MPat p m' -> do
-    (env',pty,p') <- tcPat env p
+    (penv,pty,p') <- tcPat env p
+    let env' = penv `mergeAssumps` env
     (ty,m'')      <- tcMatch env' m'
     return (pty `tarrow` ty, MPat p' m'')
+
+  Syn.MSplit l r -> do
+    (lty,l') <- tcMatch env l
+    (rty,r') <- tcMatch env r
+    unify lty rty
+    l'' <- applySubst l'
+    r'' <- applySubst r'
+    return (lty, MSplit l'' r'')
 
   Syn.MTerm tm -> do
     (ty,tm') <- tcTerm env tm
     return (ty, MTerm tm' ty)
 
+  Syn.MFail -> do
+    res <- freshVar kstar
+    return (res, MFail res)
+
+-- | Type-check a pattern, returning a fresh environment created by the pattern,
+-- the type of the pattern, and a pattern in the core language.
 tcPat :: TypeAssumps -> Syn.Pat -> TC (TypeAssumps,Type,Pat)
 tcPat env p = case p of
 
   Syn.PWildcard -> do
     var <- freshVar kstar
-    return (env,var,PWildcard var)
+    return (emptyAssumps,var,PWildcard var)
+
+  Syn.PCon qn ps -> do
+    a   <- typeAssump qn env
+    kty <- freshInst (aData a)
+
+    let step (e,vtys,vs) v = do
+          (ve,vty,v') <- tcPat env v
+          return (mergeAssumps ve e, vty:vtys, v':vs)
+
+    (env', vtys, ps') <- foldM step (emptyAssumps, [], []) ps
+
+    logInfo (pretty vtys)
+    logInfo (pretty ps')
+
+    res <- freshVar kstar
+    let infTy = foldl (flip tarrow) res vtys
+    unify infTy kty
+
+    tyPat  <- applySubst res
+    envPat <- applySubst env'
+    psPat  <- applySubst (reverse ps')
+
+    return (envPat, res, PCon qn psPat res)
 
   Syn.PVar n -> do
-    let name = simpleName n
-    var  <- freshVar kstar
-    env' <- assume name (toScheme var) env
-    return (env',var,PVar n var)
+    var <- freshVar kstar
+    let penv = singletonAssump (simpleName n) Assump
+          { aData = toScheme var
+          , aBody = Nothing
+          }
+    return (penv,var,PVar n var)
 
 tcTerm :: TypeAssumps -> Syn.Term -> TC (Type,Term)
 tcTerm env tm = case tm of
@@ -253,6 +325,16 @@ tcTerm env tm = case tm of
     (vs,ty') <- freshInst' qt
     let vars = map uvar vs
     return (ty', Let [decl] (appT (Global name) vars))
+
+  Syn.Case e m -> do
+    (ety,e') <- tcTerm env e
+    res      <- freshVar kstar
+    (mty,m') <- tcMatch env m
+
+    unify (ety `tarrow` res) mty
+    cty <- applySubst res
+
+    return (cty, Case e' m')
 
   Syn.Let ts us e -> do
     env'        <- typedAssumps [] ts env

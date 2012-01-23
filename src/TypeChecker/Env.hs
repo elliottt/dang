@@ -36,6 +36,9 @@ instance Types ty => Types (Assump ty) where
   apply' b u a = a { aData = apply' b u (aData a) }
   typeVars  = typeVars . aData
 
+singletonAssump :: QualName -> Assump ty -> Assumps ty
+singletonAssump  = Map.singleton
+
 emptyAssumps :: Assumps ty
 emptyAssumps  = Map.empty
 
@@ -44,6 +47,9 @@ lookupAssump  = Map.lookup
 
 addAssump :: QualName -> Assump ty -> Assumps ty -> Assumps ty
 addAssump  = Map.insert
+
+mergeAssumps :: Assumps ty -> Assumps ty -> Assumps ty
+mergeAssumps  = Map.union
 
 assumps :: Assumps ty -> [ty]
 assumps  = map aData . Map.elems
