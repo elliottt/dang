@@ -10,7 +10,7 @@ import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
 import QualName (QualName,simpleName)
 import Syntax.AST (Var,Literal(..),PrimType(..),PrimTerm(..))
-import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
+import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow,TParam)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import Data.List (nub)
@@ -43,6 +43,9 @@ instance Pretty Module where
 ppTyApp :: Pretty a => [a] -> Doc
 ppTyApp [] = empty
 ppTyApp ts = brackets (commas (map ppr ts))
+
+
+-- Declarations ----------------------------------------------------------------
 
 -- | Fully qualified declarations.
 data Decl = Decl
@@ -79,6 +82,22 @@ declType d = Forall ps (matchType m)
   where
   Forall ps m = declBody d
 
+-- | Take a declaration, and extend its type and value arguments with the new
+-- parameters.  In both cases, the new arguments are pushed all the way to the
+-- left.  No effort made to check for naming conflicts.
+extendClosure :: [TParam] -> (Match -> Match) -> Decl -> Decl
+extendClosure ps args d = d
+  { declBody = qbody
+    { forallParams = ps ++ forallParams qbody
+    , forallData   = args `atMTerm` body
+    }
+  }
+  where
+  qbody = declBody d
+  body  = forallData qbody
+
+
+-- Variable Introduction -------------------------------------------------------
 
 -- | Typed variable introduction.
 data Match
@@ -130,6 +149,19 @@ isMTerm _       = False
 isMPat :: Match -> Bool
 isMPat MPat{} = True
 isMPat _      = False
+
+-- | Apply a function on the @MTerm@ portion of a @Match@.
+atMTerm :: (Match -> Match) -> (Match -> Match)
+atMTerm k = loop
+  where
+  loop m = case m of
+    MTerm _ _  -> k m
+    MSplit l r -> MSplit (loop l) (loop r)
+    MPat p m'  -> MPat p (loop m')
+    MFail _    -> m
+
+
+-- Variable Patterns -----------------------------------------------------------
 
 data Pat
   = PVar Var Type

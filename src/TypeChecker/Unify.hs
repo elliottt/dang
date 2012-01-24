@@ -75,10 +75,12 @@ apply  = apply' 0
 class Types a where
   apply'   :: Int -> Subst -> a -> a
   typeVars :: a -> Set.Set TParam
+  genVars  :: a -> Set.Set TParam
 
 instance Types a => Types [a] where
   apply' b u = map (apply' b u)
-  typeVars  = Set.unions . map typeVars
+  typeVars   = Set.unions . map typeVars
+  genVars    = Set.unions . map genVars
 
 instance Types Type where
   apply' b u ty = case ty of
@@ -91,6 +93,12 @@ instance Types Type where
     TApp f x     -> typeVars f `Set.union` typeVars x
     TInfix _ l r -> typeVars l `Set.union` typeVars r
     TVar tv      -> typeVarsTVar tv
+    TCon{}       -> Set.empty
+
+  genVars ty = case ty of
+    TApp f x     -> genVars f `Set.union` genVars x
+    TInfix _ l r -> genVars l `Set.union` genVars r
+    TVar tv      -> genVarsTVar tv
     TCon{}       -> Set.empty
 
 apply'TVar :: Int -> Subst -> TVar -> Type
@@ -123,11 +131,13 @@ genVarsTVar _        = Set.empty
 
 instance Types Decl where
   apply' b s d = d { declBody = apply' b s (declBody d) }
-  typeVars  = typeVars . declBody
+  typeVars     = typeVars . declBody
+  genVars      = genVars  . declBody
 
 instance Types a => Types (Forall a) where
   apply' b u (Forall ps a) = Forall ps (apply' (b + length ps) u a)
   typeVars (Forall _ a)    = typeVars a
+  genVars  (Forall ps a)   = Set.fromList ps `Set.union` genVars a
 
 instance Types Match where
   apply' b s m = case m of
@@ -142,6 +152,12 @@ instance Types Match where
     MPat p m'  -> typeVars p `Set.union` typeVars m'
     MFail ty   -> typeVars ty
 
+  genVars m = case m of
+    MTerm t ty -> genVars t `Set.union` genVars ty
+    MSplit l r -> genVars l `Set.union` genVars r
+    MPat p m'  -> genVars p `Set.union` genVars m'
+    MFail ty   -> genVars ty
+
 instance Types Pat where
   apply' b s p = case p of
     PWildcard ty  -> PWildcard (apply' b s ty)
@@ -152,6 +168,11 @@ instance Types Pat where
     PWildcard ty -> typeVars ty
     PCon _ ps ty -> typeVars ty `Set.union` typeVars ps
     PVar _ ty    -> typeVars ty
+
+  genVars p = case p of
+    PWildcard ty -> genVars ty
+    PCon _ ps ty -> genVars ty `Set.union` genVars ps
+    PVar _ ty    -> genVars ty
 
 instance Types Term where
   apply' b s tm = case tm of
@@ -172,10 +193,19 @@ instance Types Term where
     Local _   -> Set.empty
     Lit _     -> Set.empty
 
+  genVars tm = case tm of
+    AppT f ts -> genVars f  `Set.union` genVars ts
+    App t ts  -> genVars t  `Set.union` genVars ts
+    Case e m  -> genVars e  `Set.union` genVars m
+    Let ds e  -> genVars ds `Set.union` genVars e
+    Global _  -> Set.empty
+    Local _   -> Set.empty
+    Lit _     -> Set.empty
+
 instance Types DataDecl where
   apply' b s d = d { dataGroups = map (apply' b s) (dataGroups d) }
-
-  typeVars = typeVars . dataGroups
+  typeVars     = typeVars . dataGroups
+  genVars      = genVars  . dataGroups
 
 instance Types ConstrGroup where
   apply' b s cg = cg
@@ -184,11 +214,13 @@ instance Types ConstrGroup where
     }
 
   typeVars cg = typeVars (groupArgs cg) `Set.union` typeVars (groupConstrs cg)
+  genVars  cg = genVars  (groupArgs cg) `Set.union` genVars (groupConstrs cg)
 
 instance Types Constr where
   apply' b s c = c { constrFields = apply' b s (constrFields c) }
 
   typeVars = typeVars . constrFields
+  genVars  = genVars  . constrFields
 
 
 -- Unification -----------------------------------------------------------------

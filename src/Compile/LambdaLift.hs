@@ -15,12 +15,12 @@ import Core.AST
 import Pretty (Pretty,pretty)
 import QualName (QualName)
 import TypeChecker.Types
-import TypeChecker.Unify (Types(typeVars),quantify,quantifyAux,inst)
-import Variables
-    (sccFreeQualNames,sccToList,FreeVars(),freeLocals)
+import TypeChecker.Unify (Types(genVars))
+import Variables (sccFreeQualNames,sccToList,FreeVars(),freeLocals)
 
-import Control.Applicative (Applicative,(<$>))
-import MonadLib
+import Control.Applicative (Applicative,(<$>),(<*>))
+import Data.List (partition,(\\))
+import MonadLib hiding (lift)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -84,31 +84,33 @@ subst qn = LL $ do
     Just tm -> return tm
     Nothing -> return ([],[])
 
--- | Extend the closure, and return a new call-pattern for the symbol.  Add the
--- type variables from the free variables, and the free variables to the
--- arguments.
-addClosure :: [(Var,Type)] -> Decl -> (Decl,Call)
-addClosure clos = extend
-  where
-  tyVars    = Set.toList (typeVars (map snd clos))
-  addVars   = foldl (\f (v,ty) -> MPat (PVar v ty) . f) id clos
-  extend d  = (d',call)
-    where
-    d'      = d { declBody = Forall (forallParams body ++ qs) b' }
-    (qs,b') = quantifyAux off tyVars (addVars (forallData body))
-    body    = declBody d
-    off     = length (forallParams body)
-    call    = (map uvar tyVars, map (Local . fst) clos)
+type Closure = [(Var,Type)]
 
-typedClosure :: (FreeVars a) => a -> LL [(Var,Type)]
+emptyClosure :: Closure
+emptyClosure  = []
+
+closureArgs :: Closure -> Match -> Match
+closureArgs  = loop
+  where
+  loop clos = case clos of
+    (v,ty):cs -> MPat (PVar v ty) . loop cs
+    []        -> id
+
+typedClosure :: (FreeVars a) => a -> LL Closure
 typedClosure  = mapM step . Set.toList . freeLocals
   where
   step a = (a,) <$> typeOfLocal a
 
-rename :: QualName -> Call -> LL ()
-rename qn call = LL $ do
+closureParams :: Closure -> [TParam]
+closureParams  = Set.toList . genVars . map snd
+
+closureTerms :: Closure -> [Term]
+closureTerms clos = [ Local v | (v,_) <- clos ]
+
+rewriteSyms :: [(QualName,Call)] -> LL ()
+rewriteSyms rs = LL $ do
   u <- get
-  set $! Map.insert qn call u
+  set $! Map.fromList rs `Map.union` u
 
 
 -- Type Environment ------------------------------------------------------------
@@ -145,13 +147,15 @@ introVars ps k = do
   local (addParams (Set.fromList ps') env) (k ps')
 
 introPat :: Pat -> LL a -> LL a
-introPat p k = case p of
+introPat p k = do
+  env   <- ask
+  local (addPatLocals p env) k
 
-  PVar v ty -> do
-    env <- ask
-    local (addLocal v ty env) k
-
-  PWildcard _ -> k
+addPatLocals :: Pat -> Env -> Env
+addPatLocals p = case p of
+  PVar v ty   -> addLocal v ty
+  PCon _ ps _ -> foldl (\k p' -> k . addPatLocals p') id ps
+  PWildcard _ -> id
 
 typeOfLocal :: Var -> LL Type
 typeOfLocal v = do
@@ -165,29 +169,33 @@ typeOfLocal v = do
 
 llModule :: Module -> LL Module
 llModule m = do
-  (ds',ls) <- collect (mapM llTopDecl (modDecls m))
+  (ds',ls) <- collect (mapM (llDecl [] emptyClosure) (modDecls m))
   return m { modDecls = ds' ++ ls }
 
-llTopDecl :: Decl -> LL Decl
-llTopDecl d = do
+llDecl :: [TParam] -> Closure -> Decl -> LL Decl
+llDecl ps clos d = do
   logInfo ("processing " ++ pretty (declName d))
   b' <- llForall llMatch (declBody d)
-  return d { declBody = b' }
+  return $ extendClosure ps (closureArgs clos)
+         $ d { declBody = b' }
 
 llForall :: (Pretty a, Types a) => (a -> LL a) -> Forall a -> LL (Forall a)
-llForall k (Forall ps a) = introVars ps $ \ ps' -> do
-  let i = inst (map uvar ps') a
-  a' <- k i
-  return (quantify ps' a')
+llForall k (Forall ps a) = introVars ps $ \ _ps' -> do
+  a' <- k a
+  return (Forall ps a')
 
 llMatch :: Match -> LL Match
 llMatch m = case m of
 
   MPat p b -> MPat p <$> introPat p (llMatch b)
 
+  MSplit l r -> MSplit <$> llMatch l <*> llMatch r
+
   MTerm tm ty -> do
     tm' <- llTerm tm
     return (MTerm tm' ty)
+
+  MFail _ -> return m
 
 -- | Process a series of declarations from a let-expression, lifting out any
 -- that contain arguments, and generating appropriate substitutions.
@@ -198,33 +206,33 @@ llLetDecls  = foldM step [] . sccFreeQualNames
     ds' <- llLetBlock (sccToList ds)
     return (acc ++ ds')
 
+-- | Process a group of mutually recursive let-declarations.
 llLetBlock :: [Decl] -> LL [Decl]
 llLetBlock ds = do
-  logInfo ("processing " ++ pretty (map declName ds))
+  let ns = map declName ds
+  logInfo ("processing group: " ++ pretty ns)
 
   clos <- typedClosure ds
   logInfo ("  closure: " ++ pretty clos)
 
-  let extend d = do
-        let (d',call) = addClosure clos d
-        rename (declName d') call
-        return d'
+  let newParams = closureParams clos
+      call      = (map gvar newParams, closureTerms clos)
+  rewriteSyms (zip ns (repeat call))
 
-      step d = do
-        b' <- llForall llMatch (declBody d)
-        let decl = d { declBody = b' }
-        if hasArgs decl
-           then put [decl] >> return []
-           else return [decl]
+  ds' <- mapM (llDecl newParams clos) ds
 
-  fmap concat . mapM step =<< mapM extend ds
+  let (lift,keep) = partition hasArgs ds'
+  put lift
+  return keep
 
 llTerm :: Term -> LL Term
 llTerm tm = case tm of
 
+  -- catch type application to extend with any new arguments
   AppT g@(Global qn) ts -> do
     (ts',vs) <- subst qn
-    return (app (appT g (ts ++ ts')) vs)
+    let extra = ts' \\ ts
+    return (app (appT g (extra ++ ts)) vs)
 
   AppT f ts -> do
     f' <- llTerm f
@@ -234,6 +242,11 @@ llTerm tm = case tm of
     f'  <- llTerm f
     xs' <- mapM llTerm xs
     return (app f' xs')
+
+  Case e m -> do
+    e' <- llTerm e
+    m' <- llMatch m
+    return (Case e' m')
 
   Let ds e -> do
     ds' <- llLetDecls ds
