@@ -296,7 +296,7 @@ tcPat env p = case p of
     envPat <- applySubst env'
     psPat  <- applySubst (reverse ps')
 
-    return (envPat, res, PCon qn psPat res)
+    return (envPat, tyPat, PCon qn psPat res)
 
   Syn.PVar n -> do
     var <- freshVar kstar
