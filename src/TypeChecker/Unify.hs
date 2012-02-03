@@ -12,6 +12,7 @@ import Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)
+import Data.List (intersect)
 import Data.Typeable (Typeable)
 import MonadLib (ExceptionM)
 import qualified Data.Set as Set
@@ -296,7 +297,7 @@ quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
 quantifyAux :: Types t => Int -> [TParam] -> t -> ([TParam],t)
 quantifyAux off ps t = (ps',apply u t)
   where
-  vs         = Set.toList (typeVars t `Set.intersection` Set.fromList ps)
+  vs         = ps `intersect` Set.toList (typeVars t)
   subst      = zipWith mkGen [off ..] vs
   mkGen ix v = (paramIndex v, v { paramIndex = ix })
   (_,ps')    = unzip subst
