@@ -199,9 +199,11 @@ data EscapeSet = EscapeSet
 type EscapeSets = Map.Map Name EscapeSet
 
 simpleType :: Decl -> Maybe Type
-simpleType d = case declType d of
-  Forall [] ty -> Just ty
-  _            -> Nothing
+simpleType d = do
+  guard (not (hasArgs d))
+  let Forall ps ty = declType d
+  guard (null ps)
+  return ty
 
 escapeSet :: Decl -> LL EscapeSet
 escapeSet d = do
