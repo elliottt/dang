@@ -307,4 +307,4 @@ llLet ds e = do
     ds' <- mapM llDecl ds
     let (lift,keep) = partition hasArgs ds'
     put lift
-    Let keep <$> llTerm e
+    letIn keep <$> llTerm e
