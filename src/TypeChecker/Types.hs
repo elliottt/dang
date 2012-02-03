@@ -202,6 +202,9 @@ instance FreeVars TParam where
 instance Pretty TParam where
   pp _ p = text (paramName p)
 
+modifyTParamIndex :: (Index -> Index) -> (TParam -> TParam)
+modifyTParamIndex f p = p { paramIndex = f (paramIndex p) }
+
 setTParamIndex :: Index -> TParam -> TParam
 setTParamIndex ix p = p { paramIndex = ix }
 

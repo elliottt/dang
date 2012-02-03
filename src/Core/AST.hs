@@ -82,20 +82,6 @@ declType d = Forall ps (matchType m)
   where
   Forall ps m = declBody d
 
--- | Take a declaration, and extend its type and value arguments with the new
--- parameters.  In both cases, the new arguments are pushed all the way to the
--- left.  No effort made to check for naming conflicts.
-extendClosure :: [TParam] -> (Match -> Match) -> Decl -> Decl
-extendClosure ps args d = d
-  { declBody = qbody
-    { forallParams = ps ++ forallParams qbody
-    , forallData   = args `atMTerm` body
-    }
-  }
-  where
-  qbody = declBody d
-  body  = forallData qbody
-
 
 -- Variable Introduction -------------------------------------------------------
 
