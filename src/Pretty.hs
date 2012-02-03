@@ -9,7 +9,9 @@ import Text.PrettyPrint
 import qualified Data.Set as Set
 
 pretty :: Pretty a => a -> String
-pretty  = render . pp 0
+pretty  = renderStyle fmt . ppr
+  where
+  fmt = Style PageMode 80 1.0
 
 dot :: Doc
 dot  = char '.'

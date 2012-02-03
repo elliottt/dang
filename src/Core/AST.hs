@@ -10,7 +10,7 @@ import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
 import QualName (QualName,simpleName)
 import Syntax.AST (Var,Literal(..),PrimType(..),PrimTerm(..))
-import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow,TParam)
+import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import Data.List (nub)
@@ -69,7 +69,7 @@ instance Pretty Decl where
 
 -- | Pretty-print a declaration without its export annotation.
 ppDecl :: Decl -> Doc
-ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' <+> b
+ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' $$ nest 2 b
   where
   Forall ps body = declBody d
   (as,b)         = ppMatch body
