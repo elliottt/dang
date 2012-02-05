@@ -13,7 +13,7 @@ import Core.AST
 import Dang.IO
 import Dang.Monad
 import Pretty (pretty)
-import QualName (QualName,Name,simpleName,qualSymbol,isSimpleName)
+import QualName (Name,simpleName,qualSymbol)
 import TypeChecker.Types (Type,TParam,uvar,Forall(..),modifyTParamIndex)
 import TypeChecker.Unify (inst,quantify,typeVars)
 import Variables (freeLocals)
@@ -152,13 +152,10 @@ llMatch m = case m of
 llTerm :: Term -> LL Term
 llTerm tm = case tm of
 
+  -- let-bound names are Local
   AppT (Local n) ps -> llLocal n ps []
   App  (Local n) xs -> llLocal n [] xs
   Local n           -> llLocal n [] []
-
-  AppT (Global qn) ps -> llGlobal qn ps []
-  App  (Global qn) xs -> llGlobal qn [] xs
-  Global qn           -> llGlobal qn [] []
 
   AppT f tys -> AppT <$> llTerm f <*> pure tys
 
@@ -168,7 +165,9 @@ llTerm tm = case tm of
 
   Let ds e -> llLet ds e
 
-  Lit _    -> return tm
+  -- globals and literals don't need lifting
+  Global{} -> return tm
+  Lit{}    -> return tm
 
 llLocal :: Name -> [Type] -> [Term] -> LL Term
 llLocal n ps xs = do
@@ -177,13 +176,6 @@ llLocal n ps xs = do
       sym | nullRewrite rw = Local n
           | otherwise      = Global (simpleName n)
   return (app (appT sym ps') (rewriteTerms rw ++ xs))
-
--- this should really be not possible, as the module system can tell when
--- something is locally defined.
-llGlobal :: QualName -> [Type] -> [Term] -> LL Term
-llGlobal qn ps xs
-  | isSimpleName qn = llLocal (qualSymbol qn) ps xs
-  | otherwise       = return (app (appT (Global qn) ps) xs)
 
 
 -- Let-expressions -------------------------------------------------------------
@@ -309,4 +301,5 @@ llLet ds e = do
     ds' <- mapM llDecl ds
     let (lift,keep) = partition hasArgs ds'
     put lift
+    logInfo (show e)
     letIn keep <$> llTerm e

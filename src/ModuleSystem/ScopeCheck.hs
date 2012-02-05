@@ -228,9 +228,9 @@ scTerm tm = case tm of
   Case e m -> Case <$> scTerm e <*> scMatch m
 
   Let ts us e -> newLevel $ do
-    let tqs = map (simpleName . typedName)   ts
-        uqs = map (simpleName . untypedName) us
-    bindGlobals (tqs ++ uqs) $ do
+    let tqs = map typedName   ts
+        uqs = map untypedName us
+    bindLocals (tqs ++ uqs) $ do
       ts' <- mapM scTypedDecl ts
       us' <- mapM scUntypedDecl us
       e'  <- scTerm e
