@@ -110,12 +110,10 @@ lookupType n = do
     Just ty -> return ty
     Nothing -> fail ("lookupType: " ++ n)
 
-lookupRewrite :: Name -> LL Rewrite
+lookupRewrite :: Name -> LL (Maybe Rewrite)
 lookupRewrite n = do
   env <- ask
-  case Map.lookup n (envRewrite env) of
-    Just rw -> return rw
-    Nothing -> return emptyRewrite
+  return $! Map.lookup n (envRewrite env)
 
 
 -- Core Lambda-lifting ---------------------------------------------------------
@@ -134,9 +132,12 @@ llDecl d = do
 llBody :: Name -> Forall Match -> LL (Forall Match)
 llBody n qb = introParams (forallParams qb) $ \ ps -> do
   let vars = map uvar ps
-  rw    <- lookupRewrite n
-  body' <- addRewriteArgs rw =<< llMatch (inst vars (forallData qb))
-  return (quantify (ps ++ rewriteParams rw) body')
+  mb    <- lookupRewrite n
+  let (extraParams,extraArgs) = case mb of
+        Just rw -> (rewriteParams rw, addRewriteArgs rw)
+        Nothing -> ([],return)
+  body' <- extraArgs =<< llMatch (inst vars (forallData qb))
+  return (quantify (ps ++ extraParams) body')
 
 llMatch :: Match -> LL Match
 llMatch m = case m of
@@ -153,13 +154,12 @@ llTerm :: Term -> LL Term
 llTerm tm = case tm of
 
   -- let-bound names are Local
-  AppT (Local n) ps -> llLocal n ps []
-  App  (Local n) xs -> llLocal n [] xs
-  Local n           -> llLocal n [] []
+  AppT (Local n) ps -> llLocal n ps
+  Local n           -> llLocal n []
 
-  AppT f tys -> AppT <$> llTerm f <*> pure tys
+  AppT f tys -> appT <$> llTerm f <*> pure tys
 
-  App f xs -> App <$> llTerm f <*> mapM llTerm xs
+  App f xs -> app <$> llTerm f <*> mapM llTerm xs
 
   Case e m -> Case <$> llTerm e <*> llMatch m
 
@@ -169,13 +169,13 @@ llTerm tm = case tm of
   Global{} -> return tm
   Lit{}    -> return tm
 
-llLocal :: Name -> [Type] -> [Term] -> LL Term
-llLocal n ps xs = do
-  rw <- lookupRewrite n
-  let ps' = ps ++ rewriteTypes rw
-      sym | nullRewrite rw = Local n
-          | otherwise      = Global (simpleName n)
-  return (app (appT sym ps') (rewriteTerms rw ++ xs))
+llLocal :: Name -> [Type] -> LL Term
+llLocal n ps = maybe (Local n) rewriteSymbol <$> lookupRewrite n
+  where
+  rewriteSymbol rw = app (appT sym ps') (rewriteTerms rw)
+    where
+    ps' = ps ++ rewriteTypes rw
+    sym = Global (simpleName n)
 
 
 -- Let-expressions -------------------------------------------------------------
@@ -257,20 +257,11 @@ data Rewrite = Rewrite
   , rewriteArgs   :: [Name]
   } deriving Show
 
-emptyRewrite :: Rewrite
-emptyRewrite  = Rewrite
-  { rewriteParams = []
-  , rewriteArgs   = []
-  }
-
 rewriteTypes :: Rewrite -> [Type]
 rewriteTypes  = map uvar . rewriteParams
 
 rewriteTerms :: Rewrite -> [Term]
 rewriteTerms  = map Local . rewriteArgs
-
-nullRewrite :: Rewrite -> Bool
-nullRewrite rw = null (rewriteParams rw) && null (rewriteArgs rw)
 
 escapeSetRewrite :: EscapeSet -> Rewrite
 escapeSetRewrite ex = Rewrite
@@ -301,5 +292,4 @@ llLet ds e = do
     ds' <- mapM llDecl ds
     let (lift,keep) = partition hasArgs ds'
     put lift
-    logInfo (show e)
     letIn keep <$> llTerm e
