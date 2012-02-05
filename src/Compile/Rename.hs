@@ -36,25 +36,37 @@ rename m = do
 type NameMap a = Map.Map a a
 
 data Subst = Subst
-  { sNames :: NameMap QualName
-  , sAvoid :: Set.Set QualName
+  { sGlobals :: NameMap QualName
+  , sLocals  :: NameMap Name
   }
 
 emptySubst :: Subst
 emptySubst  = Subst
-  { sNames = Map.empty
-  , sAvoid = Set.empty
+  { sGlobals = Map.empty
+  , sLocals  = Map.empty
+  }
+
+data Avoid = Avoid
+  { avoidIx  :: !Int
+  , avoidSet :: Set.Set QualName
+  }
+
+emptyAvoid :: Avoid
+emptyAvoid  = Avoid
+  { avoidIx  = 0
+  , avoidSet = Set.empty
   }
 
 newtype Rename a = Rename
-  { unRename :: StateT Int (ReaderT Subst Dang) a
+  { unRename :: StateT Avoid (ReaderT Subst Dang) a
   } deriving (Functor,Applicative,Monad)
 
 instance BaseM Rename Dang where
   inBase = Rename . inBase
 
 runRename :: Rename a -> Dang a
-runRename m = fst `fmap` runReaderT emptySubst (runStateT 0 (unRename m))
+runRename m =
+  fst `fmap` runReaderT emptySubst (runStateT emptyAvoid (unRename m))
 
 getSubst :: Rename Subst
 getSubst  = Rename ask
@@ -62,46 +74,57 @@ getSubst  = Rename ask
 withSubst :: Subst -> Rename a -> Rename a
 withSubst u m = Rename (local u (unRename m))
 
-avoid :: [QualName] -> Rename a -> Rename a
-avoid names m = do
-  u <- getSubst
-  withSubst (u { sAvoid = Set.fromList names `Set.union` sAvoid u }) m
+avoid :: [QualName] -> Rename ()
+avoid names = Rename $ do
+  a <- get
+  set $! a { avoidSet = Set.fromList names `Set.union` avoidSet a }
 
-freshName :: QualName -> Rename QualName
-freshName qn = do
-  u  <- getSubst
-  i0 <- Rename get
-  let bound = sAvoid u
-      loop i
-        | name `Set.member` bound = loop (i+1)
-        | otherwise               = (name,i+1)
-        where
-        name = mapSymbol (++ show i) qn
+freshName :: Name -> Rename Name
+freshName n = Rename $ do
+  a <- get
+  if simpleName n `Set.notMember` avoidSet a
+    then return n
+    else do
+      let loop i
+            | qn `Set.member` avoidSet a = loop (i+1)
+            | otherwise                  = (name,i+1)
+            where
+            qn   = simpleName name
+            name = n ++ show i
 
-      (n,i') = loop i0
-  Rename (set $! i')
-  return n
+          (n',i') = loop (avoidIx a)
+      set $! a { avoidIx = i' }
+      return n'
 
-fresh :: [QualName] -> Rename a -> Rename a
-fresh ns m = do
+
+freshLocals :: [QualName] -> Rename a -> Rename a
+freshLocals ns m = do
   let step v = do
-        n <- freshName v
-        return (v,n)
+        let sym = qualSymbol v
+        n <- freshName sym
+        return (sym,n)
   ns' <- mapM step ns
   u   <- getSubst
-  avoid (map snd ns')
-    (withSubst (u { sNames = Map.fromList ns' `Map.union` sNames u }) m)
+  avoid (map (simpleName . snd) ns')
+  withSubst (u { sLocals = Map.fromList ns' `Map.union` sLocals u }) m
 
-subst :: QualName -> Rename QualName
-subst qn = do
+substGlobal :: QualName -> Rename QualName
+substGlobal qn = do
   u <- getSubst
-  return (fromMaybe qn (Map.lookup qn (sNames u)))
+  return (fromMaybe qn (Map.lookup qn (sGlobals u)))
+
+substLocal :: Name -> Rename Name
+substLocal n = do
+  u <- getSubst
+  return (fromMaybe n (Map.lookup n (sLocals u)))
+
 
 
 -- Term Renaming ---------------------------------------------------------------
 
 renameModule :: Module -> Rename Module
-renameModule m = avoid (map declName (modDecls m)) $ do
+renameModule m = do
+  avoid (map declName (modDecls m))
   decls' <- mapM renameDecl (modDecls m)
   return m
     { modDecls = decls'
@@ -109,7 +132,7 @@ renameModule m = avoid (map declName (modDecls m)) $ do
 
 renameDecl :: Decl -> Rename Decl
 renameDecl d = do
-  qn'  <- subst (declName d)
+  qn'  <- substGlobal (declName d)
   body <- renameForall renameMatch (declBody d)
   return d
     { declName = qn'
@@ -121,19 +144,32 @@ renameForall k (Forall ps a) = Forall ps `fmap` k a
 
 renameMatch :: Match -> Rename Match
 renameMatch m = case m of
-  MPat p m'   -> avoid (map simpleName (patVars p))
-               $ MPat p <$> renameMatch m'
+  MPat p m'   -> do
+    avoid (map simpleName (patVars p))
+    MPat p <$> renameMatch m'
   MSplit l r  -> MSplit <$> renameMatch l <*> renameMatch r
   MTerm tm ty -> MTerm  <$> renameTerm tm <*> pure ty
   MFail _     -> pure m
 
 renameTerm :: Term -> Rename Term
 renameTerm tm = case tm of
-  AppT f tys -> AppT    <$> renameTerm f <*> pure tys
-  App  f xs  -> App     <$> renameTerm f <*> mapM renameTerm xs
-  Case e m   -> Case    <$> renameTerm e <*> renameMatch m
-  Let ds e   -> fresh (map declName ds)
-              $ Let    <$> mapM renameDecl ds <*> renameTerm e
-  Global qn  -> Global <$> subst qn
-  Local n    -> return (Local n)
-  Lit lit    -> return (Lit lit)
+  AppT f tys -> AppT   <$> renameTerm f <*> pure tys
+  App  f xs  -> App    <$> renameTerm f <*> mapM renameTerm xs
+  Case e m   -> Case   <$> renameTerm e <*> renameMatch m
+  Let ds e   -> renameLet ds e
+  Global qn  -> Global <$> substGlobal qn
+  Local n    -> Local  <$> substLocal  n
+  Lit{}      -> return tm
+
+renameLet :: [Decl] -> Term -> Rename Term
+renameLet ds e = freshLocals (map declName ds)
+               $ Let <$> mapM renameLetDecl ds <*> renameTerm e
+
+renameLetDecl :: Decl -> Rename Decl
+renameLetDecl d = do
+  n'   <- substLocal (qualSymbol (declName d))
+  body <- renameForall renameMatch (declBody d)
+  return d
+    { declName = simpleName n'
+    , declBody = body
+    }
