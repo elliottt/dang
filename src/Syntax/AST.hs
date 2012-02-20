@@ -339,7 +339,7 @@ instance Pretty Pat where
   pp _  PWildcard   = char '_'
 
 -- | Variables introduced by a pattern.
-patVars :: Pat -> [Var]
+patVars :: Pat -> [Name]
 patVars p = case p of
   PCon _ ps -> nub (concatMap patVars ps)
   PVar n    -> [n]
@@ -347,8 +347,6 @@ patVars p = case p of
 
 
 -- Terms -----------------------------------------------------------------------
-
-type Var = String
 
 data Term
   = Abs Match
@@ -404,7 +402,7 @@ ppCase :: Term -> Match -> Doc
 ppCase e m = text "case" <+> ppr e <+> text "of"
           $$ nest 2 (ppr m)
 
-letBinds :: [TypedDecl] -> [UntypedDecl] -> [Var]
+letBinds :: [TypedDecl] -> [UntypedDecl] -> [Name]
 letBinds ts us = map typedName ts ++ map untypedName us
 
 apply :: Term -> [Term] -> Term
@@ -431,6 +429,6 @@ instance Pretty Literal where
 
 -- Utilities -------------------------------------------------------------------
 
-ignoreVars :: [Var] -> Set.Set QualName -> Set.Set QualName
+ignoreVars :: [Name] -> Set.Set QualName -> Set.Set QualName
 ignoreVars vs fvs = fvs Set.\\ Set.fromList (map simpleName vs)
 

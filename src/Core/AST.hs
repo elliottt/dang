@@ -1,6 +1,5 @@
 module Core.AST (
     module Core.AST
-  , Var
   , Literal(..)
   , PrimType(..)
   , PrimTerm(..)
@@ -8,8 +7,8 @@ module Core.AST (
 
 import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
-import QualName (QualName,simpleName)
-import Syntax.AST (Var,Literal(..),PrimType(..),PrimTerm(..))
+import QualName (QualName,Name,simpleName)
+import Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
@@ -150,7 +149,7 @@ atMTerm k = loop
 -- Variable Patterns -----------------------------------------------------------
 
 data Pat
-  = PVar Var Type
+  = PVar Name Type
   | PCon QualName [Pat] Type
   | PWildcard Type
     deriving (Show)
@@ -161,7 +160,7 @@ patType p = case p of
   PCon _ _ ty  -> ty
   PWildcard ty -> ty
 
-patVars :: Pat -> [Var]
+patVars :: Pat -> [Name]
 patVars p = case p of
   PVar n _    -> [n]
   PCon _ ps _ -> nub (concatMap patVars ps)
@@ -185,7 +184,7 @@ data Term
   | Case Term Match
   | Let [Decl] Term
   | Global QualName
-  | Local Var
+  | Local Name
   | Lit Literal
     deriving (Show)
 

@@ -26,8 +26,7 @@ module TypeChecker.Monad (
   ) where
 
 import Dang.Monad
-import QualName
-import Syntax.AST (Var)
+import QualName (QualName,Name,simpleName)
 import TypeChecker.Types
 import TypeChecker.Unify
 
@@ -61,7 +60,7 @@ instance RunExceptionM TC SomeException where
 -- Read-only Environment -------------------------------------------------------
 
 data RO = RO
-  { roBoundVars :: Set.Set Var
+  { roBoundVars :: Set.Set Name
   }
 
 emptyRO :: RO
@@ -69,7 +68,7 @@ emptyRO  = RO
   { roBoundVars    = Set.empty
   }
 
-bindVars :: [Var] -> TC a -> TC a
+bindVars :: [Name] -> TC a -> TC a
 bindVars vs m = TC $ do
   ro <- ask
   local (ro { roBoundVars = roBoundVars ro `mappend` Set.fromList vs }) (unTC m)
@@ -77,7 +76,7 @@ bindVars vs m = TC $ do
 
 -- Write-only Output -----------------------------------------------------------
 
-type FreeVars = Set.Set (Var,Type)
+type FreeVars = Set.Set (Name,Type)
 
 data WO = WO
   { woVars :: FreeVars
@@ -97,21 +96,23 @@ collectVars (TC m) = TC $ do
   (a,wo) <- collect m
   return (a,woVars wo)
 
-emitFreeVar :: Var -> Type -> TC ()
+emitFreeVar :: Name -> Type -> TC ()
 emitFreeVar v ty = TC (put mempty { woVars = Set.singleton (v,ty) })
 
 
 -- Read/Write State ------------------------------------------------------------
 
 data RW = RW
-  { rwSubst :: Subst
-  , rwIndex :: !Index
+  { rwSubst   :: Subst
+  , rwIndex   :: !Index
+  , rwSkolems :: Set.Set TParam
   }
 
 emptyRW :: RW
 emptyRW  = RW
-  { rwSubst = emptySubst
-  , rwIndex = 0
+  { rwSubst   = emptySubst
+  , rwIndex   = 0
+  , rwSkolems = Set.empty
   }
 
 
@@ -120,8 +121,9 @@ emptyRW  = RW
 -- | Unify two types, modifying the internal substitution.
 unify :: Type -> Type -> TC ()
 unify l r = do
-  u <- getSubst
-  extSubst =<< mgu (apply u l) (apply u r)
+  rw <- TC get
+  let u = rwSubst rw
+  extSubst =<< mgu (rwSkolems rw) (apply u l) (apply u r)
 
 -- | Get the current substitution.
 getSubst :: TC Subst
