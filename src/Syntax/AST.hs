@@ -274,30 +274,38 @@ instance Exported Constr where
 -- Variable Introduction -------------------------------------------------------
 
 data Match
-  = MTerm  Term        -- ^ Body of a match
-  | MPat   Pat   Match -- ^ Pattern matching
-  | MSplit Match Match -- ^ Choice
-  | MFail              -- ^ Unconditional failure
+  = MTerm  Term             -- ^ Body of a match
+  | MPat   Pat   Match      -- ^ Pattern matching
+  | MGuard Pat   Name Match -- ^ Pattern guards
+  | MSplit Match Match      -- ^ Choice
+  | MFail                   -- ^ Unconditional failure
     deriving (Eq,Show,Ord)
 
 instance Lift Match where
   lift m = case m of
-    MTerm tm   -> [| MTerm  $(lift tm)           |]
-    MPat p m'  -> [| MPat p $(lift m')           |]
-    MSplit l r -> [| MSplit $(lift l)  $(lift r) |]
-    MFail      -> [| MFail                       |]
+    MTerm tm      -> [| MTerm  $(lift tm)                      |]
+    MPat p m'     -> [| MPat   $(lift p) $(lift m')            |]
+    MGuard p n m' -> [| MGuard $(lift p) $(lift n)  $(lift m') |]
+    MSplit l r    -> [| MSplit $(lift l) $(lift r)             |]
+    MFail         -> [| MFail                                  |]
 
 instance FreeVars Match where
-  freeVars (MTerm tm)   = freeVars tm
-  freeVars (MPat p m)   = freeVars m Set.\\ freeVars p
-  freeVars (MSplit l r) = freeVars l `Set.union` freeVars r
-  freeVars MFail        = Set.empty
+  freeVars m = case m of
+    MTerm tm      -> freeVars tm
+    MPat p m'     -> freeVars m' Set.\\ freeVars p
+    MGuard p n m' ->
+      (Set.insert (simpleName n) (freeVars m')) Set.\\ freeVars p
+    MSplit l r    -> freeVars l `Set.union` freeVars r
+    MFail         -> Set.empty
 
 instance Pretty Match where
-  pp _ (MTerm tm)   = ppr tm
-  pp p (MPat a m)   = pp p a <+> text "->" <+> ppr m
-  pp _ (MSplit l r) = ppr l $$ ppr r
-  pp _ MFail        = empty
+  pp _ m = case m of
+    MTerm tm      -> ppr tm
+    MPat a m'     -> sep [pp 1 a <+> text "->", ppr m']
+    MGuard a n m' -> sep [ parens (ppr  a <+> text "<-" <+> ppr n) <+> text "->"
+                         , ppr m' ]
+    MSplit l r    -> ppr l $$ ppr r
+    MFail         -> empty
 
 -- | Pretty printing of a @Match@, in the context of a declaration.
 matchDecl :: Match -> Doc
@@ -329,14 +337,17 @@ instance Lift Pat where
     PWildcard  -> [| PWildcard                       |]
 
 instance FreeVars Pat where
-  freeVars (PVar n)     = Set.singleton (simpleName n)
-  freeVars (PCon qn ps) = Set.unions (Set.singleton qn : map freeVars ps)
-  freeVars  PWildcard   = Set.empty
+  freeVars p = case p of
+    PVar n     -> Set.singleton (simpleName n)
+    PCon qn ps -> Set.insert qn (freeVars ps)
+    PWildcard  -> Set.empty
 
 instance Pretty Pat where
-  pp _ (PVar n)     = text n
-  pp p (PCon qn ps) = optParens (p > 0) (ppr qn <+> hsep (map ppr ps))
-  pp _  PWildcard   = char '_'
+  pp p a = case a of
+    PVar n     -> text n
+    PCon qn ps -> optParens (p > 0 && not (null ps))
+                $ ppr qn <+> hsep (map ppr ps)
+    PWildcard  -> char '_'
 
 -- | Variables introduced by a pattern.
 patVars :: Pat -> [Name]
