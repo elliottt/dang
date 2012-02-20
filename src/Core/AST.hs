@@ -32,8 +32,9 @@ emptyModule qn = Module
   }
 
 instance Pretty Module where
-  pp _ m = text "module" <+> ppr (modName m)
-       $+$ declBlock decls
+  pp _ m = sep [ text "module" <+> ppr (modName m)
+               , declBlock decls
+               ]
     where
     decls = map ppr (modPrimTypes m)
          ++ map ppr (modDecls m)
@@ -68,14 +69,23 @@ instance Pretty Decl where
 
 -- | Pretty-print a declaration without its export annotation.
 ppDecl :: Decl -> Doc
-ppDecl d = ppr (declName d) <+> ppTyApp ps <+> hsep as <+> char '=' $$ nest 2 b
+ppDecl d = sep [ ppr (declName d) <+> ppTyApp ps
+               , sep as <+> char '='
+               , nest 2 b
+               ]
   where
   Forall ps body = declBody d
   (as,b)         = ppMatch body
 
+-- | Determine if a declaration has arguments.
 hasArgs :: Decl -> Bool
 hasArgs  = not . isMTerm . forallData . declBody
 
+-- | Determine if a declaration is monomorphic.
+isMono :: Decl -> Bool
+isMono  = null . forallParams . declBody
+
+-- | Compute the type of a declaration.
 declType :: Decl -> Scheme
 declType d = Forall ps (matchType m)
   where
@@ -101,7 +111,7 @@ instance FreeVars Match where
 
 instance Pretty Match where
   pp _ m = case m of
-    MTerm t ty -> ppr t <+> text "::" <+> ppr ty
+    MTerm t ty -> text "->" <+> ppr t <+> text "::" <+> ppr ty
 
     MSplit l r ->
       let lArm = ppMatch l
@@ -109,10 +119,11 @@ instance Pretty Match where
           ppArm (as,b) = hsep as <+> text "->" <+> b
        in ppArm lArm $$ ppArm rArm
 
-    MPat p m' -> char '\\' <+> ppr p <+> text "->" <+> ppr m'
+    MPat p m' -> ppr p <+> ppr m'
 
     MFail _ -> empty
 
+-- | The type of a match.
 matchType :: Match -> Type
 matchType m = case m of
   MTerm _ ty -> ty
@@ -126,6 +137,11 @@ ppMatch :: Match -> ([Doc],Doc)
 ppMatch m = case m of
   MPat p m' -> let (as,b) = ppMatch m' in (pp 2 p:as, b)
   _         -> ([], ppr m)
+
+ppCaseArms :: Match -> [Doc]
+ppCaseArms m = case m of
+  MSplit l r -> ppr l : ppCaseArms r
+  _          -> [ppr m]
 
 isMTerm :: Match -> Bool
 isMTerm MTerm{} = True
@@ -219,11 +235,14 @@ instance Pretty Term where
   pp p tm = case tm of
     AppT f vs -> pp 1 f <> char '@' <> brackets (commas (map ppr vs))
     App f xs  -> optParens (p > 0) (ppr f <+> ppList 1 xs)
-    Case e m  -> optParens (p > 0)
-               $ text "case" <+> ppr e <+> text "of" $$ ppr m
+    Case e m  -> optParens (p > 0) (ppCase e m)
     Let ds e  -> optParens (p > 0)
                $ text "let" <+> declBlock (map ppDecl ds)
              <+> text "in"  <+> ppr e
     Global qn -> ppr qn
     Local n   -> ppr n
     Lit l     -> ppr l
+
+ppCase :: Term -> Match -> Doc
+ppCase e m = text "case" <+> ppr e <+> text "of"
+          $$ cat (ppCaseArms m)
