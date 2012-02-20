@@ -228,6 +228,7 @@ instance Types Constr where
 
 data UnifyError
   = UnifyError Type Type
+  | UnifyBoundSkolem TParam Type
   | UnifyOccursCheck TParam Type
   | UnifyGeneric String
     deriving (Show,Typeable)
@@ -237,39 +238,43 @@ instance Exception UnifyError
 unifyError :: ExceptionM m SomeException => String -> m a
 unifyError  = raiseE . UnifyGeneric
 
+type Skolems = Set.Set TParam
+
 -- | Generate the most-general unifier for two types.
-mgu :: ExceptionM m SomeException => Type -> Type -> m Subst
-mgu a b = case (a,b) of
+mgu :: ExceptionM m SomeException => Skolems -> Type -> Type -> m Subst
+mgu skolems = loop
+  where
+  loop a b = case (a,b) of
 
-  -- type application
-  (TApp f x, TApp g y) -> do
-    sf <- mgu f g
-    sx <- mgu (apply sf x) (apply sf y)
-    return (sf @@ sx)
+    -- type application
+    (TApp f x, TApp g y) -> do
+      sf <- loop f g
+      sx <- loop (apply sf x) (apply sf y)
+      return (sf @@ sx)
 
-  -- infix type constructor application
-  (TInfix n l r, TInfix m x y) -> do
-    unless (n == m) $ unifyError $ concat
-      [ "Expected infix constructor ``", pretty n
-      , "'', got ``", pretty m, "''" ]
-    sl <- mgu l x
-    sr <- mgu (apply sl r) (apply sl y)
-    return (sl @@ sr)
+    -- infix type constructor application
+    (TInfix n l r, TInfix m x y) -> do
+      unless (n == m) $ unifyError $ concat
+        [ "Expected infix constructor ``", pretty n
+        , "'', got ``", pretty m, "''" ]
+      sl <- loop l x
+      sr <- loop (apply sl r) (apply sl y)
+      return (sl @@ sr)
 
-  (TVar (UVar p), r) -> varBind p r
-  (l, TVar (UVar p)) -> varBind p l
+    (TVar (UVar p), r) -> varBind skolems p r
+    (l, TVar (UVar p)) -> varBind skolems p l
 
-  -- constructors
-  (TCon l, TCon r) | l == r -> return emptySubst
+    -- constructors
+    (TCon l, TCon r) | l == r -> return emptySubst
 
-  _ -> raiseE (UnifyError a b)
+    _ -> raiseE (UnifyError a b)
 
 
 -- | Generate a substitution that unifies a variable with a type.
---
--- XXX should this do a kind check in addition to an occurs check?
-varBind :: ExceptionM m SomeException => TParam -> Type -> m Subst
-varBind p ty
+varBind :: ExceptionM m SomeException
+        => Skolems -> TParam -> Type -> m Subst
+varBind skolems p ty
+  | p `Set.member` skolems          = raiseE (UnifyBoundSkolem p ty)
   | Just p' <- destUVar ty, p == p' = return emptySubst
   | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
   | otherwise                       = return (varSubst (paramIndex p) ty)
