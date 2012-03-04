@@ -49,6 +49,7 @@ SLASH_MODS := \
     Syntax/ParserCore \
     Syntax/Quote \
     Syntax/Renumber \
+    Traversal \
     TypeChecker \
     TypeChecker/CheckKinds \
     TypeChecker/CheckTypes \

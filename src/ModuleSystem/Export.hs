@@ -1,8 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module ModuleSystem.Export where
 
 import Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
+import Traversal (Data,Typeable)
 
 import Data.Function (on)
 import Data.List (groupBy)
@@ -12,7 +14,7 @@ import Language.Haskell.TH.Syntax (Lift(..))
 -- Export Specifications -------------------------------------------------------
 
 data Export = Public | Private
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty Export where
   pp _ Public  = text "public"

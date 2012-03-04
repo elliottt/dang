@@ -7,6 +7,7 @@ module TypeChecker.Types where
 
 import Pretty
 import QualName
+import Traversal (Data,Typeable)
 import Variables
 
 import Control.Applicative ((<$>),(<*>))
@@ -39,7 +40,7 @@ data Type
   | TInfix QualName Type Type
   | TCon QualName
   | TVar TVar
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift Type where
   lift ty = case ty of
@@ -140,7 +141,7 @@ typeArity ty = maybe 0 rec (destArrow ty)
 data TVar
   = GVar TParam
   | UVar TParam
-    deriving (Show,Eq,Ord)
+    deriving (Show,Eq,Ord,Data,Typeable)
 
 instance Lift TVar where
   lift tv = case tv of
@@ -179,7 +180,7 @@ data TParam = TParam
   , paramFromSource :: Bool
   , paramName       :: String
   , paramKind       :: Kind
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 instance Lift TParam where
   lift tp = [| TParam
@@ -258,7 +259,7 @@ toScheme  = Forall []
 data Forall a = Forall
   { forallParams :: [TParam]
   , forallData   :: a
-  } deriving (Show,Eq,Ord)
+  } deriving (Show,Eq,Ord,Data,Typeable)
 
 instance Lift a => Lift (Forall a) where
   lift qa = [| Forall

@@ -4,13 +4,13 @@
 module QualName where
 
 import Pretty
+import Traversal (Data,Typeable)
 import Utils (splitLast)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)
 import Data.Char (isSpace)
 import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
-import Data.Typeable (Typeable)
 import Numeric (showHex)
 import Language.Haskell.TH.Syntax (Lift(..),liftString,Exp(ListE))
 
@@ -22,7 +22,7 @@ type Namespace = [String]
 data QualName
   = QualName Namespace Name
   | PrimName Namespace Name
-    deriving (Ord,Eq,Show,Typeable)
+    deriving (Ord,Eq,Show,Data,Typeable)
 
 instance Lift QualName where
   lift qn = case qn of

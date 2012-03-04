@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module Syntax.AST where
 
@@ -7,6 +8,7 @@ import ModuleSystem.Export
     (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
 import Pretty
 import QualName
+import Traversal (Data,Typeable)
 import TypeChecker.Types
 import Variables
 
@@ -25,7 +27,7 @@ data Module = Module
   , modPrimTerms :: [PrimTerm]
   , modPrimTypes :: [PrimType]
   , modDatas     :: [DataDecl]
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 instance Pretty Module where
   pp _ m = text "module" <+> pp 0 (modName m) <+> text "where"
@@ -58,7 +60,7 @@ data Open = Open
   , openAs      :: (Maybe QualName)
   , openHiding  :: Bool
   , openSymbols :: [OpenSymbol]
-  } deriving (Eq,Ord,Show)
+  } deriving (Eq,Ord,Show,Data,Typeable)
 
 instance Pretty Open where
   pp _ o = text "open" <+> ppr (openMod o) <+> name <+> hiding
@@ -75,7 +77,7 @@ instance Pretty Open where
 data OpenSymbol
   = OpenTerm Name
   | OpenType Name [Name]
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Ord,Show,Data,Typeable)
 
 instance Pretty OpenSymbol where
   pp _ os = case os of
@@ -91,7 +93,7 @@ data TypedDecl = TypedDecl
   , typedType   :: Forall Type
   , typedName   :: Name
   , typedBody   :: Match
-  } deriving (Eq,Show,Ord)
+  } deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift TypedDecl where
   lift td = [| TypedDecl
@@ -136,7 +138,7 @@ data UntypedDecl = UntypedDecl
   { untypedExport :: Export
   , untypedName   :: Name
   , untypedBody   :: Match
-  } deriving (Eq,Show,Ord)
+  } deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift UntypedDecl where
   lift ud = [| UntypedDecl
@@ -166,7 +168,7 @@ instance Exported UntypedDecl where
 data PrimTerm = PrimTerm
   { primTermName :: Name
   , primTermType :: Forall Type
-  } deriving (Eq,Show,Ord)
+  } deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty PrimTerm where
   pp _ p = text "primitive" <+> text (primTermName p)
@@ -184,7 +186,7 @@ instance DefinesName PrimTerm where
 data PrimType = PrimType
   { primTypeName :: Name
   , primTypeKind :: Kind
-  } deriving (Eq,Show,Ord)
+  } deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty PrimType where
   pp _ p = text "primitive type" <+> text (primTypeName p)
@@ -199,7 +201,7 @@ data DataDecl = DataDecl
   , dataKind   :: Kind
   , dataExport :: Export
   , dataGroups :: [Forall ConstrGroup]
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 instance Pretty DataDecl where
   pp _ d = text "data"
@@ -222,7 +224,7 @@ instance Exported DataDecl where
 data ConstrGroup = ConstrGroup
   { groupArgs    :: [Type]
   , groupConstrs :: [Constr]
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 ppConstrGroup :: Export -> QualName -> ConstrGroup -> Doc
 ppConstrGroup x qn g = ppr ty <+> char '='
@@ -240,7 +242,7 @@ data Constr = Constr
   { constrName   :: Name
   , constrExport :: Export
   , constrFields :: [Type]
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 ppConstrBlock :: Maybe Export -> [Constr] -> Doc
 ppConstrBlock mb = vcat . map step . groupByExport
@@ -279,7 +281,7 @@ data Match
   | MGuard Pat   Name Match -- ^ Pattern guards
   | MSplit Match Match      -- ^ Choice
   | MFail                   -- ^ Unconditional failure
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift Match where
   lift m = case m of
@@ -328,7 +330,7 @@ data Pat
   = PVar Name           -- ^ Variable introduction
   | PCon QualName [Pat] -- ^ Constructor patterns
   | PWildcard           -- ^ The wildcard pattern
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift Pat where
   lift p = case p of
@@ -367,7 +369,7 @@ data Term
   | Local Name
   | Global QualName
   | Lit Literal
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift Term where
   lift tm = case tm of
@@ -425,7 +427,7 @@ apply f xs = App f xs
 
 data Literal
   = LInt Integer
-    deriving (Eq,Show,Ord)
+    deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Lift Literal where
   lift lit = case lit of

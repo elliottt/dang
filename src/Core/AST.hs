@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module Core.AST (
     module Core.AST
   , Literal(..)
@@ -9,6 +11,7 @@ import ModuleSystem.Export (Exported(..),Export(..))
 import Pretty
 import QualName (QualName,Name,simpleName)
 import Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
+import Traversal (Data,Typeable)
 import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
@@ -21,7 +24,7 @@ data Module = Module
   , modPrimTypes :: [PrimType]
   , modPrimTerms :: [PrimTerm]
   , modDecls     :: [Decl]
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 emptyModule :: QualName -> Module
 emptyModule qn = Module
@@ -52,7 +55,7 @@ data Decl = Decl
   { declName   :: QualName
   , declExport :: Export
   , declBody   :: Forall Match
-  } deriving (Show)
+  } deriving (Show,Data,Typeable)
 
 instance Exported Decl where
   exportSpec = declExport
@@ -100,7 +103,7 @@ data Match
  | MSplit Match Match
  | MPat   Pat   Match
  | MFail  Type
-   deriving (Show)
+   deriving (Show,Data,Typeable)
 
 instance FreeVars Match where
   freeVars m = case m of
@@ -168,7 +171,7 @@ data Pat
   = PVar Name Type
   | PCon QualName [Pat] Type
   | PWildcard Type
-    deriving (Show)
+    deriving (Show,Data,Typeable)
 
 patType :: Pat -> Type
 patType p = case p of
@@ -194,6 +197,9 @@ instance Pretty Pat where
     PCon qn ps ty -> ppr qn   <+> hsep (map ppr ps) <+> text "::" <+> ppr ty
     PWildcard ty  -> char '_' <+> text "::"                       <+> ppr ty
 
+
+-- Terms -----------------------------------------------------------------------
+
 data Term
   = AppT Term [Type]
   | App Term [Term]
@@ -202,7 +208,7 @@ data Term
   | Global QualName
   | Local Name
   | Lit Literal
-    deriving (Show)
+    deriving (Show,Data,Typeable)
 
 appT :: Term -> [Type] -> Term
 appT f [] = f
