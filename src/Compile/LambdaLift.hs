@@ -13,12 +13,13 @@ import Core.AST
 import Dang.IO
 import Dang.Monad
 import Pretty (pretty)
-import QualName (Name,simpleName,qualSymbol)
+import QualName (QualName,Name,simpleName,qualSymbol)
 import TypeChecker.Types (Type,TParam,uvar,Forall(..),modifyTParamIndex)
 import TypeChecker.Unify (inst,quantify,typeVars)
-import Variables (freeLocals)
+import Variables (freeLocals,freeVars)
 
 import Control.Applicative(Applicative(..),(<$>))
+import Data.Generics (extM,Data(gmapM))
 import Data.List (partition)
 import Data.Maybe (isJust)
 import MonadLib hiding (lift)
@@ -68,9 +69,9 @@ runLL m = do
 -- Lambda-lifting Environment --------------------------------------------------
 
 data Env = Env
-  { envDepth   :: !Int                 -- ^ Quantifier depth
-  , envArgs    :: Map.Map Name Type    -- ^ Arguments
-  , envRewrite :: Map.Map Name Rewrite -- ^ Call-rewriting
+  { envDepth   :: !Int              -- ^ Quantifier depth
+  , envArgs    :: Map.Map Name Type -- ^ Arguments
+  , envRewrite :: RewriteMap        -- ^ Call-rewriting
   } deriving Show
 
 emptyEnv :: Env
@@ -83,8 +84,8 @@ emptyEnv  = Env
 addArg :: Name -> Type -> Env -> Env
 addArg n ty env = env { envArgs = Map.insert n ty (envArgs env) }
 
-addRewrite :: Name -> Rewrite -> Env -> Env
-addRewrite n rw env = env { envRewrite = Map.insert n rw (envRewrite env) }
+addRewrites :: RewriteMap -> Env -> Env
+addRewrites rws env = env { envRewrite = Map.union rws (envRewrite env) }
 
 introParams :: [TParam] -> ([TParam] -> LL a) -> LL a
 introParams ps k = do
@@ -110,29 +111,36 @@ lookupType n = do
     Just ty -> return ty
     Nothing -> fail ("lookupType: " ++ n)
 
-lookupRewrite :: Name -> LL (Maybe Rewrite)
-lookupRewrite n = do
+lookupRewrite :: QualName -> LL (Maybe Rewrite)
+lookupRewrite qn = do
   env <- ask
-  return $! Map.lookup n (envRewrite env)
+  return $! Map.lookup qn (envRewrite env)
 
 
 -- Core Lambda-lifting ---------------------------------------------------------
 
+llPass :: Data a => a -> LL a
+llPass  =
+  gmapM llPass
+  `extM` llDecl
+  `extM` llMatch
+  `extM` llTerm
+
 llModule :: Module -> LL Module
 llModule m = do
-  (ds,ls) <- collect (mapM llDecl (modDecls m))
+  (ds,ls) <- collect (llPass (modDecls m))
   return m { modDecls = ds ++ ls }
 
 llDecl :: Decl -> LL Decl
 llDecl d = do
   logInfo ("processing " ++ pretty (declName d))
-  d' <- llBody (qualSymbol (declName d)) (declBody d)
+  d' <- llBody (declName d) (declBody d)
   return d { declBody = d' }
 
-llBody :: Name -> Forall Match -> LL (Forall Match)
-llBody n qb = introParams (forallParams qb) $ \ ps -> do
+llBody :: QualName -> Forall Match -> LL (Forall Match)
+llBody qn qb = introParams (forallParams qb) $ \ ps -> do
   let vars = map uvar ps
-  mb    <- lookupRewrite n
+  mb    <- lookupRewrite qn
   let (extraParams,extraArgs) = case mb of
         Just rw -> (rewriteParams rw, addRewriteArgs rw)
         Nothing -> ([],return)
@@ -141,155 +149,190 @@ llBody n qb = introParams (forallParams qb) $ \ ps -> do
 
 llMatch :: Match -> LL Match
 llMatch m = case m of
-
   MPat p m' -> introPatArgs p (MPat p <$> llMatch m')
-
-  MSplit l r -> MSplit <$> llMatch l <*> llMatch r
-
-  MTerm tm ty -> MTerm <$> llTerm tm <*> pure ty
-
-  MFail _  -> return m
+  _         -> gmapM llPass m
 
 llTerm :: Term -> LL Term
 llTerm tm = case tm of
 
-  -- let-bound names are Local
+  -- let-bound names are local, rewritten to global if they get lifted
   AppT (Local n) ps -> llLocal n ps
   Local n           -> llLocal n []
 
-  AppT f tys -> appT <$> llTerm f <*> pure tys
-
-  App f xs -> app <$> llTerm f <*> mapM llTerm xs
-
-  Case e m -> Case <$> llTerm e <*> llMatch m
-
+  -- lift let-bound declarations
   Let ds e -> llLet ds e
 
-  -- globals and literals don't need lifting
-  Global{} -> return tm
-  Lit{}    -> return tm
+  _ -> gmapM llPass tm
 
 llLocal :: Name -> [Type] -> LL Term
-llLocal n ps = maybe (Local n) rewriteSymbol <$> lookupRewrite n
+llLocal n ps = maybe (Local n) rewriteSymbol <$> lookupRewrite qn
   where
+  qn               = simpleName n
   rewriteSymbol rw = app (appT sym ps') (rewriteTerms rw)
     where
     ps' = ps ++ rewriteTypes rw
-    sym = Global (simpleName n)
+    sym = Global qn
+
+llLet :: [Decl] -> Term -> LL Term
+llLet ds e = do
+  env <- ask
+  let args = Set.fromList (Map.keys (envArgs env))
+  rewrites <- buildRewriteMap args ds
+  local (addRewrites rewrites env) $ do
+    ds' <- mapM llDecl ds
+    let (lift,keep) = partition hasArgs ds'
+    put lift
+    letIn keep <$> llTerm e
 
 
--- Let-expressions -------------------------------------------------------------
+-- Rewrite Context -------------------------------------------------------------
 
--- | The set of escaping type and local variables in a declaration.
+type RewriteMap = Map.Map QualName Rewrite
+
+-- | Given a list of declarations, generate the rewrite map that satisfies their
+-- closures.
+buildRewriteMap :: Args -> [Decl] -> LL RewriteMap
+buildRewriteMap args ds = solve `fmap` escapeSets args (peerSet ds) ds
+  where
+  solve = escapeSetsRewriteMap . solveEscapeSets
+
+-- | A rewrite represents the extra information needed by a closure.
+data Rewrite = Rewrite
+  { rewriteParams :: [TParam]
+  , rewriteArgs   :: [Name]
+  , rewritePeers  :: [Name]
+  } deriving Show
+
+-- | The list of types needed by the closure.
+rewriteTypes :: Rewrite -> [Type]
+rewriteTypes rw = map uvar (rewriteParams rw)
+
+-- | The list of environmental arguments needed by the closure.
+rewriteTerms :: Rewrite -> [Term]
+rewriteTerms rw = locals ++ globals
+  where
+  locals  = map Local (rewriteArgs rw)
+  globals = map (Global . simpleName) (rewritePeers rw)
+
+-- | Rewrite a declaration ot include the closure arguments.
+addRewriteArgs :: Rewrite -> Match -> LL Match
+addRewriteArgs rw body = foldM step body (reverse args)
+  where
+  args     = rewriteArgs rw ++ rewritePeers rw
+  step m n = do
+    ty <- lookupType n
+    return (MPat (PVar n  ty) m)
+
+
+-- Escape Sets -----------------------------------------------------------------
+
+-- | Escape sets are a collection of individual escape sets, organized by their
+-- name.
+type EscapeSets = Map.Map QualName EscapeSet
+
+-- | Calculate escape sets for a group of declarations.
+escapeSets :: Args -> Peers -> [Decl] -> LL EscapeSets
+escapeSets args peers = foldM step Map.empty
+  where
+  step exs d = do
+    ex <- escapeSet args peers d
+    return $! Map.insert (declName d) ex exs
+
+-- | Generate a @RewriteMap@ given a (solved) @EscapeSets@.  This will not
+-- generate a @RewriteMap@ entry for @EscapeSet@s that describe simple
+-- declarations.
+escapeSetsRewriteMap :: EscapeSets -> RewriteMap
+escapeSetsRewriteMap  = Map.foldlWithKey step Map.empty
+  where
+  step rws qn ex
+    | isJust (escSimple ex) = rws
+    | otherwise             = Map.insert qn (escapeSetRewrite ex) rws
+
+-- | Given a map of @EscapeSets@, iterate over each entry, calculating its
+-- transitive closure.
+solveEscapeSets :: EscapeSets -> EscapeSets
+solveEscapeSets exs0 = foldl step exs0 (Map.keys exs0)
+  where
+  step exs qn = Map.adjust (solveEscapeSet exs) qn exs
+
+-- | Escape sets represent the list of type parameters, arguments and local
+-- declarations that show up free in a declaration body.
 data EscapeSet = EscapeSet
   { escParams :: Set.Set TParam
   , escArgs   :: Set.Set Name
-  , escLocals :: Set.Set Name
+  , escPeers  :: Set.Set Name
   , escSimple :: Maybe Type
   } deriving Show
 
-type EscapeSets = Map.Map Name EscapeSet
+-- | Generate a @Rewrite@ given the context of an @EscapeSet@.
+escapeSetRewrite :: EscapeSet -> Rewrite
+escapeSetRewrite esc = Rewrite
+  { rewriteParams = Set.toList (escParams esc)
+  , rewriteArgs   = Set.toList (escArgs esc)
+  , rewritePeers  = Set.toList (escPeers esc)
+  }
 
+-- | Calculate the transitive closure for an escape set, given the other
+-- @EscapeSet@s in its binding group.
+solveEscapeSet :: EscapeSets -> EscapeSet -> EscapeSet
+solveEscapeSet exs ex
+  = solve Set.empty (escParams ex) (escArgs ex) Set.empty
+  $ Set.toList
+  $ escPeers ex
+  where
+  solve solved ps args peers goals = case goals of
+
+    g:gs -> case Map.lookup (simpleName g) exs of
+
+      Just gx ->
+        let solved'  = Set.insert g solved
+            ps'      = Set.union ps (escParams gx)
+            unsolved = Set.toList (escPeers gx Set.\\ solved')
+            k        = solve solved' ps'
+         in if isJust (escSimple gx)
+               -- escape set of a definition: reference the name
+               then k args (Set.insert g peers) gs
+               -- escape set of a function: fully solve
+               else k (args `Set.union` escArgs gx) peers (unsolved ++ gs)
+
+      Nothing -> solve solved ps args peers gs
+
+    [] -> ex
+      { escParams = ps
+      , escArgs   = args
+      , escPeers  = peers
+      }
+
+-- | A set of arguments required by a declaration.
+type Args = Set.Set Name
+
+-- | A set of other named declarations used by another declaration.
+type Peers = Set.Set QualName
+
+-- | Compute the peer set for a list of declarations.  This will only work for
+-- declarations that do not have fully qualified names, as it discards all
+-- namespace information.
+peerSet :: [Decl] -> Peers
+peerSet  = Set.fromList . map declName
+
+-- | Calculate the escape set for a single declaration.
+escapeSet :: Args -> Peers -> Decl -> LL EscapeSet
+escapeSet args peers d = do
+  let locals = freeLocals d `Set.intersection` args
+  tys <- mapM lookupType (Set.toList locals)
+  let localParams = typeVars tys
+  return EscapeSet
+    { escParams = typeVars (declBody d) `Set.union` localParams
+    , escArgs   = locals
+    , escPeers  = Set.map qualSymbol (freeVars d `Set.intersection` peers)
+    , escSimple = simpleType d
+    }
+
+-- | Return the type of a declaration, if it is monomorphic and contains no
+-- arguments.
 simpleType :: Decl -> Maybe Type
 simpleType d = do
   guard (not (hasArgs d))
   let Forall ps ty = declType d
   guard (null ps)
   return ty
-
-escapeSet :: Decl -> LL EscapeSet
-escapeSet d = do
-  env <- ask
-  let locals  = freeLocals (declBody d)
-      inScope = Set.fromList (Map.keys (envArgs env))
-      args    = locals `Set.intersection` inScope
-  return EscapeSet
-    { escParams = typeVars (declBody d)
-    , escArgs   = args
-    , escLocals = locals Set.\\ args
-    , escSimple = simpleType d
-    }
-
-escapeSets :: [Decl] -> LL EscapeSets
-escapeSets  = foldM step Map.empty
-  where
-  step exs d = do
-    ex <- escapeSet d
-    return $! Map.insert (qualSymbol (declName d)) ex exs
-
--- | Solve the local escapes in each @EscapeSet@.
-solveEscapeSets :: EscapeSets -> EscapeSets
-solveEscapeSets exs0 = foldl step exs0 (Map.keys exs0)
-  where
-  step exs qn = Map.adjust (solveEscapeSet exs) qn exs
-
-solveEscapeSet :: EscapeSets -> EscapeSet -> EscapeSet
-solveEscapeSet exs ex = ex
-  { escParams = sps
-  , escArgs   = sargs
-  , escLocals = Set.empty
-  }
-  where
-  (sps,sargs) = solve Set.empty (escParams ex) (escArgs ex)
-      (Set.toList (escLocals ex))
-
-  solve solved ps args locals = case locals of
-
-    l:ls -> case Map.lookup l exs of
-
-      Just lx ->
-        let solved' = Set.insert l solved
-            ps'     = Set.union ps (escParams lx)
-            k a e   = solve solved' ps' (Set.union args a) (e ++ ls)
-         in if isJust (escSimple lx)
-               -- escape set of a definition: reference the name
-               then k (Set.singleton l) []
-               -- escape set of a function: fully solve
-               else k (escArgs lx) (Set.toList (escLocals lx Set.\\ solved'))
-
-      Nothing -> solve solved ps args ls
-
-    [] -> (ps,args)
-
--- | Additions to the call pattern, and closure, of a declaration.
-data Rewrite = Rewrite
-  { rewriteParams :: [TParam]
-  , rewriteArgs   :: [Name]
-  } deriving Show
-
-rewriteTypes :: Rewrite -> [Type]
-rewriteTypes  = map uvar . rewriteParams
-
-rewriteTerms :: Rewrite -> [Term]
-rewriteTerms  = map Local . rewriteArgs
-
-escapeSetRewrite :: EscapeSet -> Rewrite
-escapeSetRewrite ex = Rewrite
-  { rewriteParams = Set.toList (escParams ex)
-  , rewriteArgs   = Set.toList (escArgs ex)
-  }
-
-addRewriteArgs :: Rewrite -> Match -> LL Match
-addRewriteArgs rw m0 = foldM step m0 (reverse (rewriteArgs rw))
-  where
-  step m n = do
-    ty <- lookupType n
-    return (MPat (PVar n ty) m)
-
-escapeSetsEnv :: EscapeSets -> Env -> Env
-escapeSetsEnv exs env0 = Map.foldrWithKey step env0 exs
-  where
-  step n ex env = case escSimple ex of
-    Just ty -> addArg n ty env
-    Nothing -> addRewrite n (escapeSetRewrite ex) env
-
-llLet :: [Decl] -> Term -> LL Term
-llLet ds e = do
-  exs <- escapeSets ds
-  let solved = solveEscapeSets exs
-  env <- ask
-  local (escapeSetsEnv solved env) $ do
-    ds' <- mapM llDecl ds
-    let (lift,keep) = partition hasArgs ds'
-    put lift
-    letIn keep <$> llTerm e

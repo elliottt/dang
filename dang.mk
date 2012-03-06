@@ -12,7 +12,7 @@ include mk/clean.mk
 GHCFLAGS += -fspec-constr-count=2
 
 LIBS := base monadLib llvm-pretty pretty containers GraphSCC bytestring \
-	text cereal filepath directory process template-haskell
+	text cereal filepath directory process template-haskell syb
 
 HAPPY_MODS := Syntax/Parser
 ALEX_MODS  := Syntax/Lexer
