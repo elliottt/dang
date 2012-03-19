@@ -13,12 +13,13 @@ import ModuleSystem.Types
 import Pretty (pretty)
 import QualName
 import Syntax.AST
-    (Module(..),PrimTerm(..),UntypedDecl(..),TypedDecl(..),Match(..)
-    ,DataDecl(..),ConstrGroup(..),Constr(..),Term(..),Pat(..),patVars)
-import TypeChecker.Types (Type(..),Forall(..))
+    (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
+    ,DataDecl(..),patVars)
+import TypeChecker.Types (Type(..),TParam())
 import qualified Data.ClashMap as CM
 
-import Control.Applicative (Applicative,(<$>),(<*>))
+import Control.Applicative (Applicative,(<$>))
+import Data.Generics (Data(gmapM),extM)
 import MonadLib
 import qualified Data.Set as Set
 
@@ -120,75 +121,43 @@ scopeCheckModule m = do
   let resolved = resolveUses iset uses `mergeResolvedNames` modNames
   logDebug (show resolved)
 
-  m' <- withResolved resolved (scModule m)
+  m' <- withResolved resolved (scPass m)
 
   return (iset,m')
 
-scModule :: Module -> Scope Module
-scModule m = do
-  ptms <- mapM scPrimTerm    (modPrimTerms m)
-  ts   <- mapM scTypedDecl   (modTyped m)
-  us   <- mapM scUntypedDecl (modUntyped m)
-  ds   <- mapM scDataDecl    (modDatas m)
-  return m
-    { modPrimTerms = ptms
-    , modTyped     = ts
-    , modUntyped   = us
-    , modDatas     = ds
-    }
 
+-- Generic Scope Checking ------------------------------------------------------
 
--- Declarations ----------------------------------------------------------------
+scPass :: Data a => a -> Scope a
+scPass  =
+  gmapM scPass
+  `extM` scMatch
+  `extM` scType
+  `extM` scTerm
 
-scPrimTerm :: PrimTerm -> Scope PrimTerm
-scPrimTerm pt = do
-  sc <- scForall scType (primTermType pt)
-  return pt { primTermType = sc }
+  -- special cases where the traversal needs to ignore kinds
+  `extM` scTParam
+  `extM` scDataDecl
 
-scUntypedDecl :: UntypedDecl -> Scope UntypedDecl
-scUntypedDecl u = do
-  tm <- scMatch (untypedBody u)
-  return u { untypedBody = tm }
+-- Data Declarations -----------------------------------------------------------
 
-scTypedDecl :: TypedDecl -> Scope TypedDecl
-scTypedDecl t = do
-  sc <- scForall scType (typedType t)
-  m  <- scMatch (typedBody t)
-  return t { typedType = sc, typedBody = m }
-
+-- | The scope-checking process must skip kinds, as they're built-in to the
+-- compiler, and have no origin.
 scDataDecl :: DataDecl -> Scope DataDecl
 scDataDecl dd = do
-  gs <- mapM (scForall scConstrGroup) (dataGroups dd)
+  gs <- scPass (dataGroups dd)
   return dd { dataGroups = gs }
-
-scConstrGroup :: ConstrGroup -> Scope ConstrGroup
-scConstrGroup cg = do
-  tys <- mapM scType (groupArgs cg)
-  cs  <- mapM scConstr (groupConstrs cg)
-  return cg
-    { groupArgs    = tys
-    , groupConstrs = cs
-    }
-
-scConstr :: Constr -> Scope Constr
-scConstr c = do
-  fs <- mapM scType (constrFields c)
-  return c { constrFields = fs }
 
 
 -- Types -----------------------------------------------------------------------
 
-scForall :: (a -> Scope a) -> (Forall a -> Scope (Forall a))
-scForall k sc = do
-  a <- k (forallData sc)
-  return sc { forallData = a }
-
 scType :: Type -> Scope Type
 scType ty = case ty of
-  TApp f x -> do
-    f' <- scType f
-    x' <- scType x
-    return (TApp f' x')
+
+  TApp l r -> do
+    l' <- scType l
+    r' <- scType r
+    return (TApp l' r')
 
   TInfix qn l r -> do
     qn' <- resolveType qn
@@ -200,15 +169,18 @@ scType ty = case ty of
 
   TVar _ -> return ty
 
+-- | The scope-checking process must skip kinds, as they're built-in to the
+-- compiler, and have no origin.
+scTParam :: TParam -> Scope TParam
+scTParam  = return
+
 
 -- Terms -----------------------------------------------------------------------
 
 scMatch :: Match -> Scope Match
 scMatch m = case m of
-  MPat p m'  -> scPat p (\p' -> MPat p' <$> scMatch m')
-  MSplit l r -> MSplit <$> scMatch l <*> scMatch r
-  MTerm tm   -> MTerm  <$> scTerm tm
-  MFail      -> return MFail
+  MPat p m' -> scPat p (\p' -> MPat p' <$> scMatch m')
+  _         -> gmapM scPass m
 
 scPat :: Pat -> (Pat -> Scope a) -> Scope a
 scPat p k = case p of
@@ -223,22 +195,17 @@ scPat p k = case p of
 
 scTerm :: Term -> Scope Term
 scTerm tm = case tm of
-  Abs m -> Abs <$> scMatch m
-
-  Case e m -> Case <$> scTerm e <*> scMatch m
 
   Let ts us e -> newLevel $ do
     let tqs = map typedName   ts
         uqs = map untypedName us
     bindLocals (tqs ++ uqs) $ do
-      ts' <- mapM scTypedDecl ts
-      us' <- mapM scUntypedDecl us
+      ts' <- scPass ts
+      us' <- scPass us
       e'  <- scTerm e
       return (Let ts' us' e')
-
-  App f xs -> App <$> scTerm f <*> mapM scTerm xs
 
   Local n   -> resolveTerm (simpleName n)
   Global qn -> resolveTerm qn
 
-  Lit _ -> return tm
+  _ -> gmapM scPass tm
