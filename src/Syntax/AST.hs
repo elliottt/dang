@@ -303,11 +303,16 @@ instance FreeVars Match where
 instance Pretty Match where
   pp _ m = case m of
     MTerm tm      -> ppr tm
-    MPat a m'     -> sep [pp 1 a <+> text "->", ppr m']
-    MGuard a n m' -> sep [ parens (ppr  a <+> text "<-" <+> ppr n) <+> text "->"
-                         , ppr m' ]
+    MPat a m'     -> ppMatchCon (pp 1 a) m'
+    MGuard a n m' -> ppMatchCon (ppr a <+> text "<-" <+> ppr n) m'
     MSplit l r    -> ppr l $$ ppr r
     MFail         -> empty
+
+-- | Pretty-print the connective for two matches.
+ppMatchCon :: Doc -> Match -> Doc
+ppMatchCon l m = case m of
+  MTerm tm  -> sep [ l <+> text "->", ppr tm ]
+  _         -> sep [ l <>  char ',' , ppr m  ]
 
 -- | Pretty printing of a @Match@, in the context of a declaration.
 matchDecl :: Match -> Doc

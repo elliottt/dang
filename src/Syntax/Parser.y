@@ -243,6 +243,7 @@ aexp :: { Term }
   : '(' exp ')'           { $2 }
   | 'as'                  { Global (simpleName "as") }
   | qual_name             { Global $1 }
+  | mod_name              { Global $1 }
   | INT                   { Lit (LInt $1) }
   | 'case' fexp 'of'
     '{' case_branches '}' { Case $2 (foldr MSplit MFail (reverse $5)) }
@@ -275,8 +276,8 @@ simple_pat :: { Pat }
   | '_'   { PWildcard }
 
 complex_pat :: { Pat }
-  : CONIDENT pats { PCon (simpleName $1) (reverse $2) }
-  | CONIDENT      { PCon (simpleName $1) [] }
+  : CONIDENT      { PCon (simpleName $1) [] }
+  | CONIDENT pats { PCon (simpleName $1) (reverse $2) }
 
 
 -- Types -----------------------------------------------------------------------
