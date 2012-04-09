@@ -111,10 +111,11 @@ instance UsesModules Type where
     TVar{}        -> Set.empty
 
 instance UsesModules Match where
-  getUses (MPat p m')  = getUses p `Set.union` getUses m'
-  getUses (MSplit l r) = getUses l `Set.union` getUses r
-  getUses (MTerm tm)   = getUses tm
-  getUses  MFail       = Set.empty
+  getUses (MPat p m')      = getUses p `Set.union` getUses m'
+  getUses (MSplit l r)     = getUses l `Set.union` getUses r
+  getUses (MTerm tm)       = getUses tm
+  getUses (MGuard p e m')  = Set.unions [getUses p, getUses e, getUses m']
+  getUses  MFail           = Set.empty
 
 instance UsesModules Pat where
   getUses (PVar _)     = Set.empty

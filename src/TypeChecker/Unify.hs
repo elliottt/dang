@@ -142,21 +142,29 @@ instance Types a => Types (Forall a) where
 
 instance Types Match where
   apply' b s m = case m of
-    MTerm t ty -> MTerm  (apply' b s t) (apply' b s ty)
-    MSplit l r -> MSplit (apply' b s l) (apply' b s r)
-    MPat p m'  -> MPat   (apply' b s p) (apply' b s m')
-    MFail ty   -> MFail  (apply' b s ty)
+    MTerm t ty       -> MTerm  (apply' b s t)  (apply' b s ty)
+    MSplit l r       -> MSplit (apply' b s l)  (apply' b s r)
+    MPat p m'        -> MPat   (apply' b s p)  (apply' b s m')
+    MGuard p e ty m' -> MGuard (apply' b s p)  (apply' b s e)
+                               (apply' b s ty) (apply' b s m')
+    MFail ty         -> MFail  (apply' b s ty)
 
   typeVars m = case m of
-    MTerm t ty -> typeVars t `Set.union` typeVars ty
-    MSplit l r -> typeVars l `Set.union` typeVars r
-    MPat p m'  -> typeVars p `Set.union` typeVars m'
-    MFail ty   -> typeVars ty
+    MTerm t ty       -> typeVars t `Set.union` typeVars ty
+    MSplit l r       -> typeVars l `Set.union` typeVars r
+    MPat p m'        -> typeVars p `Set.union` typeVars m'
+    MGuard p e ty m' -> Set.unions [ typeVars p,  typeVars e
+                                   , typeVars ty, typeVars m'
+                                   ]
+    MFail ty         -> typeVars ty
 
   genVars m = case m of
     MTerm t ty -> genVars t `Set.union` genVars ty
     MSplit l r -> genVars l `Set.union` genVars r
     MPat p m'  -> genVars p `Set.union` genVars m'
+    MGuard p e ty m' -> Set.unions [ genVars p,  genVars e
+                                   , genVars ty, genVars m'
+                                   ]
     MFail ty   -> genVars ty
 
 instance Types Pat where

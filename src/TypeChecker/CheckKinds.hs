@@ -244,10 +244,11 @@ kcTerm env tm = case tm of
 -- | Check the kind structure of any types hiding under a binder.
 kcMatch :: KindAssumps -> Match -> TC Match
 kcMatch env m = case m of
-  MTerm t    -> MTerm  <$> kcTerm  env t
-  MSplit l r -> MSplit <$> kcMatch env l <*> kcMatch env r
-  MPat p m'  -> MPat p <$> kcMatch env m'
-  MFail      -> return MFail
+  MTerm t       -> MTerm    <$> kcTerm  env t
+  MSplit l r    -> MSplit   <$> kcMatch env l <*> kcMatch env r
+  MPat p m'     -> MPat p   <$> kcMatch env m'
+  MGuard p e m' -> MGuard p <$> kcTerm env e  <*> kcMatch env m'
+  MFail         -> return MFail
 
 -- | Infer the kind of a type, fixing up internal kinds while we're at it.
 inferKind :: KindAssumps -> Type -> TC (Kind,Type)

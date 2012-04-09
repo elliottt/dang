@@ -278,7 +278,7 @@ instance Exported Constr where
 data Match
   = MTerm  Term             -- ^ Body of a match
   | MPat   Pat   Match      -- ^ Pattern matching
-  | MGuard Pat   Name Match -- ^ Pattern guards
+  | MGuard Pat   Term Match -- ^ Pattern guards
   | MSplit Match Match      -- ^ Choice
   | MFail                   -- ^ Unconditional failure
     deriving (Eq,Show,Ord,Data,Typeable)
@@ -295,8 +295,7 @@ instance FreeVars Match where
   freeVars m = case m of
     MTerm tm      -> freeVars tm
     MPat p m'     -> freeVars m' Set.\\ freeVars p
-    MGuard p n m' ->
-      (Set.insert (simpleName n) (freeVars m')) Set.\\ freeVars p
+    MGuard p e m' -> (freeVars e `Set.union` freeVars m') Set.\\ freeVars p
     MSplit l r    -> freeVars l `Set.union` freeVars r
     MFail         -> Set.empty
 

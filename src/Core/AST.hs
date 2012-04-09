@@ -102,15 +102,17 @@ data Match
  = MTerm  Term  Type
  | MSplit Match Match
  | MPat   Pat   Match
+ | MGuard Pat   Term  Type Match
  | MFail  Type
    deriving (Show,Data,Typeable)
 
 instance FreeVars Match where
   freeVars m = case m of
-    MTerm t _  -> freeVars t
-    MSplit l r -> freeVars l `Set.union` freeVars r
-    MPat p m'  -> freeVars m' Set.\\ freeVars p
-    MFail _    -> Set.empty
+    MTerm t _       -> freeVars t
+    MSplit l r      -> freeVars l `Set.union` freeVars r
+    MPat p m'       -> freeVars m' Set.\\ freeVars p
+    MGuard p e _ m' -> (freeVars e `Set.union` freeVars m') Set.\\ freeVars p
+    MFail _         -> Set.empty
 
 instance Pretty Match where
   pp _ m = case m of
@@ -124,15 +126,21 @@ instance Pretty Match where
 
     MPat p m' -> ppr p <+> ppr m'
 
+    MGuard p e ty m' -> cat
+      [ ppr p <+> text "<-" <+> parens (ppr e <+> ppr ty)
+      , char ',' <+> ppr m'
+      ]
+
     MFail _ -> empty
 
 -- | The type of a match.
 matchType :: Match -> Type
 matchType m = case m of
-  MTerm _ ty -> ty
-  MSplit l _ -> matchType l
-  MPat p m'  -> patType p `tarrow` matchType m'
-  MFail ty   -> ty
+  MTerm _ ty      -> ty
+  MSplit l _      -> matchType l
+  MPat p m'       -> patType p `tarrow` matchType m'
+  MGuard _ _ _ m' -> matchType m'
+  MFail ty        -> ty
 
 -- | Pretty-print the arguments with precedence 1, and the body with precedence
 -- 0.
@@ -159,10 +167,11 @@ atMTerm :: (Match -> Match) -> (Match -> Match)
 atMTerm k = loop
   where
   loop m = case m of
-    MTerm _ _  -> k m
-    MSplit l r -> MSplit (loop l) (loop r)
-    MPat p m'  -> MPat p (loop m')
-    MFail _    -> m
+    MTerm _ _        -> k m
+    MSplit l r       -> MSplit (loop l) (loop r)
+    MPat p m'        -> MPat p (loop m')
+    MGuard p e ty m' -> MGuard p e ty (loop m')
+    MFail _          -> m
 
 
 -- Variable Patterns -----------------------------------------------------------
