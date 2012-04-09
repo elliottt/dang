@@ -4,7 +4,6 @@ import Compile (compile)
 import Dang.IO
 import Dang.FileName
 import Dang.Monad
-import Desugar (desugar)
 import Link (link)
 import ModuleSystem
 import Syntax
@@ -24,8 +23,7 @@ main  = runDang $ do
 
   m          <- loadModule file
   (iset,scm) <- scopeCheck m
-  dsm        <- desugar scm
-  kcm        <- kindCheckModule iset dsm
+  kcm        <- kindCheckModule iset scm
   tcm        <- typeCheckModule iset kcm
 
   compile iset tcm (ofile file)

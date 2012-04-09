@@ -29,7 +29,6 @@ SLASH_MODS := \
     Dang/Monad \
     Dang/Tool \
     Data/ClashMap \
-    Desugar \
     Link \
     Main \
     ModuleSystem \
