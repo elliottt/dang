@@ -20,9 +20,10 @@ module TypeChecker.Monad (
   , unboundIdentifier
   , withVarIndex
   , bindVars
+  , withSkolems, skolems
 
     -- Types
-  , freshInst, freshInst'
+  , freshInst, freshInst', withRigidInst
   ) where
 
 import Dang.Monad
@@ -61,17 +62,27 @@ instance RunExceptionM TC SomeException where
 
 data RO = RO
   { roBoundVars :: Set.Set Name
+  , roSkolems   :: Skolems
   }
 
 emptyRO :: RO
 emptyRO  = RO
-  { roBoundVars    = Set.empty
+  { roBoundVars = Set.empty
+  , roSkolems   = Set.empty
   }
 
 bindVars :: [Name] -> TC a -> TC a
 bindVars vs m = TC $ do
   ro <- ask
   local (ro { roBoundVars = roBoundVars ro `mappend` Set.fromList vs }) (unTC m)
+
+withSkolems :: Skolems -> TC a -> TC a
+withSkolems sv m = TC $ do
+  ro <- ask
+  local (ro { roSkolems = roSkolems ro `mappend` sv }) (unTC m)
+
+skolems :: TC Skolems
+skolems  = roSkolems `fmap` TC ask
 
 
 -- Write-only Output -----------------------------------------------------------
@@ -105,14 +116,12 @@ emitFreeVar v ty = TC (put mempty { woVars = Set.singleton (v,ty) })
 data RW = RW
   { rwSubst   :: Subst
   , rwIndex   :: !Index
-  , rwSkolems :: Set.Set TParam
   }
 
 emptyRW :: RW
 emptyRW  = RW
   { rwSubst   = emptySubst
   , rwIndex   = 0
-  , rwSkolems = Set.empty
   }
 
 
@@ -121,9 +130,10 @@ emptyRW  = RW
 -- | Unify two types, modifying the internal substitution.
 unify :: Type -> Type -> TC ()
 unify l r = do
+  ro <- TC ask
   rw <- TC get
   let u = rwSubst rw
-  extSubst =<< mgu (rwSkolems rw) (apply u l) (apply u r)
+  extSubst =<< mgu (roSkolems ro) (apply u l) (apply u r)
 
 -- | Get the current substitution.
 getSubst :: TC Subst
@@ -186,11 +196,18 @@ freshVarFromTParam p = uvar `fmap` freshTParam p
 freshInst :: Scheme -> TC Type
 freshInst qt = snd `fmap` freshInst' qt
 
+-- | Freshly instantiate a @Scheme@, returning the newly bound parameters.
 freshInst' :: Scheme -> TC ([TParam],Type)
 freshInst' (Forall ps ty) = do
   ps' <- mapM freshTParam ps
   ty' <- applySubst (inst (map uvar ps') ty)
   return (ps',ty')
+
+withRigidInst :: Scheme -> (Skolems -> Type -> TC a) -> TC a
+withRigidInst tc k = do
+  (ps,ty) <- freshInst' tc
+  let sv = Set.fromList ps
+  withSkolems sv (k sv ty)
 
 data UnboundIdentifier = UnboundIdentifier QualName
     deriving (Show,Typeable)

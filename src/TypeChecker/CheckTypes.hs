@@ -116,18 +116,20 @@ tcTypedDecl ns env td = do
   let name = qualName ns (Syn.typedName td)
   logInfo ("Checking: " ++ pretty name)
 
-  sig    <- freshInst (Syn.typedType td)
-  (ty,m) <- tcMatch env (Syn.typedBody td)
+  withRigidInst (Syn.typedType td) $ \ _rigid sig -> do
+    (ty,m) <- tcMatch env (Syn.typedBody td)
 
-  unify ty sig
-  m' <- applySubst m
+    unify ty sig
+    m' <- applySubst m
 
-  let ps = Set.toList (genVars env m')
-  return Decl
-    { declName   = name
-    , declExport = Syn.typedExport td
-    , declBody   = quantify ps m'
-    }
+    -- also, check for the presence of rigid variables in the env
+
+    let ps = Set.toList (genVars env m')
+    return Decl
+      { declName   = name
+      , declExport = Syn.typedExport td
+      , declBody   = quantify ps m'
+      }
 
 
 -- Untyped Declarations --------------------------------------------------------
