@@ -282,8 +282,8 @@ mgu skolems = loop
 varBind :: ExceptionM m SomeException
         => Skolems -> TParam -> Type -> m Subst
 varBind skolems p ty
-  | p `Set.member` skolems          = raiseE (UnifyBoundSkolem p ty)
   | Just p' <- destUVar ty, p == p' = return emptySubst
+  | p `Set.member` skolems          = raiseE (UnifyBoundSkolem p ty)
   | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
   | otherwise                       = return (varSubst (paramIndex p) ty)
 
