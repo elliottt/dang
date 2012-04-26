@@ -136,6 +136,25 @@ typeArity ty = maybe 0 rec (destArrow ty)
   rec (_,r) = 1 + typeArity r
 
 
+-- Constraints -----------------------------------------------------------------
+
+type Constraint = Type
+type Context    = Set.Set Constraint
+
+-- | Type constructor for equality constraints.
+eqConstr :: QualName
+eqConstr  = primName ["Prelude"] "~"
+
+-- | An equality constraint.
+(~~) :: Type -> Type -> Constraint
+(~~)  = TInfix eqConstr
+
+destEq :: Constraint -> Maybe (Type,Type)
+destEq c = case c of
+  TInfix qn l r | qn == eqConstr -> Just (l,r)
+  _                              -> Nothing
+
+
 -- Type Variables --------------------------------------------------------------
 
 data TVar
@@ -232,6 +251,10 @@ getKind  = getType
 -- | The kind of types.
 kstar :: Kind
 kstar  = TCon (primName [] "*")
+
+-- | The kind of constraints/contexts
+kcxt :: Kind
+kcxt  = TCon (primName [] "Cxt")
 
 -- | The kind of type constructors.
 karrow :: Kind -> Kind -> Kind
