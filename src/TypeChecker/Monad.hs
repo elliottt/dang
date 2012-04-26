@@ -10,8 +10,6 @@ module TypeChecker.Monad (
   , unify
   , applySubst
   , getSubst
-  , addSkolems
-  , getSkolems
 
     -- Variables
   , freshName
@@ -136,15 +134,6 @@ unify l r = do
   rw <- TC get
   let u = rwSubst rw
   extSubst =<< mgu (roSkolems ro) (apply u l) (apply u r)
-
-getSkolems :: TC Skolems
-getSkolems  = rwSkolems `fmap` TC get
-
--- | Add skolem variables to the internal set.
-addSkolems :: Skolems -> TC ()
-addSkolems sks = TC $ do
-  rw <- get
-  set $! rw { rwSkolems = sks `Set.union` rwSkolems rw }
 
 -- | Get the current substitution.
 getSubst :: TC Subst
