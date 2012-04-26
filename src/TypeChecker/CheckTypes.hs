@@ -1,4 +1,5 @@
 {-# LANGUAGE DoRec #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module TypeChecker.CheckTypes where
 
@@ -16,8 +17,9 @@ import TypeChecker.Unify (quantify,typeVars,Types)
 import Variables (freeVars,sccFreeNames,sccToList)
 import qualified Syntax.AST as Syn
 
-import Control.Monad (foldM,mapAndUnzipM)
+import Control.Monad (foldM,mapAndUnzipM,unless)
 import Data.Maybe (fromMaybe)
+import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
@@ -110,19 +112,28 @@ tcModule i m = do
 
 -- Typed Declarations ----------------------------------------------------------
 
+data LessPolymorphic = LessPolymorphic QualName
+    deriving (Show,Typeable)
+
+instance Exception LessPolymorphic
+
 -- | Check a typed declaration.
 tcTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
 tcTypedDecl ns env td = do
   let name = qualName ns (Syn.typedName td)
   logInfo ("Checking: " ++ pretty name)
 
-  withRigidInst (Syn.typedType td) $ \ _rigid sig -> do
+  withRigidInst (Syn.typedType td) $ \ rigidVars sig -> do
     (ty,m) <- tcMatch env (Syn.typedBody td)
+
+    logInfo (pretty ty)
 
     unify ty sig
     m' <- applySubst m
 
-    -- also, check for the presence of rigid variables in the env
+    env' <- applySubst env
+    unless (Set.null (typeVars env' `Set.intersection` rigidVars))
+      (raiseE (LessPolymorphic name))
 
     let ps = Set.toList (genVars env m')
     return Decl
