@@ -252,6 +252,13 @@ tcMatch env m = case m of
     (ty,m'')      <- tcMatch env' m'
     return (pty `tarrow` ty, MPat p' m'')
 
+  Syn.MGuard p e m' -> do
+    (penv,pty,p') <- tcPat env p
+    (ety,e')      <- tcTerm env e
+    unify pty ety
+    (ty,m'')      <- tcMatch (penv `mergeAssumps` env) m'
+    return (ty, MGuard p' e' ety m'')
+
   Syn.MSplit l r -> do
     (lty,l') <- tcMatch env l
     (rty,r') <- tcMatch env r
