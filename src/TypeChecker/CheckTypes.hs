@@ -126,8 +126,6 @@ tcTypedDecl ns env td = do
   withRigidInst (Syn.typedType td) $ \ rigidVars sig -> do
     (ty,m) <- tcMatch env (Syn.typedBody td)
 
-    logInfo (pretty ty)
-
     unify ty sig
     m' <- applySubst m
 
