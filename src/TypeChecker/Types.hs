@@ -17,7 +17,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (comparing)
 import Data.Serialize
     (get,put,Get,Putter,getWord8,putWord8,getWord32be,putWord32be,getListOf
-    ,putListOf)
+    ,putListOf,getSetOf,putSetOf)
 import Language.Haskell.TH.Syntax (Lift(..),liftString)
 import qualified Data.Set as Set
 
@@ -140,6 +140,26 @@ typeArity ty = maybe 0 rec (destArrow ty)
 
 type Constraint = Type
 type Context    = Set.Set Constraint
+
+getConstraint :: Get Constraint
+getConstraint  = getType
+
+putConstraint :: Putter Constraint
+putConstraint  = putType
+
+getContext :: Get Context
+getContext  = getSetOf getConstraint
+
+putContext :: Putter Context
+putContext  = putSetOf putConstraint
+
+emptyCxt :: Context
+emptyCxt  = Set.empty
+
+ppContext :: Context -> Doc
+ppContext cxt
+  | Set.null cxt = empty
+  | otherwise    = parens (cat (map ppr (Set.toList cxt)))
 
 -- | Type constructor for equality constraints.
 eqConstr :: QualName
@@ -278,6 +298,12 @@ type Scheme = Forall Type
 toScheme :: Type -> Scheme
 toScheme  = Forall []
 
+putScheme :: Putter Scheme
+putScheme  = putForall putType
+
+getScheme :: Get Scheme
+getScheme  = getForall getType
+
 -- | Things with quantified variables.
 data Forall a = Forall
   { forallParams :: [TParam]
@@ -297,10 +323,39 @@ getForall :: Get a -> Get (Forall a)
 getForall a = Forall <$> getListOf getTParam <*> a
 
 instance Pretty a => Pretty (Forall a) where
-  pp _ (Forall ps a) = vars <+> pp 0 a
+  pp _ (Forall ps a) = vars <+> ppr a
     where
     vars | null ps   = empty
          | otherwise = text "forall" <+> ppList 0 ps <> char '.'
 
 instance FreeVars a => FreeVars (Forall a) where
   freeVars = freeVars  . forallData
+
+
+-- Qualified Things ------------------------------------------------------------
+
+data Qual a = Qual
+  { qualCxt  :: Context
+  , qualData :: a
+  }
+
+toQual :: a -> Qual a
+toQual a = Qual emptyCxt a
+
+putQual :: Putter a -> Putter (Qual a)
+putQual p (Qual cxt a) = putContext cxt >> p a
+
+getQual :: Get a -> Get (Qual a)
+getQual m = Qual <$> getContext <*> m
+
+instance Lift a => Lift (Qual a) where
+  lift q = [| Qual
+    { qualCxt  = Set.fromList $(lift (Set.toList (qualCxt q)))
+    , qualData = $(lift (qualData q))
+    } |]
+
+instance Pretty a => Pretty (Qual a) where
+  pp p (Qual cxt a) = optParens (p > 0) (cxtP <+> ppr a)
+    where
+    cxtP | Set.null cxt = empty
+         | otherwise    = ppContext cxt <+> text "=>"
