@@ -1,4 +1,4 @@
 
-# TypeChecking
+# Type Checking
 
- * Begin this.
+ * Start integrating support for equality constraints
