@@ -19,6 +19,9 @@ instance FreeVars a => FreeVars (Maybe a) where
 instance FreeVars a => FreeVars [a] where
   freeVars = Set.unions . map freeVars
 
+instance FreeVars a => FreeVars (Set.Set a) where
+  freeVars = freeVars . Set.toList
+
 instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
   freeVars (a,b) = freeVars a `Set.union` freeVars b
 

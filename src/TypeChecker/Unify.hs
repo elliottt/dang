@@ -83,6 +83,11 @@ instance Types a => Types [a] where
   typeVars   = Set.unions . map typeVars
   genVars    = Set.unions . map genVars
 
+instance (Ord a, Types a) => Types (Set.Set a) where
+  apply' b u = Set.map (apply' b u)
+  typeVars   = Set.unions . Set.toList . Set.map typeVars
+  genVars    = Set.unions . Set.toList . Set.map genVars
+
 instance Types Type where
   apply' b u ty = case ty of
     TApp f x     -> TApp (apply' b u f) (apply' b u x)
@@ -139,6 +144,11 @@ instance Types a => Types (Forall a) where
   apply' b u (Forall ps a) = Forall ps (apply' (b + length ps) u a)
   typeVars (Forall _ a)    = typeVars a
   genVars  (Forall ps a)   = Set.fromList ps `Set.union` genVars a
+
+instance Types a => Types (Qual a) where
+  apply' b u (Qual cxt a) = Qual (apply' b u cxt) (apply' b u a)
+  typeVars (Qual cxt a)   = typeVars cxt `Set.union` typeVars a
+  genVars  (Qual cxt a)   = genVars cxt  `Set.union` genVars  a
 
 instance Types Match where
   apply' b s m = case m of

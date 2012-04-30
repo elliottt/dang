@@ -5,6 +5,7 @@ import Core.AST
 import ModuleSystem.Export (isExported)
 import ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
 import QualName (mangle,QualName,primName,qualNamespace,Namespace)
+import TypeChecker.Types (toQual)
 
 import qualified Data.Map as Map
 
@@ -34,7 +35,7 @@ declSymbol :: QualName -> Decl -> Symbol
 declSymbol qn d = Symbol
   { symExternal = mangle qn
   , symInternal = mangle qn
-  , symType     = declType d
+  , symType     = toQual `fmap` declType d
   }
 
 addPrimType :: Namespace -> NameMap PrimType -> PrimType -> NameMap PrimType

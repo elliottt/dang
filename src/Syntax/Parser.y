@@ -303,8 +303,8 @@ atypes :: { [Type] }
   | atype        { [$1] }
 
 -- XXX fix the type parameters
-qual_type :: { Forall Type }
-  : type { mkForall $1 }
+qual_type :: { Scheme }
+  : type { mkScheme emptyCxt $1 }
 
 tycon :: { String }
   : CONIDENT     { $1 }

@@ -193,17 +193,17 @@ freshVarFromTParam :: TParam -> TC Type
 freshVarFromTParam p = uvar `fmap` freshTParam p
 
 -- | Freshly instantiate a @Scheme@.
-freshInst :: Scheme -> TC Type
-freshInst qt = snd `fmap` freshInst' qt
+freshInst :: Types a => Forall a -> TC a
+freshInst qa = snd `fmap` freshInst' qa
 
 -- | Freshly instantiate a @Scheme@, returning the newly bound parameters.
-freshInst' :: Scheme -> TC ([TParam],Type)
-freshInst' (Forall ps ty) = do
+freshInst' :: Types a => Forall a -> TC ([TParam],a)
+freshInst' (Forall ps a) = do
   ps' <- mapM freshTParam ps
-  ty' <- applySubst (inst (map uvar ps') ty)
-  return (ps',ty')
+  a'  <- applySubst (inst (map uvar ps') a)
+  return (ps',a')
 
-withRigidInst :: Scheme -> (Skolems -> Type -> TC a) -> TC a
+withRigidInst :: Types a => Forall a -> (Skolems -> a -> TC b) -> TC b
 withRigidInst tc k = do
   (ps,ty) <- freshInst' tc
   let sv = Set.fromList ps

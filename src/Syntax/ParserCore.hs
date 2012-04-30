@@ -127,7 +127,7 @@ instance Monoid PDecls where
 -- a type, or both a type and a term.  This type captures those states.
 data PDecl
   = DeclTerm UntypedDecl
-  | DeclType (Forall Type)
+  | DeclType Scheme
   | DeclTyped TypedDecl
     deriving (Show)
 
@@ -145,12 +145,12 @@ mkUntyped :: UntypedDecl -> PDecls
 mkUntyped d = mempty { parsedPDecls = singleton (untypedName d) (DeclTerm d) }
 
 -- | Generate a declaration of a type for a term.
-mkTypeDecl :: Name -> Forall Type -> PDecls
+mkTypeDecl :: Name -> Scheme -> PDecls
 mkTypeDecl n t = mempty { parsedPDecls = singleton n (DeclType t) }
 
 -- | Quantify all free variables in a parsed type.
-mkForall :: Type -> Forall Type
-mkForall ty = quantify (Set.toList (typeVars ty')) ty'
+mkScheme :: Context -> Type -> Scheme
+mkScheme cxt ty = quantify (Set.toList (typeVars ty')) (Qual cxt ty')
   where
   ty' = renumber ty
 

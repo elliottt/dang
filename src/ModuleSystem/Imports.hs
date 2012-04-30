@@ -25,7 +25,7 @@ import QualName (QualName,isSimpleName,qualModule)
 import Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
-import TypeChecker.Types (Forall(..),forallData,Type(..))
+import TypeChecker.Types (Forall(..),Qual(..),Type(..))
 
 import Control.Monad (guard)
 import Data.List (foldl')
@@ -54,6 +54,9 @@ instance UsesModules a => UsesModules (Maybe a) where
 
 instance UsesModules a => UsesModules [a] where
   getUses = Set.unions . map getUses
+
+instance (Ord a, UsesModules a) => UsesModules (Set.Set a) where
+  getUses = Set.unions . Set.toList . Set.map getUses
 
 -- | The imports required by a module are those specified by its open
 -- declarations, and implicit uses in terms or types.
@@ -101,6 +104,9 @@ instance UsesModules Constr where
 
 instance UsesModules a => UsesModules (Forall a) where
   getUses = getUses . forallData
+
+instance UsesModules a => UsesModules (Qual a) where
+  getUses (Qual cxt a) = getUses cxt `Set.union` getUses a
 
 -- | Module uses from a type arise from the name-space used on a constructor.
 instance UsesModules Type where

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module TypeChecker.Types where
 
@@ -292,35 +293,39 @@ setSort = TCon (primName ["Prelude"] "Set")
 
 -- Type Schemes ----------------------------------------------------------------
 
-type Scheme = Forall Type
+type Scheme = Forall (Qual Type)
 
 -- | Produce a type scheme that quantifies no variables.
 toScheme :: Type -> Scheme
-toScheme  = Forall []
+toScheme  = toForall . toQual
 
 putScheme :: Putter Scheme
-putScheme  = putForall putType
+putScheme  = putForall (putQual putType)
 
 getScheme :: Get Scheme
-getScheme  = getForall getType
+getScheme  = getForall (getQual getType)
+
 
 -- | Things with quantified variables.
 data Forall a = Forall
   { forallParams :: [TParam]
   , forallData   :: a
-  } deriving (Show,Eq,Ord,Data,Typeable)
+  } deriving (Show,Eq,Ord,Data,Typeable,Functor)
 
-instance Lift a => Lift (Forall a) where
-  lift qa = [| Forall
-    { forallParams = $(lift (forallParams qa))
-    , forallData   = $(lift (forallData qa))
-    } |]
+toForall :: a -> Forall a
+toForall  = Forall []
 
 putForall :: Putter a -> Putter (Forall a)
 putForall p (Forall ps a) = putListOf putTParam ps >> p a
 
 getForall :: Get a -> Get (Forall a)
 getForall a = Forall <$> getListOf getTParam <*> a
+
+instance Lift a => Lift (Forall a) where
+  lift qa = [| Forall
+    { forallParams = $(lift (forallParams qa))
+    , forallData   = $(lift (forallData qa))
+    } |]
 
 instance Pretty a => Pretty (Forall a) where
   pp _ (Forall ps a) = vars <+> ppr a
@@ -332,12 +337,10 @@ instance FreeVars a => FreeVars (Forall a) where
   freeVars = freeVars  . forallData
 
 
--- Qualified Things ------------------------------------------------------------
-
 data Qual a = Qual
   { qualCxt  :: Context
   , qualData :: a
-  }
+  } deriving (Show,Eq,Ord,Data,Typeable,Functor)
 
 toQual :: a -> Qual a
 toQual a = Qual emptyCxt a
@@ -359,3 +362,6 @@ instance Pretty a => Pretty (Qual a) where
     where
     cxtP | Set.null cxt = empty
          | otherwise    = ppContext cxt <+> text "=>"
+
+instance FreeVars a => FreeVars (Qual a) where
+  freeVars (Qual cxt a) = freeVars cxt `Set.union` freeVars a

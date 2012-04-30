@@ -90,7 +90,7 @@ instance Pretty OpenSymbol where
 
 data TypedDecl = TypedDecl
   { typedExport :: Export
-  , typedType   :: Forall Type
+  , typedType   :: Scheme
   , typedName   :: Name
   , typedBody   :: Match
   } deriving (Eq,Show,Ord,Data,Typeable)
@@ -123,7 +123,7 @@ ppTypedDecl' export d = export <+> nest 0 (vcat [sig,body])
   (as,b) = ppMatch (typedBody d)
 
 -- | Create a typed declaration from an untyped one.
-mkTypedDecl :: UntypedDecl -> Forall Type -> TypedDecl
+mkTypedDecl :: UntypedDecl -> Scheme -> TypedDecl
 mkTypedDecl u ty = TypedDecl
   { typedExport = untypedExport u
   , typedType   = ty
@@ -167,7 +167,7 @@ instance Exported UntypedDecl where
 
 data PrimTerm = PrimTerm
   { primTermName :: Name
-  , primTermType :: Forall Type
+  , primTermType :: Scheme
   } deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty PrimTerm where

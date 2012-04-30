@@ -60,7 +60,7 @@ typedAssumps ns ts env0 = foldM step env0 ts
 -- | Introduce the signature for a single data constructor.
 constrAssump :: Namespace -> [TParam] -> Type -> Syn.Constr -> TypeAssumps
              -> TC TypeAssumps
-constrAssump ns ps res c = assume qn (Forall ps ty)
+constrAssump ns ps res c = assume qn (Forall ps (toQual ty))
   where
   qn = qualName ns (Syn.constrName c)
   ty = foldr tarrow res (Syn.constrFields c)
@@ -123,7 +123,7 @@ tcTypedDecl ns env td = do
   let name = qualName ns (Syn.typedName td)
   logInfo ("Checking: " ++ pretty name)
 
-  withRigidInst (Syn.typedType td) $ \ rigidVars sig -> do
+  withRigidInst (Syn.typedType td) $ \ rigidVars (Qual _ sig) -> do
     (ty,m) <- tcMatch env (Syn.typedBody td)
 
     unify ty sig
@@ -175,7 +175,7 @@ tcUntypedDecl ns envInf u = do
 
   -- At this point, the environment holds a single unification variable as the
   -- type of this declaration.  Pull it out, and unify with the inferred type.
-  let Forall [] var = aData a
+  let Forall [] (Qual _ var) = aData a
   unify var ty
 
   ty' <- applySubst ty
@@ -245,7 +245,7 @@ finalizePartialDecl env pd = (addAssump name assump env,decl)
 
   assump = Assump
     { aBody = Nothing
-    , aData = quantify ps (partialType pd)
+    , aData = quantify ps (toQual (partialType pd))
     }
 
 
@@ -294,8 +294,8 @@ tcPat env p = case p of
     return (emptyAssumps,var,PWildcard var)
 
   Syn.PCon qn ps -> do
-    a   <- typeAssump qn env
-    kty <- freshInst (aData a)
+    a          <- typeAssump qn env
+    Qual _ kty <- freshInst (aData a)
 
     let step (e,vtys,vs) v = do
           (ve,vty,v') <- tcPat env v
@@ -377,14 +377,14 @@ tcTerm env tm = case tm of
 
   Syn.Local n -> do
     let name = simpleName n
-    a       <- typeAssump name env
-    (ps,ty) <- freshInst' (aData a)
+    a              <- typeAssump name env
+    (ps,Qual _ ty) <- freshInst' (aData a)
     let body = fromMaybe (Local n) (aBody a)
     return (ty, appT body (map uvar ps))
 
   Syn.Global qn -> do
-    a       <- typeAssump qn env
-    (ps,ty) <- freshInst' (aData a)
+    a              <- typeAssump qn env
+    (ps,Qual _ ty) <- freshInst' (aData a)
     let body = fromMaybe (Global qn) (aBody a)
     return (ty, appT body (map uvar ps))
 

@@ -12,7 +12,7 @@ import Pretty
 import QualName (QualName,Name,simpleName)
 import Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import Traversal (Data,Typeable)
-import TypeChecker.Types (Type,Scheme,Forall(..),forallData,tarrow)
+import TypeChecker.Types (Type,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import Data.List (nub)
@@ -89,7 +89,7 @@ isMono :: Decl -> Bool
 isMono  = null . forallParams . declBody
 
 -- | Compute the type of a declaration.
-declType :: Decl -> Scheme
+declType :: Decl -> Forall Type
 declType d = Forall ps (matchType m)
   where
   Forall ps m = declBody d

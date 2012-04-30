@@ -11,7 +11,8 @@ import QualName
 import Syntax.AST
     (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types
-    (Kind,Scheme,Forall(..),putForall,getForall,putType,getType,putKind,getKind)
+    (Kind,Scheme,Forall(..),putForall,getForall,putScheme,getScheme,putType
+    ,getType,putKind,getKind)
 
 import Control.Applicative (pure,(<$>),(<*>))
 import Data.Serialize
@@ -188,7 +189,7 @@ putInterface :: Putter Interface
 putInterface iface = do
   putQualName            (ifaceName iface)
   putNameMap putSymbol   (ifaceSymbols iface)
-  putNameMap putData     (ifaceDatas iface)
+  putNameMap putDataDecl (ifaceDatas iface)
   putNameMap putPrimType (ifacePrimTypes iface)
   putNameMap putPrimTerm (ifacePrimTerms iface)
 
@@ -196,7 +197,7 @@ getInterface :: Get Interface
 getInterface  = Interface
             <$> getQualName
             <*> getNameMap getSymbol
-            <*> getNameMap getData
+            <*> getNameMap getDataDecl
             <*> getNameMap getPrimType
             <*> getNameMap getPrimTerm
 
@@ -208,22 +209,22 @@ getNameMap  = getMapOf getQualName
 
 putSymbol :: Putter Symbol
 putSymbol sym = do
-  putName           (symExternal sym)
-  putName           (symInternal sym)
-  putForall putType (symType sym)
+  putName   (symExternal sym)
+  putName   (symInternal sym)
+  putScheme (symType sym)
 
 getSymbol :: Get Symbol
-getSymbol  = Symbol <$> getName <*> getName <*> getForall getType
+getSymbol  = Symbol <$> getName <*> getName <*> getScheme
 
-putData :: Putter DataDecl
-putData d = do
+putDataDecl :: Putter DataDecl
+putDataDecl d = do
   putName                              (dataName d)
   put                                  (dataArity d)
   putKind                              (dataKind d)
   putListOf (putForall putConstrGroup) (dataGroups d)
 
-getData :: Get DataDecl
-getData  = DataDecl
+getDataDecl :: Get DataDecl
+getDataDecl  = DataDecl
        <$> getName
        <*> get
        <*> getKind
@@ -256,8 +257,8 @@ getPrimType  = PrimType <$> getName <*> getType
 
 putPrimTerm :: Putter PrimTerm
 putPrimTerm p = do
-  putName           (primTermName p)
-  putForall putType (primTermType p)
+  putName   (primTermName p)
+  putScheme (primTermType p)
 
 getPrimTerm :: Get PrimTerm
-getPrimTerm  = PrimTerm <$> getName <*> getForall getType
+getPrimTerm  = PrimTerm <$> getName <*> getScheme

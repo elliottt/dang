@@ -221,12 +221,26 @@ kcUntypedDecl env d = do
 -- | Introduce kind variables for all type variables, and kind check a type
 -- signature.
 kcTypeSig :: KindAssumps -> Scheme -> TC Scheme
-kcTypeSig env qt = introType env qt $ \ env' ty -> do
-  logInfo ("Checking Type: " ++ pretty ty)
-  logDebug (show (typeVars ty))
+kcTypeSig env qt = introType env qt $ \ env' ps qt' -> do
+  logInfo ("Checking Type: " ++ pretty qt)
+
+  let ty = qualData qt'
   (tyk,ty') <- inferKind env' ty
   unify kstar tyk
-  return (quantifyAndFixKinds ty')
+
+  let cxt = qualCxt qt'
+  cxt' <- kcContext env' cxt
+
+  return (quantify (map fixKind ps) (Qual cxt' ty'))
+
+kcContext :: KindAssumps -> Context -> TC Context
+kcContext env cxt = Set.fromList `fmap` mapM (kcConstraint env) (Set.toList cxt)
+
+kcConstraint :: KindAssumps -> Constraint -> TC Constraint
+kcConstraint env c = do
+  (ck,c') <- inferKind env c
+  unify kcxt ck
+  return c'
 
 -- | Check the kind structure of any types that show up in terms.
 kcTerm :: KindAssumps -> Term -> TC Term
@@ -305,13 +319,15 @@ inferKindTVar env tv = case tv of
 -- | Introduce new kind variables for each quantified type variable.  Give to a
 -- continuation, an environment that contains those variables, and a type with
 -- them instantiated.
-introType :: KindAssumps -> Scheme -> (KindAssumps -> Type -> TC a) -> TC a
-introType env (Forall ps ty) k = withVarIndex (length ps) $ do
+introType :: KindAssumps -> Scheme
+          -> (KindAssumps -> [TParam] -> Qual Type -> TC b)
+          -> TC b
+introType env (Forall ps qt) k = withVarIndex (length ps) $ do
   ps'  <- mapM freshTParam ps
-  ty'  <- freshInst (Forall ps' ty)
+  qt'  <- freshInst (Forall ps' qt)
   env' <- foldM (\e (q,t) -> addKindAssump e q t) env
       [ (simpleName (paramName p), paramKind p) | p <- ps' ]
-  k env' ty'
+  k env' ps' qt'
 
 -- | Given a type parameter, assign it a fresh kind variable.
 freshTParam :: TParam -> TC TParam
@@ -319,18 +335,9 @@ freshTParam p = do
   k <- freshKindVar
   return p { paramKind = k }
 
--- | Quantify all variables in a type, fixing their kind variables to stars on
--- the way.
-quantifyAndFixKinds :: Type -> Forall Type
-quantifyAndFixKinds  = quantifyAll . mapTVar fixKind
-
 -- | Turn kind variables into stars.
-fixKind :: TVar -> TVar
-fixKind tv = case tv of
-  UVar p -> UVar (upd p)
-  GVar p -> GVar (upd p)
+fixKind :: TParam -> TParam
+fixKind p = p { paramKind = Types.apply s k }
   where
-  upd p = p { paramKind = Types.apply s k }
-    where
-    k = paramKind p
-    s = unboundSubst [ (paramIndex v,kstar) | v <- Set.toList (typeVars k) ]
+  k = paramKind p
+  s = unboundSubst [ (paramIndex v,kstar) | v <- Set.toList (typeVars k) ]
