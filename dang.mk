@@ -72,7 +72,9 @@ dang: $(dang_objects)
 all: dang
 
 clean::
-	$Q$(RM) src/Syntax/Parser.hs src/Syntax/Lexer.hs
 	$Q$(RM) $(dang_objects) $(dang_interfaces)
-	$Q$(RM) .depend
 	$Q$(RM) dang
+
+mrproper::
+	$Q$(RM) src/Syntax/Parser.hs src/Syntax/Lexer.hs
+	$Q$(RM) .depend
