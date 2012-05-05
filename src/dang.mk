@@ -46,12 +46,12 @@ dang_sources := \
 	src/Utils.hs \
 	src/Variables.hs
 
--include .depend
+-include src/.depend
 
 GHCFLAGS := -Wall -isrc -hidir src -odir src
 
-.depend: SOURCES := $(dang_sources)
-.depend: $(dang_sources)
+src/.depend: SOURCES := $(dang_sources)
+src/.depend: $(dang_sources)
 	$(call cmd,hs_depend)
 
 dang_objects    := $(dang_sources:.hs=.o)
@@ -61,20 +61,19 @@ dang_packages := $(addprefix -package ,\
 	array base bytestring cereal containers directory filepath GraphSCC \
 	llvm-pretty monadLib pretty process syb template-haskell text)
 
-dang: HAPPYFLAGS := -g -i
-dang: ALEXFLAGS  := -g
-dang: GHCFLAGS   += -hide-all-packages $(dang_packages)
-dang: LDFLAGS    := -Wall -hide-all-packages $(dang_packages)
-dang: OBJECTS    := $(dang_objects)
-dang: $(dang_objects)
+build/bin/dang: HAPPYFLAGS := -g -i
+build/bin/dang: ALEXFLAGS  := -g
+build/bin/dang: GHCFLAGS   += -hide-all-packages $(dang_packages)
+build/bin/dang: LDFLAGS    := -Wall -hide-all-packages $(dang_packages)
+build/bin/dang: OBJECTS    := $(dang_objects)
+build/bin/dang: $(dang_objects) | build/bin
 	$(call cmd,link_hs)
 
-all: dang
+all: build/bin/dang
 
 clean::
 	$Q$(RM) $(dang_objects) $(dang_interfaces)
-	$Q$(RM) dang
 
 mrproper::
 	$Q$(RM) src/Syntax/Parser.hs src/Syntax/Lexer.hs
-	$Q$(RM) .depend
+	$Q$(RM) src/.depend
