@@ -1,5 +1,0 @@
-module Main where
-{ main = fix id 0
-; open Fix
-; open Id
-}

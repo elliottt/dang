@@ -1,3 +1,0 @@
-module Id where
-{ id x = x
-}

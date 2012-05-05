@@ -1,3 +1,0 @@
-module Fix where
-{ fix f x = f (fix f) x
-}
