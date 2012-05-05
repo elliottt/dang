@@ -1,5 +1,4 @@
-dist
-ghc
+*.hi
 *.o
 *.swp
 *.a
