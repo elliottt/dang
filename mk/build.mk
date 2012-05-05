@@ -17,7 +17,7 @@ cmd = $(if $($(quiet)cmd_$1),@echo '  $($(quiet)cmd_$1)';)$(cmd_$1)
 GHC      = ghc
 GHCFLAGS =
 
-quiet_cmd_hs_to_o = GHC     $@
+quiet_cmd_hs_to_o = HC      $@
       cmd_hs_to_o = $(GHC) $(GHCFLAGS) -c $< -o $@
 
 %.hi: %.o ;
