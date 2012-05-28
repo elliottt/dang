@@ -48,7 +48,9 @@ dang_sources := \
 
 -include src/.depend
 
-GHCFLAGS := -Wall -isrc -hidir src -odir src
+GHCFLAGS   := -Wall -isrc -hidir src -odir src
+ALEXFLAGS  := -g
+HAPPYFLAGS := -g -i
 
 src/.depend: SOURCES := $(dang_sources)
 src/.depend: $(dang_sources)
@@ -61,8 +63,6 @@ dang_packages := $(addprefix -package ,\
 	array base bytestring cereal containers directory filepath GraphSCC \
 	llvm-pretty monadLib pretty process syb template-haskell text)
 
-build/bin/dang: HAPPYFLAGS := -g -i
-build/bin/dang: ALEXFLAGS  := -g
 build/bin/dang: GHCFLAGS   += -hide-all-packages $(dang_packages)
 build/bin/dang: LDFLAGS    := -Wall -hide-all-packages $(dang_packages)
 build/bin/dang: OBJECTS    := $(dang_objects)

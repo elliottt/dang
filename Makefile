@@ -1,17 +1,12 @@
 
-.PHONY: all
-all:
+include mk/defaults.mk
+include mk/build.mk
 
-.PHONY: clean
 clean::
 	$Q$(RM) -r build
-
-.PHONY: mrproper
-mrproper:: clean
-
-include mk/build.mk
 
 build/bin:
 	$(call cmd,mkdir)
 
+# Projects
 include src/dang.mk
