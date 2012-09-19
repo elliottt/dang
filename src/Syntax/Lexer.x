@@ -1,14 +1,17 @@
+-- vim: filetype=haskell
+
 {
 {-# OPTIONS_GHC -w #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
--- vim: filetype=haskell
 module Syntax.Lexer where
 
 import Syntax.Lexeme
 
+import Data.Bits (shiftR,(.&.))
 import Data.Int (Int64)
+import Data.Word (Word8)
 import MonadLib
 import qualified Data.Text.Lazy as L
 }
@@ -72,6 +75,67 @@ $digit+         { emitS (TInt . read) }
 
 {
 
+-- Input Operations ------------------------------------------------------------
+
+type AlexInput = LexerInput
+
+data LexerInput = LexerInput
+  { liPosn  :: !Position
+  , liChar  :: !Char
+  , liBytes :: [Word8]
+  , liInput :: L.Text
+  } deriving (Show)
+
+initLexerInput :: FilePath -> L.Text -> LexerInput
+initLexerInput source bytes = LexerInput
+  { liPosn  = initPosition source
+  , liChar  = '\n'
+  , liBytes = []
+  , liInput = bytes
+  }
+
+fillBuffer :: LexerInput -> Maybe LexerInput
+fillBuffer li = do
+  (c,rest) <- L.uncons (liInput li)
+  return $! LexerInput
+    { liPosn  = movePos (liPosn li) c
+    , liBytes = utf8Encode c
+    , liChar  = c
+    , liInput = rest
+    }
+
+alexInputPrevChar :: AlexInput -> Char
+alexInputPrevChar  = liChar
+
+alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
+alexGetByte li = case liBytes li of
+  b:bs -> return (b, li { liBytes = bs })
+  _    -> alexGetByte =<< fillBuffer li
+
+-- | Encode a Haskell String to a list of Word8 values, in UTF8 format.
+utf8Encode :: Char -> [Word8]
+utf8Encode = map fromIntegral . go . ord
+ where
+  go oc
+   | oc <= 0x7f       = [oc]
+
+   | oc <= 0x7ff      = [ 0xc0 + (oc `shiftR` 6)
+                        , 0x80 +  oc .&. 0x3f
+                        ]
+
+   | oc <= 0xffff     = [ 0xe0 + ( oc `shiftR` 12)
+                        , 0x80 + ((oc `shiftR` 6) .&. 0x3f)
+                        , 0x80 +   oc             .&. 0x3f
+                        ]
+   | otherwise        = [ 0xf0 + ( oc `shiftR` 18)
+                        , 0x80 + ((oc `shiftR` 12) .&. 0x3f)
+                        , 0x80 + ((oc `shiftR` 6)  .&. 0x3f)
+                        , 0x80 +   oc              .&. 0x3f
+                        ]
+
+
+-- Lexer Monad -----------------------------------------------------------------
+
 newtype Lexer a = Lexer
   { unLexer :: StateT LexerState Id a
   } deriving (Functor,Monad)
@@ -81,25 +145,22 @@ instance StateM Lexer LexerState where
   set = Lexer . set
 
 data LexerState = LexerState
-  { lexerPosn  :: !Position
-  , lexerChar  :: !Char
-  , lexerInput :: !L.Text
+  { lexerInput :: !LexerInput
   , lexerState :: !Int
   } deriving Show
 
 scan :: FilePath -> L.Text -> [Lexeme]
-scan source text = fst (runId (runStateT st0 (unLexer loop)))
+scan source bytes = fst (runId (runStateT st0 (unLexer loop)))
   where
   st0  = LexerState
-    { lexerPosn  = initPosition source
-    , lexerInput = text
-    , lexerChar  = '\n'
+    { lexerInput = initLexerInput source bytes
     , lexerState = 0
     }
 
   loop = do
-    inp@(pos,_,_) <- alexGetInput
-    sc            <- alexGetStartCode
+    inp <- alexGetInput
+    let pos = liPosn inp
+    sc  <- alexGetStartCode
     case alexScan inp sc of
 
       AlexToken inp' len action -> do
@@ -119,28 +180,13 @@ scan source text = fst (runId (runStateT st0 (unLexer loop)))
 
       AlexError inp' -> return [Lexeme pos (TError "Lexical error")]
 
-
--- Input -----------------------------------------------------------------------
-
-type AlexInput = (Position,Char,L.Text)
-
-alexSetInput ::AlexInput -> Lexer ()
-alexSetInput (pos,c,text) = do
+alexSetInput :: AlexInput -> Lexer ()
+alexSetInput inp = do
   st <- get
-  set $! st { lexerPosn = pos, lexerChar = c, lexerInput = text }
+  set $! st { lexerInput = inp }
 
 alexGetInput :: Lexer AlexInput
-alexGetInput  = do
-  st <- get
-  return (lexerPosn st, lexerChar st, lexerInput st)
-
-alexInputPrevChar :: AlexInput -> Char
-alexInputPrevChar (_,c,_) = c
-
-alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
-alexGetChar (p,_,bs) = do
-  (c,bs') <- L.uncons bs
-  return (c, (movePos p c, c, bs'))
+alexGetInput  = lexerInput `fmap` get
 
 
 -- Start Codes -----------------------------------------------------------------
@@ -161,15 +207,15 @@ type AlexAction result = AlexInput -> Int -> result
 
 -- | Emit a token from the lexer
 emitT :: Token -> AlexAction (Lexer (Maybe Lexeme))
-emitT tok (pos,_,_) _ = return $ Just $! Lexeme
-  { lexPos   = pos
+emitT tok li _ = return $ Just $! Lexeme
+  { lexPos   = liPosn li
   , lexToken = tok
   }
 
 emitS :: (String -> Token) -> AlexAction (Lexer (Maybe Lexeme))
-emitS mk (pos,c,bs) len = return $ Just $! Lexeme
-  { lexPos   = pos
-  , lexToken = mk (L.unpack (L.take (fromIntegral len) bs))
+emitS mk li len = return $ Just $! Lexeme
+  { lexPos   = liPosn li
+  , lexToken = mk (L.unpack (L.take (fromIntegral len) (liInput li)))
   }
 
 reserved :: AlexAction (Lexer (Maybe Lexeme))
