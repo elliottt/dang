@@ -101,8 +101,10 @@ executable dang
 executable dang-tests
   main-is:              Test.hs
   ghc-options:          -Wall
-  other-modules:        Tests.QualName
-                        Tests.Utils
+  other-modules:        Tests.Monadic,
+                        Tests.QualName,
+                        Tests.Unification,
+                        Tests.Utils,
                         Tests.Types
   build-depends:        base >= 4,
                         test-framework ==0.6.*,
