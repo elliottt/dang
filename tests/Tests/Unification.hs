@@ -1,16 +1,16 @@
 module Tests.Unification where
 
-import Core.Types (uvar,Type(TCon))
 import Dang.Monad (runDangWithArgs)
 import QualName (qualName)
 import Tests.Monadic (assertFailure)
 import Tests.QualName (namespace,conident)
 import Tests.Types (monoType)
 import TypeChecker.Monad (runTC,unify,withSkolems)
+import TypeChecker.Types (uvar,Type(TCon))
 
 import Test.Framework (Test,testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck (arbitrary)
+import Test.QuickCheck (arbitrary,Property)
 import Test.QuickCheck.Monadic (monadicIO,pick,run)
 import qualified Data.Set as Set
 
@@ -23,14 +23,16 @@ unificationTests  = testGroup "unification"
   ]
 
 -- | A skolem should unify with itself.
-prop_unifySkolemRefl = monadicIO $ do
+prop_unifySkolemRefl :: Property
+prop_unifySkolemRefl  = monadicIO $ do
   tparam <- pick arbitrary
   let var     = uvar tparam
       skolems = Set.singleton tparam
   run $ runDangWithArgs [] $ runTC $ withSkolems skolems $ unify var var
 
 -- | A skolem should not unify with anything but itself.
-prop_unifySkolemFail = monadicIO $ do
+prop_unifySkolemFail :: Property
+prop_unifySkolemFail  = monadicIO $ do
   tparam <- pick arbitrary
   name   <- pick (namespace qualName conident)
   let var     = uvar tparam
@@ -39,6 +41,7 @@ prop_unifySkolemFail = monadicIO $ do
   run $ assertFailure [] $ runTC $ withSkolems skolems $ unify var con
 
 -- | Unification should be reflexive.
-prop_unifyRefl = monadicIO $ do
+prop_unifyRefl :: Property
+prop_unifyRefl  = monadicIO $ do
   ty <- pick monoType
   run $ runDangWithArgs [] $ runTC $ unify ty ty

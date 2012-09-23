@@ -6,6 +6,7 @@
 module Dang.Monad (
     Dang
   , runDang
+  , runDangWithArgs
 
   , Options(..)
   , DebugOpts(..)
@@ -201,17 +202,19 @@ io  = inBase . Dang . inBase
 getOptions :: BaseM m Dang => m Options
 getOptions  = inBase ask
 
--- | Turn a Dang operation into an IO operation, swallowing all exceptions.
-runDang :: Dang a -> IO ()
+-- | Turn a Dang operation into an IO operation.  This will allow exceptions to
+-- escape.
+runDang :: Dang a -> IO a
 runDang m = do
   args <- getArgs
+  runDangWithArgs args m
+
+-- | Turn a Dang operation into an IO operation, using the provided arguments as
+-- the command-line arguments.
+runDangWithArgs :: [String] -> Dang a -> IO a
+runDangWithArgs args m = do
   opts <- parseOptions args
-  E.handle handler $ do
-    _ <- runReaderT opts (getDang m)
-    return ()
-  where
-  handler :: SomeException -> IO ()
-  handler e = print e
+  runReaderT opts (getDang m)
 
 -- | Raise an exception.
 raiseE :: (ExceptionM m SomeException, Exception e) => e -> m a
