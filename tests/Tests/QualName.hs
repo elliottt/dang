@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Tests.QualName (
     ident
   , conident
@@ -23,8 +25,8 @@ symbol :: Gen Name
 symbol  = listOf1 (elements "-><|!@#$%^&*")
 
 -- | Add a name-space to a name, qualifying it.
-namespace :: Gen Name -> Gen QualName
-namespace name = qualName <$> resize 4 (listOf conident) <*> name
+namespace :: (Namespace -> Name -> QualName) -> Gen Name -> Gen QualName
+namespace k name = k <$> resize 4 (listOf conident) <*> name
 
 upper :: Gen Char
 upper  = choose ('A','Z')
@@ -32,22 +34,5 @@ upper  = choose ('A','Z')
 lower :: Gen Char
 lower  = choose ('a','z')
 
-number :: Gen Char
-number  = choose ('0','9')
-
 body :: Gen Name
-body  = listOf $ oneof
-  [ lower
-  , upper
-  , number
-  , elements "_'?!"
-  ]
-
-instance Arbitrary QualName where
-  arbitrary = oneof
-    [ simpleName <$> name
-    , primName   <$> name
-    , namespace name
-    ]
-    where
-    name = oneof [conident,ident]
+body  = listOf lower
