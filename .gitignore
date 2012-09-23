@@ -1,11 +1,3 @@
-*.hi
-*.o
+dist
+cabal-dev
 *.swp
-*.a
-.depend
-*.info
-dang
-*.di
-*.bc
-*.s
-build
