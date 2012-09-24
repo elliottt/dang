@@ -8,6 +8,7 @@ import Core.AST
 import Dang.Monad
 import Pretty
 import TypeChecker.Types
+import TypeChecker.Vars
 import Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 
 import Control.Arrow (second)
@@ -75,8 +76,8 @@ apply  = apply' 0
 
 class Types a where
   apply'   :: Int -> Subst -> a -> a
-  typeVars :: a -> Set.Set TParam
-  genVars  :: a -> Set.Set TParam
+  typeVars :: a -> Set.Set (TParam Kind)
+  genVars  :: a -> Set.Set (TParam Kind)
 
 instance Types a => Types [a] where
   apply' b u = map (apply' b u)
@@ -107,7 +108,7 @@ instance Types Type where
     TVar tv      -> genVarsTVar tv
     TCon{}       -> Set.empty
 
-apply'TVar :: Int -> Subst -> TVar -> Type
+apply'TVar :: Int -> Subst -> TVar Kind -> Type
 apply'TVar b u tv = case tv of
 
   -- when an unbound variable is found, apply the substitution without adjusting
@@ -127,11 +128,11 @@ apply'TVar b u tv = case tv of
   adjust (GVar p) = GVar p { paramIndex = paramIndex p + b }
   adjust uv       = uv
 
-typeVarsTVar :: TVar -> Set.Set TParam
+typeVarsTVar :: TVar Kind -> Set.Set (TParam Kind)
 typeVarsTVar (UVar p) = Set.singleton p
 typeVarsTVar _        = Set.empty
 
-genVarsTVar :: TVar -> Set.Set TParam
+genVarsTVar :: TVar Kind -> Set.Set (TParam Kind)
 genVarsTVar (GVar p) = Set.singleton p
 genVarsTVar _        = Set.empty
 
@@ -246,8 +247,8 @@ instance Types Constr where
 
 data UnifyError
   = UnifyError Type Type
-  | UnifyBoundSkolem TParam Type
-  | UnifyOccursCheck TParam Type
+  | UnifyBoundSkolem (TParam Kind) Type
+  | UnifyOccursCheck (TParam Kind) Type
   | UnifyGeneric String
     deriving (Show,Typeable)
 
@@ -256,7 +257,7 @@ instance Exception UnifyError
 unifyError :: ExceptionM m SomeException => String -> m a
 unifyError  = raiseE . UnifyGeneric
 
-type Skolems = Set.Set TParam
+type Skolems = Set.Set (TParam Kind)
 
 -- | Generate the most-general unifier for two types.
 mgu :: ExceptionM m SomeException => Skolems -> Type -> Type -> m Subst
@@ -290,7 +291,7 @@ mgu skolems = loop
 
 -- | Generate a substitution that unifies a variable with a type.
 varBind :: ExceptionM m SomeException
-        => Skolems -> TParam -> Type -> m Subst
+        => Skolems -> TParam Kind -> Type -> m Subst
 varBind skolems p ty
   | Just p' <- destUVar ty, p == p' = return emptySubst
   | p `Set.member` skolems          = raiseE (UnifyBoundSkolem p ty)
@@ -298,7 +299,7 @@ varBind skolems p ty
   | otherwise                       = return (varSubst (paramIndex p) ty)
 
 
-occursCheck :: TParam -> Type -> Bool
+occursCheck :: TParam Kind -> Type -> Bool
 occursCheck p = Set.member p . typeVars
 
 
@@ -311,13 +312,13 @@ inst ts = apply (emptySubst { substBound = Map.fromList (zip [0 ..] ts) })
 -- Quantification --------------------------------------------------------------
 
 -- | Generalize type variables.
-quantify :: Types t => [TParam] -> t -> Forall t
+quantify :: Types t => [TParam Kind] -> t -> Forall t
 quantify ps t = uncurry Forall (quantifyAux 0 ps t)
 
 quantifyAll :: Types t => t -> Forall t
 quantifyAll ty = quantify (Set.toList (typeVars ty)) ty
 
-quantifyAux :: Types t => Int -> [TParam] -> t -> ([TParam],t)
+quantifyAux :: Types t => Int -> [TParam Kind] -> t -> ([TParam Kind],t)
 quantifyAux off ps t = (ps',apply u t)
   where
   vs         = ps `intersect` Set.toList (typeVars t)

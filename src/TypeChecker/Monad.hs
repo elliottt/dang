@@ -30,6 +30,7 @@ import Dang.Monad
 import QualName (QualName,Name,simpleName)
 import TypeChecker.Types
 import TypeChecker.Unify
+import TypeChecker.Vars
 
 import Control.Applicative (Applicative)
 import Control.Monad.Fix (MonadFix)
@@ -183,13 +184,13 @@ freshVar k = do
   ix <- nextIndex
   return (uvar (TParam ix False ('t':show ix) k))
 
-freshTParam :: TParam -> TC TParam
+freshTParam :: TParam Kind -> TC (TParam Kind)
 freshTParam p = do
   ix <- nextIndex
   return (p { paramIndex = ix })
 
 -- | Generate a new type variable, given a @TParam@ as a template.
-freshVarFromTParam :: TParam -> TC Type
+freshVarFromTParam :: TParam Kind -> TC Type
 freshVarFromTParam p = uvar `fmap` freshTParam p
 
 -- | Freshly instantiate a @Scheme@.
@@ -197,7 +198,7 @@ freshInst :: Types a => Forall a -> TC a
 freshInst qa = snd `fmap` freshInst' qa
 
 -- | Freshly instantiate a @Scheme@, returning the newly bound parameters.
-freshInst' :: Types a => Forall a -> TC ([TParam],a)
+freshInst' :: Types a => Forall a -> TC ([TParam Kind],a)
 freshInst' (Forall ps a) = do
   ps' <- mapM freshTParam ps
   a'  <- applySubst (inst (map uvar ps') a)

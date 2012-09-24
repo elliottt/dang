@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Tests.Types where
 
 import QualName (qualName)
@@ -6,6 +8,7 @@ import Tests.QualName (namespace,symbol,ident,conident)
 import Tests.Utils (reduce)
 import TypeChecker.Types
 import TypeChecker.Unify
+import TypeChecker.Vars
 
 import Control.Applicative (pure,(<$>),(<*>))
 import Test.QuickCheck
@@ -13,10 +16,10 @@ import qualified Data.Set as Set
 
 
 -- | This instance only ever generates unbound variables.
-instance Arbitrary TVar where
+instance Arbitrary (TVar Kind) where
   arbitrary = UVar <$> arbitrary
 
-instance Arbitrary TParam where
+instance Arbitrary (TParam Kind) where
   arbitrary = TParam
           <$> arbitrary
           <*> pure True

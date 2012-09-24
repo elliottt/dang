@@ -13,6 +13,7 @@ import Syntax.Lexeme
 import Syntax.Lexer
 import Syntax.ParserCore
 import TypeChecker.Types
+import TypeChecker.Vars
 
 import Data.Monoid (mappend,mconcat)
 import MonadLib

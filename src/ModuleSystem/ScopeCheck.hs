@@ -15,7 +15,8 @@ import QualName
 import Syntax.AST
     (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
     ,DataDecl(..),patVars)
-import TypeChecker.Types (Type(..),TParam())
+import TypeChecker.Types (Type(..),Kind)
+import TypeChecker.Vars (TParam())
 import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>))
@@ -171,7 +172,7 @@ scType ty = case ty of
 
 -- | The scope-checking process must skip kinds, as they're built-in to the
 -- compiler, and have no origin.
-scTParam :: TParam -> Scope TParam
+scTParam :: TParam Kind -> Scope (TParam Kind)
 scTParam  = return
 
 

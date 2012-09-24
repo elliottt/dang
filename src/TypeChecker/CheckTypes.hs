@@ -14,6 +14,7 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify (quantify,typeVars,Types)
+import TypeChecker.Vars
 import Variables (freeVars,sccFreeNames,sccToList)
 import qualified Syntax.AST as Syn
 
@@ -58,7 +59,7 @@ typedAssumps ns ts env0 = foldM step env0 ts
   step env td = assume (qualName ns (Syn.typedName td)) (Syn.typedType td) env
 
 -- | Introduce the signature for a single data constructor.
-constrAssump :: Namespace -> [TParam] -> Type -> Syn.Constr -> TypeAssumps
+constrAssump :: Namespace -> [TParam Kind] -> Type -> Syn.Constr -> TypeAssumps
              -> TC TypeAssumps
 constrAssump ns ps res c = assume qn (Forall ps (toQual ty))
   where
@@ -398,9 +399,9 @@ tcLit l = case l of
 -- Generalization --------------------------------------------------------------
 
 -- | Variables from the assumptions.
-assumpVars :: TypeAssumps -> Set.Set TParam
+assumpVars :: TypeAssumps -> Set.Set (TParam Kind)
 assumpVars  = typeVars . assumps
 
 -- | Variables that can be generalized.
-genVars :: Types t => TypeAssumps -> t -> Set.Set TParam
+genVars :: Types t => TypeAssumps -> t -> Set.Set (TParam Kind)
 genVars env t = typeVars t Set.\\ assumpVars env

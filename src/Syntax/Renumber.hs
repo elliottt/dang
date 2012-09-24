@@ -2,7 +2,8 @@ module Syntax.Renumber where
 
 import QualName (Name)
 import Syntax.AST (ConstrGroup(..),Constr(..))
-import TypeChecker.Types (Type(..),Index,TParam(..),uvar,TVar(..),Forall(..))
+import TypeChecker.Types (Type(..),uvar,Forall(..))
+import TypeChecker.Vars (Index,TParam(..),TVar(..))
 
 import Control.Monad (ap)
 import Control.Monad.ST (ST,runST)

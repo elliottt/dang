@@ -14,8 +14,9 @@ import Dang.IO
 import Dang.Monad
 import Pretty (pretty)
 import QualName (QualName,Name,simpleName,qualSymbol)
-import TypeChecker.Types (Type,TParam,uvar,Forall(..),modifyTParamIndex)
+import TypeChecker.Types (Type,uvar,Forall(..),Kind)
 import TypeChecker.Unify (inst,quantify,typeVars)
+import TypeChecker.Vars (TParam,modifyTParamIndex)
 import Variables (freeLocals,freeVars)
 
 import Control.Applicative(Applicative(..),(<$>))
@@ -87,7 +88,7 @@ addArg n ty env = env { envArgs = Map.insert n ty (envArgs env) }
 addRewrites :: RewriteMap -> Env -> Env
 addRewrites rws env = env { envRewrite = Map.union rws (envRewrite env) }
 
-introParams :: [TParam] -> ([TParam] -> LL a) -> LL a
+introParams :: [TParam Kind] -> ([TParam Kind] -> LL a) -> LL a
 introParams ps k = do
   env <- ask
   let ps' = map (modifyTParamIndex (+ envDepth env)) ps
@@ -198,7 +199,7 @@ buildRewriteMap args ds = solve `fmap` escapeSets args (peerSet ds) ds
 
 -- | A rewrite represents the extra information needed by a closure.
 data Rewrite = Rewrite
-  { rewriteParams :: [TParam]
+  { rewriteParams :: [TParam Kind]
   , rewriteArgs   :: [Name]
   , rewritePeers  :: [Name]
   } deriving Show
@@ -258,7 +259,7 @@ solveEscapeSets exs0 = foldl step exs0 (Map.keys exs0)
 -- | Escape sets represent the list of type parameters, arguments and local
 -- declarations that show up free in a declaration body.
 data EscapeSet = EscapeSet
-  { escParams :: Set.Set TParam
+  { escParams :: Set.Set (TParam Kind)
   , escArgs   :: Set.Set Name
   , escPeers  :: Set.Set Name
   , escSimple :: Maybe Type

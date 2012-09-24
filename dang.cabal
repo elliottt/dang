@@ -60,6 +60,7 @@ library
                         TypeChecker.Quote,
                         TypeChecker.Types,
                         TypeChecker.Unify,
+                        TypeChecker.Vars,
                         Utils,
                         Variables
 

@@ -12,6 +12,7 @@ import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types
 import TypeChecker.Unify as Types
+import TypeChecker.Vars
 import Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))
@@ -184,7 +185,7 @@ kcConstr env c = do
 
 -- | Augment a kind-checking environment, adding the type variables of the data
 -- declaration.
-dataVars :: [TParam] -> KindAssumps -> TC KindAssumps
+dataVars :: [TParam Kind] -> KindAssumps -> TC KindAssumps
 dataVars ps env0 = foldM step env0 ps
   where
   step env p = do
@@ -299,7 +300,7 @@ inferKind env ty = case ty of
     (k',tv') <- inferKindTVar env tv
     return (k', TVar tv')
 
-inferKindTVar :: KindAssumps -> TVar -> TC (Kind,TVar)
+inferKindTVar :: KindAssumps -> TVar Kind -> TC (Kind,TVar Kind)
 inferKindTVar env tv = case tv of
 
   -- The idea here is that a variable might already have a kind associated with
@@ -320,7 +321,7 @@ inferKindTVar env tv = case tv of
 -- continuation, an environment that contains those variables, and a type with
 -- them instantiated.
 introType :: KindAssumps -> Scheme
-          -> (KindAssumps -> [TParam] -> Qual Type -> TC b)
+          -> (KindAssumps -> [TParam Kind] -> Qual Type -> TC b)
           -> TC b
 introType env (Forall ps qt) k = withVarIndex (length ps) $ do
   ps'  <- mapM freshTParam ps
@@ -330,13 +331,13 @@ introType env (Forall ps qt) k = withVarIndex (length ps) $ do
   k env' ps' qt'
 
 -- | Given a type parameter, assign it a fresh kind variable.
-freshTParam :: TParam -> TC TParam
+freshTParam :: TParam Kind -> TC (TParam Kind)
 freshTParam p = do
   k <- freshKindVar
   return p { paramKind = k }
 
 -- | Turn kind variables into stars.
-fixKind :: TParam -> TParam
+fixKind :: TParam Kind -> TParam Kind
 fixKind p = p { paramKind = Types.apply s k }
   where
   k = paramKind p
