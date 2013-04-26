@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Compile.Rename (
+module Dang.Compile.Rename (
     rename
   ) where
 

@@ -1,6 +1,6 @@
 module Main where
 
-import Compile (compile)
+import Dang.Compile (compile)
 import Dang.IO
 import Dang.FileName
 import Dang.Monad

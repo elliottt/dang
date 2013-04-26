@@ -9,6 +9,8 @@ category:            Language
 build-type:          Simple
 cabal-version:       >=1.10
 
+default-language:   Haskell2010
+
 library
   build-tools:          alex, happy
   hs-source-dirs:       src
@@ -19,9 +21,6 @@ library
                         --CodeGen.Rts,
                         --CodeGen.Types,
                         Colors,
-                        Compile,
-                        Compile.LambdaLift,
-                        Compile.Rename,
                         Core.AST,
                         Core.Interface,
                         Dang.FileName,
@@ -29,6 +28,11 @@ library
                         Dang.Monad,
                         Dang.Tool,
                         Data.ClashMap,
+
+                        -- code generation
+                        Dang.Compile,
+                        Dang.Compile.LambdaLift,
+                        Dang.Compile.Rename,
                         --Desugar,
                         Link,
                         ModuleSystem,

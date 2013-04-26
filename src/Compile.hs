@@ -1,8 +1,8 @@
-module Compile where
+module Dang.Compile where
 
 import CodeGen
-import Compile.LambdaLift
-import Compile.Rename
+import Dang.Compile.LambdaLift
+import Dang.Compile.Rename
 import Core.AST
 import Core.Interface (moduleInterface)
 import Dang.IO

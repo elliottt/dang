@@ -5,7 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 
 
-module Compile.LambdaLift (
+module Dang.Compile.LambdaLift (
     lambdaLift
   ) where
 
