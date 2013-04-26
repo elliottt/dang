@@ -3,11 +3,16 @@ module Dang.FileName where
 import System.FilePath
 
 
-bcfile :: FilePath -> FilePath
+type SourceFile = FilePath
+
+-- | Turn a source file into the bitcode file it targets.
+bcfile :: SourceFile -> FilePath
 bcfile path = dropExtension path <.> "bc"
 
-ofile :: FilePath -> FilePath
+-- | Turn a source file name into the object file it targets.
+ofile :: SourceFile -> FilePath
 ofile path = dropExtension path <.> "o"
 
-ifile :: FilePath -> FilePath
+-- | Turn a source file into the interface file it targets.
+ifile :: SourceFile -> FilePath
 ifile path = dropExtension path <.> "di"
