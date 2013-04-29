@@ -1,9 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Syntax.Quote ( termQQ ) where
+module Dang.Syntax.Quote ( termQQ ) where
 
-import Syntax.Parser (parseTerm)
-import Syntax.ParserCore (runParserQ)
+import Dang.Syntax.Parser (parseTerm)
+import Dang.Syntax.ParserCore (runParserQ)
 
 import Control.Monad ((<=<))
 import Language.Haskell.TH.Quote (QuasiQuoter(..))

@@ -3,7 +3,7 @@
 
 module TypeChecker.Vars where
 
-import Pretty
+import Dang.Pretty
 import QualName
 import Variables
 

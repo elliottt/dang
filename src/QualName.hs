@@ -3,7 +3,7 @@
 
 module QualName where
 
-import Pretty
+import Dang.Pretty
 import Traversal (Data,Typeable)
 import Utils (splitLast)
 

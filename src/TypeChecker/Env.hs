@@ -4,8 +4,8 @@
 module TypeChecker.Env where
 
 import Core.AST (Term)
+import Dang.Pretty (Pretty(pp),declBlock,ppr,(<+>),text)
 import QualName (QualName)
-import Pretty (Pretty(pp),declBlock,ppr,(<+>),text)
 import TypeChecker.Unify (Types(..))
 
 import qualified Data.Foldable as Fold

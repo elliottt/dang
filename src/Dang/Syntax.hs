@@ -1,4 +1,4 @@
-module Syntax (
+module Dang.Syntax (
     -- * Parsing
     loadModule
   , parseSource
@@ -11,13 +11,13 @@ module Syntax (
 
 import Dang.IO (logStage,logInfo,logDebug,onFileNotFound,loadFile)
 import Dang.Monad (Dang,io,raiseE)
-import Pretty (pretty)
-import Syntax.Layout (layout)
-import Syntax.Lexeme (Lexeme(..))
-import Syntax.Lexer (scan)
-import Syntax.Parser (parseModule)
-import Syntax.ParserCore (runParser)
-import Syntax.AST (Module)
+import Dang.Pretty (pretty)
+import Dang.Syntax.AST (Module)
+import Dang.Syntax.Layout (layout)
+import Dang.Syntax.Lexeme (Lexeme(..))
+import Dang.Syntax.Lexer (scan)
+import Dang.Syntax.Parser (parseModule)
+import Dang.Syntax.ParserCore (runParser)
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L

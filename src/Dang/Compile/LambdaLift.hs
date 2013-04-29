@@ -12,7 +12,7 @@ module Dang.Compile.LambdaLift (
 import Core.AST
 import Dang.IO
 import Dang.Monad
-import Pretty (pretty)
+import Dang.Pretty (pretty)
 import QualName (QualName,Name,simpleName,qualSymbol)
 import TypeChecker.Types (Type,uvar,Forall(..),Kind)
 import TypeChecker.Unify (inst,quantify,typeVars)

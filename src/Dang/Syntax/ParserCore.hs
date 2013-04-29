@@ -2,16 +2,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Syntax.ParserCore where
+module Dang.Syntax.ParserCore where
 
+import Dang.Syntax.AST
+import Dang.Syntax.Layout (layout)
+import Dang.Syntax.Lexeme
+import Dang.Syntax.Lexer (scan)
+import Dang.Syntax.Renumber (renumber)
 import Data.ClashMap as CM
 import ModuleSystem.Export (Export(..))
 import QualName
-import Syntax.AST
-import Syntax.Layout (layout)
-import Syntax.Lexer (scan)
-import Syntax.Lexeme
-import Syntax.Renumber (renumber)
 import TypeChecker.Types
 import TypeChecker.Unify
 

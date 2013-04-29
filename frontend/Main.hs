@@ -1,12 +1,12 @@
 module Main where
 
 import Dang.Compile (compile)
-import Dang.IO
 import Dang.FileName
+import Dang.IO
 import Dang.Monad
+import Dang.Syntax
 import Link (link)
 import ModuleSystem
-import Syntax
 import TypeChecker
 
 import MonadLib

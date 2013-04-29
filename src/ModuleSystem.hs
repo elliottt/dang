@@ -3,12 +3,12 @@ module ModuleSystem (
   scopeCheck
   ) where
 
-import Dang.Monad (Dang)
 import Dang.IO (logStage,logInfo,logDebug)
+import Dang.Monad (Dang)
+import Dang.Pretty (pretty)
+import Dang.Syntax.AST (Module)
 import ModuleSystem.Interface (InterfaceSet)
 import ModuleSystem.ScopeCheck (runScope,scopeCheckModule)
-import Pretty (pretty)
-import Syntax.AST (Module)
 
 scopeCheck :: Module -> Dang (InterfaceSet,Module)
 scopeCheck m = do

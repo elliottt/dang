@@ -2,11 +2,11 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Syntax.AST where
+module Dang.Syntax.AST where
 
+import Dang.Pretty
 import ModuleSystem.Export
     (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
-import Pretty
 import QualName
 import Traversal (Data,Typeable)
 import TypeChecker.Types

@@ -5,9 +5,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Syntax.Lexer where
+module Dang.Syntax.Lexer where
 
-import Syntax.Lexeme
+import Dang.Syntax.Lexeme
 
 import Data.Bits (shiftR,(.&.))
 import Data.Int (Int64)

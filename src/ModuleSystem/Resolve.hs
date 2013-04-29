@@ -14,16 +14,16 @@ module ModuleSystem.Resolve (
   , resolveUses
   ) where
 
+import Dang.Syntax.AST
+    (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
+    ,TypedDecl(..),DataDecl(..),ConstrGroup(..),Constr(..),Open(..)
+    ,OpenSymbol(..))
 import ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
 import ModuleSystem.Imports (UseSet,Use(..))
 import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
 import QualName
     (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
     ,qualNamespace)
-import Syntax.AST
-    (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
-    ,TypedDecl(..),DataDecl(..),ConstrGroup(..),Constr(..),Open(..)
-    ,OpenSymbol(..))
 import TypeChecker.Types (forallData)
 import qualified Data.ClashMap as CM
 

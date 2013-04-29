@@ -6,7 +6,7 @@
 
 module TypeChecker.Types where
 
-import Pretty
+import Dang.Pretty
 import QualName
 import Traversal (Data,Typeable)
 import TypeChecker.Vars

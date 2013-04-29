@@ -2,13 +2,13 @@ module TypeChecker where
 
 import Dang.IO (logStage,logDebug,logInfo)
 import Dang.Monad (Dang)
+import Dang.Pretty (pretty)
 import ModuleSystem.Interface (InterfaceSet)
-import Pretty (pretty)
 import TypeChecker.CheckKinds (kcModule)
 import TypeChecker.CheckTypes (tcModule)
 import TypeChecker.Monad (runTC)
-import qualified Core.AST   as Core
-import qualified Syntax.AST as Syn
+import qualified Core.AST        as Core
+import qualified Dang.Syntax.AST as Syn
 
 
 -- | Top-level interface to kind checking.

@@ -6,15 +6,15 @@ module ModuleSystem.ScopeCheck where
 
 import Dang.IO (logInfo,logDebug)
 import Dang.Monad (Dang)
+import Dang.Pretty (pretty)
+import Dang.Syntax.AST
+    (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
+    ,DataDecl(..),patVars)
 import ModuleSystem.Imports
 import ModuleSystem.Interface
 import ModuleSystem.Resolve
 import ModuleSystem.Types
-import Pretty (pretty)
 import QualName
-import Syntax.AST
-    (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
-    ,DataDecl(..),patVars)
 import TypeChecker.Types (Type(..),Kind)
 import TypeChecker.Vars (TParam())
 import qualified Data.ClashMap as CM

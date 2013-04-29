@@ -1,15 +1,15 @@
 module Dang.Compile where
 
 import CodeGen
-import Dang.Compile.LambdaLift
-import Dang.Compile.Rename
 import Core.AST
 import Core.Interface (moduleInterface)
+import Dang.Compile.LambdaLift
+import Dang.Compile.Rename
 import Dang.IO
 import Dang.Monad
+import Dang.Pretty
 import Dang.Tool
 import ModuleSystem.Interface (InterfaceSet,Interface,writeInterface)
-import Pretty
 
 import System.IO (hPrint,hFlush)
 

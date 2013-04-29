@@ -3,7 +3,7 @@
 
 module ModuleSystem.Export where
 
-import Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
+import Dang.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 import Traversal (Data,Typeable)
 
 import Data.Function (on)

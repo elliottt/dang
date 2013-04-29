@@ -1,7 +1,7 @@
-module Syntax.Renumber where
+module Dang.Syntax.Renumber where
 
+import Dang.Syntax.AST (ConstrGroup(..),Constr(..))
 import QualName (Name)
-import Syntax.AST (ConstrGroup(..),Constr(..))
 import TypeChecker.Types (Type(..),uvar,Forall(..))
 import TypeChecker.Vars (Index,TParam(..),TVar(..))
 

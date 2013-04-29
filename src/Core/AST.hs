@@ -7,10 +7,10 @@ module Core.AST (
   , PrimTerm(..)
   ) where
 
+import Dang.Pretty
+import Dang.Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import ModuleSystem.Export (Exported(..),Export(..))
-import Pretty
 import QualName (QualName,Name,simpleName)
-import Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import Traversal (Data,Typeable)
 import TypeChecker.Types (Type,Forall(..),forallData,tarrow)
 import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))

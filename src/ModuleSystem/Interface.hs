@@ -5,11 +5,11 @@ module ModuleSystem.Interface where
 
 import Dang.IO (withROBinaryFile,withWOBinaryFile)
 import Dang.Monad (Dang,io)
+import Dang.Syntax.AST
+    (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
 import ModuleSystem.Export (Export(..))
 import ModuleSystem.Types (UsedName(..))
 import QualName
-import Syntax.AST
-    (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
 import TypeChecker.Types
     (Kind,Scheme,Forall(..),putForall,getForall,putScheme,getScheme,putType
     ,getType,putKind,getKind)

@@ -4,10 +4,10 @@ module TypeChecker.CheckKinds where
 
 import Dang.IO
 import Dang.Monad
+import Dang.Pretty
+import Dang.Syntax.AST
 import ModuleSystem.Interface (HasInterface,getKinds)
-import Pretty
 import QualName
-import Syntax.AST
 import TypeChecker.Env
 import TypeChecker.Monad
 import TypeChecker.Types

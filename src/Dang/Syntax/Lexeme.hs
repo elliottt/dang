@@ -1,4 +1,4 @@
-module Syntax.Lexeme where
+module Dang.Syntax.Lexeme where
 
 
 -- Positions -------------------------------------------------------------------

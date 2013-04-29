@@ -1,5 +1,5 @@
-module Pretty (
-    module Pretty
+module Dang.Pretty (
+    module Dang.Pretty
   , module Text.PrettyPrint
   ) where
 

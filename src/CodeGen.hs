@@ -9,8 +9,8 @@ module CodeGen (
 import Core.AST (Module)
 import Dang.IO (logStage)
 import Dang.Monad (Dang,whenDebugOpt,dbgDumpLLVM,io)
+import Dang.Pretty (Doc,empty)
 import ModuleSystem.Interface (InterfaceSet,Interface)
-import Pretty (Doc,empty)
 
 import Text.LLVM (ppModule,runLLVM)
 

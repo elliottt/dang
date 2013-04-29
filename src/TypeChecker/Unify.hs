@@ -6,10 +6,10 @@ module TypeChecker.Unify where
 
 import Core.AST
 import Dang.Monad
-import Pretty
+import Dang.Pretty
 import TypeChecker.Types
 import TypeChecker.Vars
-import Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
+import Dang.Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)

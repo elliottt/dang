@@ -1,11 +1,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternGuards #-}
 
-module Syntax.Layout (
+module Dang.Syntax.Layout (
     layout
   ) where
 
-import Syntax.Lexeme
+import Dang.Syntax.Lexeme
 
 
 -- Layout Levels ---------------------------------------------------------------

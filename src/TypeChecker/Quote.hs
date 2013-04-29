@@ -2,8 +2,8 @@
 
 module TypeChecker.Quote where
 
-import Syntax.Parser (parseType,parseScheme)
-import Syntax.ParserCore (runParserQ)
+import Dang.Syntax.Parser (parseType,parseScheme)
+import Dang.Syntax.ParserCore (runParserQ)
 
 import Control.Monad ((<=<))
 import Language.Haskell.TH.Quote (QuasiQuoter(..))

@@ -19,12 +19,12 @@ module ModuleSystem.Imports (
   ) where
 
 import Dang.Monad (Dang,Exception,raiseE)
+import Dang.Syntax.AST
+    (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
+    ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
 import ModuleSystem.Interface
     (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import QualName (QualName,isSimpleName,qualModule)
-import Syntax.AST
-    (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
-    ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
 import TypeChecker.Types (Forall(..),Qual(..),Type(..))
 
 import Control.Monad (guard)

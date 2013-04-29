@@ -8,7 +8,7 @@ module Dang.Compile.Rename (
 import Core.AST
 import Dang.IO (logInfo,logStage,logDebug)
 import Dang.Monad (Dang)
-import Pretty (pretty)
+import Dang.Pretty (pretty)
 import QualName
 
 import Control.Applicative (Applicative(..),(<$>))

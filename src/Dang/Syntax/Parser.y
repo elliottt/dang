@@ -3,15 +3,15 @@
 
 -- vim: filetype=haskell
 
-module Syntax.Parser where
+module Dang.Syntax.Parser where
 
+import Dang.Syntax.AST
+import Dang.Syntax.Lexeme
+import Dang.Syntax.Lexer
+import Dang.Syntax.ParserCore
 import ModuleSystem.Export
 import ModuleSystem.Types
 import QualName
-import Syntax.AST
-import Syntax.Lexeme
-import Syntax.Lexer
-import Syntax.ParserCore
 import TypeChecker.Types
 import TypeChecker.Vars
 
