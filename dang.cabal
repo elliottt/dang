@@ -9,21 +9,13 @@ category:            Language
 build-type:          Simple
 cabal-version:       >=1.10
 
-default-language:   Haskell2010
-
 library
   build-tools:          alex, happy
   hs-source-dirs:       src
   ghc-options:          -Wall
-  exposed-modules:      CodeGen,
-                        --CodeGen.Core,
-                        --CodeGen.Env,
-                        --CodeGen.Rts,
-                        --CodeGen.Types,
-                        Colors,
-                        Core.AST,
-                        Core.Interface,
+  default-language:     Haskell2010
 
+  exposed-modules:
                         -- parsing
                         Dang.Syntax,
                         Dang.Syntax.AST,
@@ -35,45 +27,56 @@ library
                         Dang.Syntax.Quote,
                         Dang.Syntax.Renumber,
 
-                        -- code generation
+                        -- module system
+                        Dang.ModuleSystem,
+                        Dang.ModuleSystem.Export,
+                        Dang.ModuleSystem.Imports,
+                        Dang.ModuleSystem.Interface,
+                        Dang.ModuleSystem.Resolve,
+                        Dang.ModuleSystem.ScopeCheck,
+                        Dang.ModuleSystem.Types,
+
+                        -- type checking
+                        Dang.Core.AST,
+                        Dang.Core.Interface,
+                        Dang.TypeChecker,
+                        Dang.TypeChecker.CheckKinds,
+                        Dang.TypeChecker.CheckTypes,
+                        Dang.TypeChecker.Env,
+                        Dang.TypeChecker.Monad,
+                        Dang.TypeChecker.Quote,
+                        Dang.TypeChecker.Types,
+                        Dang.TypeChecker.Unify,
+                        Dang.TypeChecker.Vars,
+
+                        -- compilation
                         Dang.Compile,
                         Dang.Compile.LambdaLift,
                         Dang.Compile.Rename,
-                        --Desugar,
+                        Dang.Link,
+
+                        -- code generation
+                        Dang.CodeGen,
+                        --Dang.CodeGen.Core,
+                        --Dang.CodeGen.Env,
+                        --Dang.CodeGen.Rts,
+                        --Dang.CodeGen.Types,
+                        --Dang.Desugar,
 
                         -- utility
+                        Dang.Colors
                         Dang.FileName,
                         Dang.IO,
                         Dang.Monad,
                         Dang.Pretty,
                         Dang.Tool,
                         Data.ClashMap,
-
-                        Link,
-                        ModuleSystem,
-                        ModuleSystem.Export,
-                        ModuleSystem.Imports,
-                        ModuleSystem.Interface,
-                        ModuleSystem.Resolve,
-                        ModuleSystem.ScopeCheck,
-                        ModuleSystem.Types,
-                        Prim,
-                        QualName,
-                        ReadWrite,
-
-
-                        Traversal,
-                        TypeChecker,
-                        TypeChecker.CheckKinds,
-                        TypeChecker.CheckTypes,
-                        TypeChecker.Env,
-                        TypeChecker.Monad,
-                        TypeChecker.Quote,
-                        TypeChecker.Types,
-                        TypeChecker.Unify,
-                        TypeChecker.Vars,
-                        Utils,
-                        Variables
+                        Dang.Prim,
+                        Dang.QualName,
+                        Dang.ReadWrite,
+                        Dang.Traversal,
+                        Dang.Utils,
+                        Dang.Variables
 
   build-depends:        base             >= 4,
                         GraphSCC         >= 1.0,
@@ -93,6 +96,7 @@ library
 
 executable dang
   main-is:              Main.hs
+  default-language:     Haskell2010
   hs-source-dirs:       frontend
   ghc-options:          -Wall
   build-depends:        base             >= 4,

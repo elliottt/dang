@@ -9,15 +9,15 @@ module Dang.Compile.LambdaLift (
     lambdaLift
   ) where
 
-import Core.AST
+import Dang.Core.AST
 import Dang.IO
 import Dang.Monad
 import Dang.Pretty (pretty)
-import QualName (QualName,Name,simpleName,qualSymbol)
-import TypeChecker.Types (Type,uvar,Forall(..),Kind)
-import TypeChecker.Unify (inst,quantify,typeVars)
-import TypeChecker.Vars (TParam,modifyTParamIndex)
-import Variables (freeLocals,freeVars)
+import Dang.QualName (QualName,Name,simpleName,qualSymbol)
+import Dang.TypeChecker.Types (Type,uvar,Forall(..),Kind)
+import Dang.TypeChecker.Unify (inst,quantify,typeVars)
+import Dang.TypeChecker.Vars (TParam,modifyTParamIndex)
+import Dang.Variables (freeLocals,freeVars)
 
 import Control.Applicative(Applicative(..),(<$>))
 import Data.Generics (extM,Data(gmapM))

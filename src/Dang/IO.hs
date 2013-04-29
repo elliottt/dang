@@ -18,7 +18,7 @@ module Dang.IO (
   , logError
   ) where
 
-import Colors
+import Dang.Colors
 import Dang.Monad
 
 import MonadLib

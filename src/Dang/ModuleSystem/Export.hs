@@ -1,10 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module ModuleSystem.Export where
+module Dang.ModuleSystem.Export where
 
 import Dang.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
-import Traversal (Data,Typeable)
+import Dang.Traversal (Data,Typeable)
 
 import Data.Function (on)
 import Data.List (groupBy)

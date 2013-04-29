@@ -1,19 +1,19 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Core.AST (
-    module Core.AST
+module Dang.Core.AST (
+    module Dang.Core.AST
   , Literal(..)
   , PrimType(..)
   , PrimTerm(..)
   ) where
 
+import Dang.ModuleSystem.Export (Exported(..),Export(..))
 import Dang.Pretty
+import Dang.QualName (QualName,Name,simpleName)
 import Dang.Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
-import ModuleSystem.Export (Exported(..),Export(..))
-import QualName (QualName,Name,simpleName)
-import Traversal (Data,Typeable)
-import TypeChecker.Types (Type,Forall(..),forallData,tarrow)
-import Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
+import Dang.Traversal (Data,Typeable)
+import Dang.TypeChecker.Types (Type,Forall(..),forallData,tarrow)
+import Dang.Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import Data.List (nub)
 import qualified Data.Set as Set

@@ -1,9 +1,9 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Variables where
+module Dang.Variables where
 
-import QualName
+import Dang.QualName
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)

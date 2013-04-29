@@ -1,4 +1,4 @@
-module ModuleSystem.Resolve (
+module Dang.ModuleSystem.Resolve (
 
     -- * Resolved Names
     ResolvedNames
@@ -14,17 +14,17 @@ module ModuleSystem.Resolve (
   , resolveUses
   ) where
 
+import Dang.ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
+import Dang.ModuleSystem.Imports (UseSet,Use(..))
+import Dang.ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
+import Dang.QualName
+    (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
+    ,qualNamespace)
 import Dang.Syntax.AST
     (Module(..),modNamespace,PrimType(..),PrimTerm(..),UntypedDecl(..)
     ,TypedDecl(..),DataDecl(..),ConstrGroup(..),Constr(..),Open(..)
     ,OpenSymbol(..))
-import ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
-import ModuleSystem.Imports (UseSet,Use(..))
-import ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
-import QualName
-    (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
-    ,qualNamespace)
-import TypeChecker.Types (forallData)
+import Dang.TypeChecker.Types (forallData)
 import qualified Data.ClashMap as CM
 
 import Data.List (foldl')

@@ -1,4 +1,4 @@
-module Colors (
+module Dang.Colors (
     Command(), escape
 
   , setGraphics, withGraphics

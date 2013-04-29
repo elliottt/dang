@@ -1,11 +1,11 @@
-module Core.Interface where
+module Dang.Core.Interface where
 
-import Core.AST
+import Dang.Core.AST
     (Module(..),Decl(..),declType,PrimType(..),PrimTerm(..))
-import ModuleSystem.Export (isExported)
-import ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
-import QualName (mangle,QualName,primName,qualNamespace,Namespace)
-import TypeChecker.Types (toQual)
+import Dang.ModuleSystem.Export (isExported)
+import Dang.ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
+import Dang.QualName (mangle,QualName,primName,qualNamespace,Namespace)
+import Dang.TypeChecker.Types (toQual)
 
 import qualified Data.Map as Map
 

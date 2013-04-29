@@ -4,16 +4,16 @@
 
 module Dang.Syntax.ParserCore where
 
+import Dang.ModuleSystem.Export (Export(..))
+import Dang.QualName
 import Dang.Syntax.AST
 import Dang.Syntax.Layout (layout)
 import Dang.Syntax.Lexeme
 import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Renumber (renumber)
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Unify
 import Data.ClashMap as CM
-import ModuleSystem.Export (Export(..))
-import QualName
-import TypeChecker.Types
-import TypeChecker.Unify
 
 import Control.Applicative (Applicative)
 import Data.List (nub)

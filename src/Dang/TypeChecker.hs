@@ -1,13 +1,13 @@
-module TypeChecker where
+module Dang.TypeChecker where
 
 import Dang.IO (logStage,logDebug,logInfo)
 import Dang.Monad (Dang)
 import Dang.Pretty (pretty)
-import ModuleSystem.Interface (InterfaceSet)
-import TypeChecker.CheckKinds (kcModule)
-import TypeChecker.CheckTypes (tcModule)
-import TypeChecker.Monad (runTC)
-import qualified Core.AST        as Core
+import Dang.ModuleSystem.Interface (InterfaceSet)
+import Dang.TypeChecker.CheckKinds (kcModule)
+import Dang.TypeChecker.CheckTypes (tcModule)
+import Dang.TypeChecker.Monad (runTC)
+import qualified Dang.Core.AST   as Core
 import qualified Dang.Syntax.AST as Syn
 
 

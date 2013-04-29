@@ -5,15 +5,15 @@
 
 module Dang.Syntax.Parser where
 
+import Dang.ModuleSystem.Export
+import Dang.ModuleSystem.Types
+import Dang.QualName
 import Dang.Syntax.AST
 import Dang.Syntax.Lexeme
 import Dang.Syntax.Lexer
 import Dang.Syntax.ParserCore
-import ModuleSystem.Export
-import ModuleSystem.Types
-import QualName
-import TypeChecker.Types
-import TypeChecker.Vars
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Vars
 
 import Data.Monoid (mappend,mconcat)
 import MonadLib

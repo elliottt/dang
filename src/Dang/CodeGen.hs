@@ -1,4 +1,4 @@
-module CodeGen (
+module Dang.CodeGen (
     codeGen
   ) where
 
@@ -6,11 +6,11 @@ module CodeGen (
 --import CodeGen.Rts      as Exports
 --import CodeGen.Types    as Exports
 
-import Core.AST (Module)
+import Dang.Core.AST (Module)
 import Dang.IO (logStage)
+import Dang.ModuleSystem.Interface (InterfaceSet,Interface)
 import Dang.Monad (Dang,whenDebugOpt,dbgDumpLLVM,io)
 import Dang.Pretty (Doc,empty)
-import ModuleSystem.Interface (InterfaceSet,Interface)
 
 import Text.LLVM (ppModule,runLLVM)
 

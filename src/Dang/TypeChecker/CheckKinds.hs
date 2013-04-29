@@ -1,19 +1,19 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module TypeChecker.CheckKinds where
+module Dang.TypeChecker.CheckKinds where
 
 import Dang.IO
+import Dang.ModuleSystem.Interface (HasInterface,getKinds)
 import Dang.Monad
 import Dang.Pretty
+import Dang.QualName
 import Dang.Syntax.AST
-import ModuleSystem.Interface (HasInterface,getKinds)
-import QualName
-import TypeChecker.Env
-import TypeChecker.Monad
-import TypeChecker.Types
-import TypeChecker.Unify as Types
-import TypeChecker.Vars
-import Variables (sccToList,sccFreeNames)
+import Dang.TypeChecker.Env
+import Dang.TypeChecker.Monad
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Unify as Types
+import Dang.TypeChecker.Vars
+import Dang.Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (foldM,mapAndUnzipM,replicateM)

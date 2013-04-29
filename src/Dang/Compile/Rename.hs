@@ -5,11 +5,11 @@ module Dang.Compile.Rename (
     rename
   ) where
 
-import Core.AST
+import Dang.Core.AST
 import Dang.IO (logInfo,logStage,logDebug)
 import Dang.Monad (Dang)
 import Dang.Pretty (pretty)
-import QualName
+import Dang.QualName
 
 import Control.Applicative (Applicative(..),(<$>))
 import Data.Generics (extM,Data(gmapM))

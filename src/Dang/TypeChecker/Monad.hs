@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module TypeChecker.Monad (
+module Dang.TypeChecker.Monad (
     TC()
   , runTC
 
@@ -27,10 +27,10 @@ module TypeChecker.Monad (
   ) where
 
 import Dang.Monad
-import QualName (QualName,Name,simpleName)
-import TypeChecker.Types
-import TypeChecker.Unify
-import TypeChecker.Vars
+import Dang.QualName (QualName,Name,simpleName)
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Unify
+import Dang.TypeChecker.Vars
 
 import Control.Applicative (Applicative)
 import Control.Monad.Fix (MonadFix)

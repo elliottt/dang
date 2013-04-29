@@ -1,21 +1,21 @@
 {-# LANGUAGE DoRec #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module TypeChecker.CheckTypes where
+module Dang.TypeChecker.CheckTypes where
 
-import Core.AST
+import Dang.Core.AST
 import Dang.IO
+import Dang.ModuleSystem.Export (Export(..))
+import Dang.ModuleSystem.Interface (HasInterface,getTypes)
 import Dang.Monad
 import Dang.Pretty
-import ModuleSystem.Export (Export(..))
-import ModuleSystem.Interface (HasInterface,getTypes)
-import QualName
-import TypeChecker.Env
-import TypeChecker.Monad
-import TypeChecker.Types
-import TypeChecker.Unify (quantify,typeVars,Types)
-import TypeChecker.Vars
-import Variables (freeVars,sccFreeNames,sccToList)
+import Dang.QualName
+import Dang.TypeChecker.Env
+import Dang.TypeChecker.Monad
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Unify (quantify,typeVars,Types)
+import Dang.TypeChecker.Vars
+import Dang.Variables (freeVars,sccFreeNames,sccToList)
 import qualified Dang.Syntax.AST as Syn
 
 import Control.Monad (foldM,mapAndUnzipM,unless)

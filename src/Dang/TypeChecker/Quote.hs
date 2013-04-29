@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module TypeChecker.Quote where
+module Dang.TypeChecker.Quote where
 
 import Dang.Syntax.Parser (parseType,parseScheme)
 import Dang.Syntax.ParserCore (runParserQ)

@@ -1,11 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module TypeChecker.Vars where
+module Dang.TypeChecker.Vars where
 
 import Dang.Pretty
-import QualName
-import Variables
+import Dang.QualName
+import Dang.Variables
 
 import Control.Applicative (Applicative(..),(<$>))
 import Data.Data (Data)

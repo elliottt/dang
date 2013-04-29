@@ -2,14 +2,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
 
-module TypeChecker.Unify where
+module Dang.TypeChecker.Unify where
 
-import Core.AST
+import Dang.Core.AST
 import Dang.Monad
 import Dang.Pretty
-import TypeChecker.Types
-import TypeChecker.Vars
 import Dang.Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
+import Dang.TypeChecker.Types
+import Dang.TypeChecker.Vars
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)

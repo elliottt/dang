@@ -1,12 +1,12 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module TypeChecker.Env where
+module Dang.TypeChecker.Env where
 
-import Core.AST (Term)
+import Dang.Core.AST (Term)
 import Dang.Pretty (Pretty(pp),declBlock,ppr,(<+>),text)
-import QualName (QualName)
-import TypeChecker.Unify (Types(..))
+import Dang.QualName (QualName)
+import Dang.TypeChecker.Unify (Types(..))
 
 import qualified Data.Foldable as Fold
 import qualified Data.Map as Map

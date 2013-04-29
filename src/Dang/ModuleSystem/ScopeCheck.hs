@@ -2,21 +2,21 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternGuards #-}
 
-module ModuleSystem.ScopeCheck where
+module Dang.ModuleSystem.ScopeCheck where
 
 import Dang.IO (logInfo,logDebug)
+import Dang.ModuleSystem.Imports
+import Dang.ModuleSystem.Interface
+import Dang.ModuleSystem.Resolve
+import Dang.ModuleSystem.Types
 import Dang.Monad (Dang)
 import Dang.Pretty (pretty)
 import Dang.Syntax.AST
     (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
     ,DataDecl(..),patVars)
-import ModuleSystem.Imports
-import ModuleSystem.Interface
-import ModuleSystem.Resolve
-import ModuleSystem.Types
-import QualName
-import TypeChecker.Types (Type(..),Kind)
-import TypeChecker.Vars (TParam())
+import Dang.QualName
+import Dang.TypeChecker.Types (Type(..),Kind)
+import Dang.TypeChecker.Vars (TParam())
 import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>))

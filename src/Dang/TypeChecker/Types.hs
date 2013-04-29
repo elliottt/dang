@@ -4,13 +4,13 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveFunctor #-}
 
-module TypeChecker.Types where
+module Dang.TypeChecker.Types where
 
 import Dang.Pretty
-import QualName
-import Traversal (Data,Typeable)
-import TypeChecker.Vars
-import Variables
+import Dang.QualName
+import Dang.Traversal (Data,Typeable)
+import Dang.TypeChecker.Vars
+import Dang.Variables
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)

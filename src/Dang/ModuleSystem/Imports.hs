@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module ModuleSystem.Imports (
+module Dang.ModuleSystem.Imports (
     -- * Usage Sets
     Use(..)
   , UseSet
@@ -18,14 +18,14 @@ module ModuleSystem.Imports (
   , missingInterface
   ) where
 
+import Dang.ModuleSystem.Interface
+    (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import Dang.Monad (Dang,Exception,raiseE)
+import Dang.QualName (QualName,isSimpleName,qualModule)
 import Dang.Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
-import ModuleSystem.Interface
-    (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
-import QualName (QualName,isSimpleName,qualModule)
-import TypeChecker.Types (Forall(..),Qual(..),Type(..))
+import Dang.TypeChecker.Types (Forall(..),Qual(..),Type(..))
 
 import Control.Monad (guard)
 import Data.List (foldl')

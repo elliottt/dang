@@ -1,16 +1,16 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module ModuleSystem.Interface where
+module Dang.ModuleSystem.Interface where
 
 import Dang.IO (withROBinaryFile,withWOBinaryFile)
+import Dang.ModuleSystem.Export (Export(..))
+import Dang.ModuleSystem.Types (UsedName(..))
 import Dang.Monad (Dang,io)
+import Dang.QualName
 import Dang.Syntax.AST
     (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
-import ModuleSystem.Export (Export(..))
-import ModuleSystem.Types (UsedName(..))
-import QualName
-import TypeChecker.Types
+import Dang.TypeChecker.Types
     (Kind,Scheme,Forall(..),putForall,getForall,putScheme,getScheme,putType
     ,getType,putKind,getKind)
 

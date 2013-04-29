@@ -1,9 +1,9 @@
 module Dang.Syntax.Renumber where
 
+import Dang.QualName (Name)
 import Dang.Syntax.AST (ConstrGroup(..),Constr(..))
-import QualName (Name)
-import TypeChecker.Types (Type(..),uvar,Forall(..))
-import TypeChecker.Vars (Index,TParam(..),TVar(..))
+import Dang.TypeChecker.Types (Type(..),uvar,Forall(..))
+import Dang.TypeChecker.Vars (Index,TParam(..),TVar(..))
 
 import Control.Monad (ap)
 import Control.Monad.ST (ST,runST)

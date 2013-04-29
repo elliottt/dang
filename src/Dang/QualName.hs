@@ -1,11 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module QualName where
+module Dang.QualName where
 
 import Dang.Pretty
-import Traversal (Data,Typeable)
-import Utils (splitLast)
+import Dang.Traversal (Data,Typeable)
+import Dang.Utils (splitLast)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)

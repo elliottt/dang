@@ -3,11 +3,11 @@ module Main where
 import Dang.Compile (compile)
 import Dang.FileName
 import Dang.IO
+import Dang.Link (link)
+import Dang.ModuleSystem
 import Dang.Monad
 import Dang.Syntax
-import Link (link)
-import ModuleSystem
-import TypeChecker
+import Dang.TypeChecker
 
 import MonadLib
 import System.FilePath (dropExtension)

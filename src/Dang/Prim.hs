@@ -1,4 +1,4 @@
-module Prim where
+module Dang.Prim where
 
 type Primitive = (String,Int)
 

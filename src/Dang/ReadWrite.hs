@@ -1,6 +1,6 @@
 {-# LANGUAGE EmptyDataDecls #-}
 
-module ReadWrite where
+module Dang.ReadWrite where
 
 data R
 data RW

@@ -1,4 +1,4 @@
-module Traversal (
+module Dang.Traversal (
     Data(..)
   , Typeable()
   ) where

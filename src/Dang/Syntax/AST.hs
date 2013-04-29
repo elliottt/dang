@@ -4,13 +4,13 @@
 
 module Dang.Syntax.AST where
 
-import Dang.Pretty
-import ModuleSystem.Export
+import Dang.ModuleSystem.Export
     (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
-import QualName
-import Traversal (Data,Typeable)
-import TypeChecker.Types
-import Variables
+import Dang.Pretty
+import Dang.QualName
+import Dang.Traversal (Data,Typeable)
+import Dang.TypeChecker.Types
+import Dang.Variables
 
 import Data.List (partition,nub)
 import Language.Haskell.TH.Syntax (liftString,Lift(..))

@@ -1,4 +1,4 @@
-module Link where
+module Dang.Link where
 
 import Dang.IO (logStage)
 import Dang.Monad (Dang)

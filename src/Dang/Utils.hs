@@ -1,4 +1,4 @@
-module Utils where
+module Dang.Utils where
 
 (!!?) :: [a] -> Int -> Maybe a
 as !!? n | n < 0     = Nothing

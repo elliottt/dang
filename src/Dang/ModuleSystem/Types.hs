@@ -1,7 +1,7 @@
-module ModuleSystem.Types where
+module Dang.ModuleSystem.Types where
 
-import QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)
-import TypeChecker.Vars (TParam,getTParam,putTParam,TVar,getTVar,putTVar)
+import Dang.QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)
+import Dang.TypeChecker.Vars (TParam,getTParam,putTParam,TVar,getTVar,putTVar)
 
 import Control.Applicative (Applicative(..),(<$>))
 import Data.Serialize (Get,Putter,getWord8,putWord8)
