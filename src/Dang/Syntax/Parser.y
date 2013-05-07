@@ -14,54 +14,55 @@ import Dang.Syntax.Lexer
 import Dang.Syntax.ParserCore
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Vars
+import Dang.Utils.Location (Located(..),unLoc,getLoc)
 
-import Data.Monoid (mappend,mconcat)
+import Data.Monoid (mempty,mappend,mconcat)
 import MonadLib
 }
 
 %token
 
 -- reserved names
-  'let' { Lexeme $$ (TReserved "let") }
-  'in'  { Lexeme $$ (TReserved "in")  }
+  'let' { Located $$ (TReserved "let") }
+  'in'  { Located $$ (TReserved "in")  }
 
 -- symbols
-  '\\' { Lexeme $$ (TReserved "\\") }
-  '='  { Lexeme $$ (TReserved "=")  }
-  '('  { Lexeme $$ (TReserved "(")  }
-  ')'  { Lexeme $$ (TReserved ")")  }
-  '{'  { Lexeme $$ (TReserved "{")  }
-  '}'  { Lexeme $$ (TReserved "}")  }
-  ';'  { Lexeme $$ (TReserved ";")  }
-  ','  { Lexeme $$ (TReserved ",")  }
-  '.'  { Lexeme $$ (TReserved ".")  }
-  '|'  { Lexeme $$ (TReserved "|")  }
-  '_'  { Lexeme $$ (TReserved "_")  }
+  '\\' { Located $$ (TReserved "\\") }
+  '='  { Located $$ (TReserved "=")  }
+  '('  { Located $$ (TReserved "(")  }
+  ')'  { Located $$ (TReserved ")")  }
+  '{'  { Located $$ (TReserved "{")  }
+  '}'  { Located $$ (TReserved "}")  }
+  ';'  { Located $$ (TReserved ";")  }
+  ','  { Located $$ (TReserved ",")  }
+  '.'  { Located $$ (TReserved ".")  }
+  '|'  { Located $$ (TReserved "|")  }
+  '_'  { Located $$ (TReserved "_")  }
 
 -- special operators
-  '->' { Lexeme $$ (TOperIdent "->") }
-  '*'  { Lexeme $$ (TOperIdent "*")  }
-  '::' { Lexeme $$ (TOperIdent "::") }
+  '->' { Located $$ (TOperIdent "->") }
+  '*'  { Located $$ (TOperIdent "*")  }
+  '::' { Located $$ (TOperIdent "::") }
 
 -- reserved names
-  'module'    { Lexeme $$ (TReserved "module")    }
-  'where'     { Lexeme $$ (TReserved "where")     }
-  'open'      { Lexeme $$ (TReserved "open")      }
-  'as'        { Lexeme $$ (TReserved "as")        }
-  'hiding'    { Lexeme $$ (TReserved "hiding")    }
-  'public'    { Lexeme $$ (TReserved "public")    }
-  'private'   { Lexeme $$ (TReserved "private")   }
-  'primitive' { Lexeme $$ (TReserved "primitive") }
-  'type'      { Lexeme $$ (TReserved "type")      }
-  'data'      { Lexeme $$ (TReserved "data")      }
-  'case'      { Lexeme $$ (TReserved "case")      }
-  'of'        { Lexeme $$ (TReserved "of")        }
+  'module'    { Located $$ (TReserved "module")    }
+  'where'     { Located $$ (TReserved "where")     }
+  'open'      { Located $$ (TReserved "open")      }
+  'as'        { Located $$ (TReserved "as")        }
+  'hiding'    { Located $$ (TReserved "hiding")    }
+  'public'    { Located $$ (TReserved "public")    }
+  'private'   { Located $$ (TReserved "private")   }
+  'primitive' { Located $$ (TReserved "primitive") }
+  'type'      { Located $$ (TReserved "type")      }
+  'data'      { Located $$ (TReserved "data")      }
+  'case'      { Located $$ (TReserved "case")      }
+  'of'        { Located $$ (TReserved "of")        }
 
 -- identifiers
-  CONIDENT { Lexeme _ (TConIdent $$)  }
-  IDENT    { Lexeme _ (TSymIdent $$)  }
-  OPER     { Lexeme _ (TOperIdent $$) }
-  INT      { Lexeme _ (TInt $$)       }
+  CONIDENT { Located _ (TConIdent $$)  }
+  IDENT    { Located _ (TSymIdent $$)  }
+  OPER     { Located _ (TOperIdent $$) }
+  INT      { Located _ (TInt $$)       }
 
 
 %monad { Parser } { (>>=) } { return }
@@ -74,7 +75,7 @@ import MonadLib
 
 %tokentype { Lexeme }
 
-%lexer { lexer } { Lexeme initPosition TEof }
+%lexer { lexer } { Located initPosition TEof }
 
 %%
 
@@ -345,7 +346,7 @@ lexer k = do
     [] -> happyError
 
 happyError :: Parser a
-happyError  = raiseP "Happy error" nullPosition
+happyError  = raiseP "Happy error" mempty
 
-parseError l = raiseP ("Parse error near: " ++ show (lexToken l)) (lexPos l)
+parseError l = raiseP ("Parse error near: " ++ show (unLoc l)) (getLoc l)
 }

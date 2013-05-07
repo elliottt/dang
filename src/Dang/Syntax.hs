@@ -1,10 +1,12 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Syntax (
     -- * Parsing
     loadModule
   , parseSource
 
     -- * Testing
-  , Lexeme(..)
+  , Lexeme
   , testLexer
   , testLexer'
   ) where
@@ -14,10 +16,11 @@ import Dang.Monad (Dang,io,raiseE)
 import Dang.Pretty (pretty)
 import Dang.Syntax.AST (Module)
 import Dang.Syntax.Layout (layout)
-import Dang.Syntax.Lexeme (Lexeme(..))
+import Dang.Syntax.Lexeme (Lexeme)
 import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Parser (parseModule)
 import Dang.Syntax.ParserCore (runParser)
+import Dang.Utils.Location (unLoc)
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L
@@ -46,5 +49,5 @@ testLexer path = layout . scan path . L.pack
 testLexer' :: FilePath -> IO ()
 testLexer' path = do
   source <- L.readFile path
-  mapM_ print (map lexToken (layout (scan path source)))
+  mapM_ print (map unLoc (layout (scan path source)))
 

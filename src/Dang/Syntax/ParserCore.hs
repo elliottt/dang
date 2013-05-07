@@ -13,6 +13,7 @@ import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Renumber (renumber)
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify
+import Dang.Utils.Location (Range)
 import Data.ClashMap as CM
 
 import Control.Applicative (Applicative)
@@ -27,7 +28,7 @@ import qualified Data.Text.Lazy as L
 
 -- Lexer/Parser Monad ----------------------------------------------------------
 
-data Error = Error String Position deriving Show
+data Error = Error String Range deriving Show
 
 data ParserState = ParserState
   { psTokens  :: [Lexeme]
@@ -65,7 +66,7 @@ instance RunWriterM Parser [ParserError] where
   collect = Parser . collect . unParser
 
 -- | Raise an exception from the parser.
-raiseP :: String -> Position -> Parser a
+raiseP :: String -> Range -> Parser a
 raiseP msg pos = raise (Error msg pos)
 
 -- | Run the parser over the file given.
@@ -78,7 +79,7 @@ runParser ls m =
   body = do
     (res,errs) <- collect m
     unless (null errs)
-        (raiseP ("definition errors: " ++ show errs) nullPosition)
+        (raiseP ("definition errors: " ++ show errs) mempty)
     return res
 
 -- | Run the parser over a string in the Q monad.
@@ -191,12 +192,12 @@ mkPrimTerm d = mempty { parsedPrimTerms = singleton (primTermName d) d }
 mkPrimType :: PrimType -> PDecls
 mkPrimType d = mempty { parsedPrimTypes = singleton (primTypeName d) d }
 
-mkDataDecl :: Position -> [(Name,Forall ConstrGroup)] -> Parser PDecls
-mkDataDecl pos groups = do
+mkDataDecl :: Range -> [(Name,Forall ConstrGroup)] -> Parser PDecls
+mkDataDecl range groups = do
   let (ns,qgs) = unzip groups
-  when (null groups) (raiseP "No types defined by data declaration" pos)
-  n <- groupName pos ns
-  a <- groupArity pos qgs
+  when (null groups) (raiseP "No types defined by data declaration" range)
+  n <- groupName range ns
+  a <- groupArity range qgs
   let d = DataDecl
         { dataName   = n
         , dataArity  = a
@@ -206,17 +207,17 @@ mkDataDecl pos groups = do
         }
   return mempty { parsedDataDecls = [d] }
 
-groupName :: Position -> [Name] -> Parser Name
-groupName pos ns =
+groupName :: Range -> [Name] -> Parser Name
+groupName range ns =
   case nub ns of
     [n] -> return n
-    _   -> raiseP "Type names don't agree" pos
+    _   -> raiseP "Type names don't agree" range
 
-groupArity :: Position -> [Forall ConstrGroup] -> Parser Int
-groupArity pos gs =
+groupArity :: Range -> [Forall ConstrGroup] -> Parser Int
+groupArity range gs =
   case nub (map arity gs) of
     [n] -> return n
-    _   -> raiseP "Type group arities don't agree" pos
+    _   -> raiseP "Type group arities don't agree" range
   where
   arity = length . groupArgs . forallData
 

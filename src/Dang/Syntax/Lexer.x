@@ -8,6 +8,7 @@
 module Dang.Syntax.Lexer where
 
 import Dang.Syntax.Lexeme
+import Dang.Utils.Location
 
 import Data.Bits (shiftR,(.&.))
 import Data.Int (Int64)
@@ -80,24 +81,31 @@ $digit+         { emitS (TInt . read) }
 type AlexInput = LexerInput
 
 data LexerInput = LexerInput
-  { liPosn  :: !Position
-  , liChar  :: !Char
-  , liBytes :: [Word8]
-  , liInput :: L.Text
+  { liPosn   :: !Position
+  , liSource :: FilePath
+  , liChar   :: !Char
+  , liBytes  :: [Word8]
+  , liInput  :: L.Text
   } deriving (Show)
 
 initLexerInput :: FilePath -> L.Text -> LexerInput
 initLexerInput source bytes = LexerInput
-  { liPosn  = initPosition source
-  , liChar  = '\n'
-  , liBytes = []
-  , liInput = bytes
+  { liPosn   = zeroPosition
+  , liSource = source
+  , liChar   = '\n'
+  , liBytes  = []
+  , liInput  = bytes
   }
+
+-- | Build a range from the lexer state.
+mkRange :: LexerInput -> String -> Range
+mkRange li str =
+  Range (liPosn li) (movesPos (liPosn li) str) (Just (liSource li))
 
 fillBuffer :: LexerInput -> Maybe LexerInput
 fillBuffer li = do
   (c,rest) <- L.uncons (liInput li)
-  return $! LexerInput
+  return $! li
     { liPosn  = movePos (liPosn li) c
     , liBytes = utf8Encode c
     , liChar  = c
@@ -159,7 +167,6 @@ scan source bytes = fst (runId (runStateT st0 (unLexer loop)))
 
   loop = do
     inp <- alexGetInput
-    let pos = liPosn inp
     sc  <- alexGetStartCode
     case alexScan inp sc of
 
@@ -176,9 +183,10 @@ scan source bytes = fst (runId (runStateT st0 (unLexer loop)))
         loop
 
       AlexEOF ->
-        return [Lexeme { lexPos = pos { posCol = 0 }, lexToken = TEof }]
+        return [Located (mkRange inp "") TEof]
 
-      AlexError inp' -> return [Lexeme pos (TError "Lexical error")]
+      AlexError inp' ->
+        return [Located (mkRange inp' "") (TError "Lexical error")]
 
 alexSetInput :: AlexInput -> Lexer ()
 alexSetInput inp = do
@@ -207,16 +215,13 @@ type AlexAction result = AlexInput -> Int -> result
 
 -- | Emit a token from the lexer
 emitT :: Token -> AlexAction (Lexer (Maybe Lexeme))
-emitT tok li _ = return $ Just $! Lexeme
-  { lexPos   = liPosn li
-  , lexToken = tok
-  }
+emitT tok = emitS (const tok)
 
 emitS :: (String -> Token) -> AlexAction (Lexer (Maybe Lexeme))
-emitS mk li len = return $ Just $! Lexeme
-  { lexPos   = liPosn li
-  , lexToken = mk (L.unpack (L.take (fromIntegral len) (liInput li)))
-  }
+emitS mk li len = return (Just $! Located (mkRange li str) (mk str))
+  where
+  range = mkRange li str
+  str   = L.unpack (L.take (fromIntegral len) (liInput li))
 
 reserved :: AlexAction (Lexer (Maybe Lexeme))
 reserved  = emitS TReserved

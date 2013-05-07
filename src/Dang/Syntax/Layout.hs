@@ -6,6 +6,7 @@ module Dang.Syntax.Layout (
   ) where
 
 import Dang.Syntax.Lexeme
+import Dang.Utils.Location
 
 
 -- Layout Levels ---------------------------------------------------------------
@@ -59,39 +60,40 @@ pushLevel :: Level -> State -> Layout
 pushLevel lev st = levCont lev (lev:st)
 
 -- | Create a block starting token.
-start :: Position -> Lexeme
-start pos = Lexeme { lexPos = pos, lexToken = TReserved "{" }
+start :: Range -> Lexeme
+start range = Located range (TReserved "{")
 
 -- | Emit a separator if a token falls on a level boundary.
 sep :: State -> Lexeme -> [Lexeme]
 sep st lx = case st of
-  l:_ | levIndent l == posCol pos -> [Lexeme pos (levSep l),lx]
+  l:_ | levIndent l == posCol pos -> [Located range (levSep l),lx]
   _                               -> [lx]
   where
-  pos = lexPos lx
+  range = getLoc lx
+  pos   = rangeStart range
 
 -- | Create a block closing token.
-close :: Position -> Lexeme
-close pos = Lexeme { lexPos = pos, lexToken = TReserved "}" }
+close :: Range -> Lexeme
+close range = Located range (TReserved "}")
 
 
 -- Lexeme Predicates -----------------------------------------------------------
 
 -- | Lexemes that begin data-declaration layout.
 startsData :: Lexeme -> Bool
-startsData lx = case lexToken lx of
+startsData lx = case unLoc lx of
   TReserved "data" -> True
   _                -> False
 
 -- | The ``='' token, when processed after a ``data'' token.
 startsConstr :: Lexeme -> Bool
-startsConstr lx = case lexToken lx of
+startsConstr lx = case unLoc lx of
   TReserved "=" -> True
   _             -> False
 
 -- | Lexemes that begin normal layout.
 startsBlock :: Lexeme -> Bool
-startsBlock lx = case lexToken lx of
+startsBlock lx = case unLoc lx of
   TReserved "where"   -> True
   TReserved "let"     -> True
   TReserved "public"  -> True
@@ -103,9 +105,10 @@ startsBlock lx = case lexToken lx of
 closesBlock :: State -> Lexeme -> Maybe ([Lexeme],State)
 closesBlock st lx = case closeLevels st pos of
   (n,st') | n <= 0    -> Nothing
-          | otherwise -> Just (replicate n (close pos), st')
+          | otherwise -> Just (replicate n (close range), st')
   where
-  pos = lexPos lx
+  range = getLoc lx
+  pos   = rangeStart range
 
 
 -- Layout Processing -----------------------------------------------------------
@@ -142,9 +145,10 @@ normal st = Layout go
 startData :: Processor
 startData st = Layout go
   where
-  go lx = Done [start pos, lx] (pushLevel (semiLevel pos dataGroups) st)
+  go lx = Done [start range, lx] (pushLevel (semiLevel pos dataGroups) st)
     where
-    pos = lexPos lx
+    range = getLoc lx
+    pos   = rangeStart range
 
 -- | Process a group of type declarations groups started by a ``='' token.
 dataGroups :: Processor
@@ -157,9 +161,10 @@ dataGroups st = Layout go
 startConstr :: Processor
 startConstr st = Layout go
   where
-  go lx = Done [start pos,lx] (pushLevel (pipeLevel pos constr) st)
+  go lx = Done [start range,lx] (pushLevel (pipeLevel pos constr) st)
     where
-    pos = lexPos lx
+    range = getLoc lx
+    pos   = rangeStart range
 
 -- | Layout processing for data constructors.
 constr :: Processor
@@ -172,8 +177,9 @@ constr st = Layout go
 startBlock :: Processor
 startBlock st = Layout go
   where
-  go lx = Done [start pos,lx] (pushLevel (semiLevel pos next) st)
+  go lx = Done [start range,lx] (pushLevel (semiLevel pos next) st)
     where
-    pos = lexPos lx
+    range                 = getLoc lx
+    pos                   = rangeStart range
     next | startsBlock lx = startBlock
          | otherwise      = normal
