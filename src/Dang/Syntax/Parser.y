@@ -1,5 +1,6 @@
 {
 {-# OPTIONS_GHC -w #-}
+{-# LANGUAGE Trustworthy #-}
 
 -- vim: filetype=haskell
 

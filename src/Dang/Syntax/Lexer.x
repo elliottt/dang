@@ -4,6 +4,7 @@
 {-# OPTIONS_GHC -w #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Trustworthy #-}
 
 module Dang.Syntax.Lexer where
 

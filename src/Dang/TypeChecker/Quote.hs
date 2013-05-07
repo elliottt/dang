@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.Quote where
 

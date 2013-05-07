@@ -1,5 +1,5 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE Safe #-}
 
 module Dang.Syntax.Layout (
     layout

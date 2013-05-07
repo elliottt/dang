@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.Types where
 

@@ -1,3 +1,5 @@
+{-# LANGUAGE Trustworthy #-}
+
 module Dang.ModuleSystem.Types where
 
 import Dang.QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)

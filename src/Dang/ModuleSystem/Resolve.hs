@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.ModuleSystem.Resolve (
 
     -- * Resolved Names
