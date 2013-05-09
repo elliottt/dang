@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Colors (
     Command(), escape
 

@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module CodeGen.Types where
 
 import Text.LLVM

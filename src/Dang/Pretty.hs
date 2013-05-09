@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Pretty (
     module Dang.Pretty
   , module Text.PrettyPrint

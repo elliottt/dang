@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Syntax.Lexeme where
 
 import Dang.Utils.Location

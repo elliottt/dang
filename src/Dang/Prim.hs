@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Prim where
 
 type Primitive = (String,Int)

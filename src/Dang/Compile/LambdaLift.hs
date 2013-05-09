@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE Trustworthy #-}
 
 
 module Dang.Compile.LambdaLift (

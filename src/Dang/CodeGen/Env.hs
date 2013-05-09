@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module CodeGen.Env where
 
 import CodeGen.Types

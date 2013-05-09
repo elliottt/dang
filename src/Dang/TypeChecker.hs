@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.TypeChecker where
 
 import Dang.IO (logStage,logDebug,logInfo)

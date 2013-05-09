@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Link where
 
 import Dang.IO (logStage)

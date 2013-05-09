@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE Safe #-}
 
 module Dang.Core.AST (
     module Dang.Core.AST

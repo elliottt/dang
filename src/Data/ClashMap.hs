@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE Safe #-}
 
 module Data.ClashMap (
     ClashMap()

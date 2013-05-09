@@ -1,4 +1,5 @@
 {-# LANGUAGE DoRec #-}
+{-# LANGUAGE Safe #-}
 
 module CodeGen.Rts where
 

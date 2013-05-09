@@ -1,3 +1,5 @@
+{-# LANGUAGE Trustworthy #-}
+
 module Main where
 
 import Dang.Compile (compile)

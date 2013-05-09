@@ -1,3 +1,5 @@
+{-# LANGUAGE Trustworthy #-}
+
 module Dang.Syntax.Renumber where
 
 import Dang.QualName (Name)

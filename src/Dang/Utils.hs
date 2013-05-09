@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Utils where
 
 (!!?) :: [a] -> Int -> Maybe a

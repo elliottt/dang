@@ -1,3 +1,5 @@
+{-# LANGUAGE Trustworthy #-}
+
 module Dang.Compile where
 
 import Dang.CodeGen

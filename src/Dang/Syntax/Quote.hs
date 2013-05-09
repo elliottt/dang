@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE Trustworthy #-}
 
 module Dang.Syntax.Quote ( termQQ ) where
 

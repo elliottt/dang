@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.FileName where
 
 import System.FilePath

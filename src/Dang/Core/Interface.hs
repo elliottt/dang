@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module Dang.Core.Interface where
 
 import Dang.Core.AST
