@@ -12,7 +12,7 @@ import Dang.Core.AST (Module)
 import Dang.IO (logStage)
 import Dang.ModuleSystem.Interface (InterfaceSet,Interface)
 import Dang.Monad (Dang,whenDebugOpt,dbgDumpLLVM,io)
-import Dang.Pretty (Doc,empty)
+import Dang.Utils.Pretty (Doc,empty)
 
 import Text.LLVM (ppModule,runLLVM)
 

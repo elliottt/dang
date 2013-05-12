@@ -9,11 +9,11 @@ module Dang.Core.AST (
   ) where
 
 import Dang.ModuleSystem.Export (Exported(..),Export(..))
-import Dang.Pretty
 import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
 import Dang.Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types (Type,Forall(..),forallData,tarrow)
+import Dang.Utils.Pretty
 import Dang.Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
 
 import Data.List (nub)

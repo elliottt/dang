@@ -1,7 +1,7 @@
 {-# LANGUAGE Safe #-}
 
-module Dang.Pretty (
-    module Dang.Pretty
+module Dang.Utils.Pretty (
+    module Dang.Utils.Pretty
   , module Text.PrettyPrint
   ) where
 

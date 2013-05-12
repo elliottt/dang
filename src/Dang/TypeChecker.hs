@@ -3,12 +3,12 @@
 module Dang.TypeChecker where
 
 import Dang.IO (logStage,logDebug,logInfo)
-import Dang.Monad (Dang)
-import Dang.Pretty (pretty)
 import Dang.ModuleSystem.Interface (InterfaceSet)
+import Dang.Monad (Dang)
 import Dang.TypeChecker.CheckKinds (kcModule)
 import Dang.TypeChecker.CheckTypes (tcModule)
 import Dang.TypeChecker.Monad (runTC)
+import Dang.Utils.Pretty (pretty)
 import qualified Dang.Core.AST   as Core
 import qualified Dang.Syntax.AST as Syn
 

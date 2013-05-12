@@ -7,10 +7,10 @@
 
 module Dang.TypeChecker.Types where
 
-import Dang.Pretty
 import Dang.ModuleSystem.QualName
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Vars
+import Dang.Utils.Pretty
 import Dang.Variables
 
 import Control.Applicative ((<$>),(<*>))

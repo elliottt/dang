@@ -7,10 +7,10 @@ module Dang.Syntax.AST where
 
 import Dang.ModuleSystem.Export
     (Exported(..),Export(..),isExported,ppPublic,ppPrivate,groupByExport)
-import Dang.Pretty
 import Dang.ModuleSystem.QualName
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types
+import Dang.Utils.Pretty
 import Dang.Variables
 
 import Data.List (partition,nub)

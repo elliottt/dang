@@ -7,10 +7,10 @@ module Dang.TypeChecker.Unify where
 
 import Dang.Core.AST
 import Dang.Monad
-import Dang.Pretty
 import Dang.Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Vars
+import Dang.Utils.Pretty
 
 import Control.Arrow (second)
 import Control.Monad (unless,guard)

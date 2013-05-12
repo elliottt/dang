@@ -12,12 +12,12 @@ module Dang.Compile.LambdaLift (
 
 import Dang.Core.AST
 import Dang.IO
-import Dang.Monad
-import Dang.Pretty (pretty)
 import Dang.ModuleSystem.QualName (QualName,Name,simpleName,qualSymbol)
+import Dang.Monad
 import Dang.TypeChecker.Types (Type,uvar,Forall(..),Kind)
 import Dang.TypeChecker.Unify (inst,quantify,typeVars)
 import Dang.TypeChecker.Vars (TParam,modifyTParamIndex)
+import Dang.Utils.Pretty (pretty)
 import Dang.Variables (freeLocals,freeVars)
 
 import Control.Applicative(Applicative(..),(<$>))

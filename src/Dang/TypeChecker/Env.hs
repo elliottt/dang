@@ -5,9 +5,9 @@
 module Dang.TypeChecker.Env where
 
 import Dang.Core.AST (Term)
-import Dang.Pretty (Pretty(pp),declBlock,ppr,(<+>),text)
 import Dang.ModuleSystem.QualName (QualName)
 import Dang.TypeChecker.Unify (Types(..))
+import Dang.Utils.Pretty (Pretty(pp),declBlock,ppr,(<+>),text)
 
 import qualified Data.Foldable as Fold
 import qualified Data.Map as Map

@@ -5,15 +5,15 @@ module Dang.TypeChecker.CheckKinds where
 
 import Dang.IO
 import Dang.ModuleSystem.Interface (HasInterface,getKinds)
-import Dang.Monad
-import Dang.Pretty
 import Dang.ModuleSystem.QualName
+import Dang.Monad
 import Dang.Syntax.AST
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify as Types
 import Dang.TypeChecker.Vars
+import Dang.Utils.Pretty
 import Dang.Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))

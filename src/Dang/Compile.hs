@@ -10,8 +10,8 @@ import Dang.Core.Interface (moduleInterface)
 import Dang.IO
 import Dang.ModuleSystem.Interface (InterfaceSet,Interface,writeInterface)
 import Dang.Monad
-import Dang.Pretty
 import Dang.Tool
+import Dang.Utils.Pretty
 
 import System.IO (hPrint,hFlush)
 

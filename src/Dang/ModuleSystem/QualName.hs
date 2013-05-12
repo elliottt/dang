@@ -4,9 +4,9 @@
 
 module Dang.ModuleSystem.QualName where
 
-import Dang.Pretty
 import Dang.Traversal (Data,Typeable)
 import Dang.Utils (splitLast)
+import Dang.Utils.Pretty
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)

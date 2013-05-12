@@ -69,7 +69,6 @@ library
                         Dang.FileName,
                         Dang.IO,
                         Dang.Monad,
-                        Dang.Pretty,
                         Dang.Tool,
                         Data.ClashMap,
                         Dang.Prim,
@@ -77,6 +76,7 @@ library
                         Dang.Traversal,
                         Dang.Utils,
                         Dang.Utils.Location,
+                        Dang.Utils.Pretty,
                         Dang.Variables
 
   build-depends:        base             >= 4,

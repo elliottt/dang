@@ -11,13 +11,13 @@ import Dang.ModuleSystem.Interface
 import Dang.ModuleSystem.Resolve
 import Dang.ModuleSystem.Types
 import Dang.Monad (Dang)
-import Dang.Pretty (pretty)
 import Dang.Syntax.AST
     (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
     ,DataDecl(..),patVars)
 import Dang.ModuleSystem.QualName
 import Dang.TypeChecker.Types (Type(..),Kind)
 import Dang.TypeChecker.Vars (TParam())
+import Dang.Utils.Pretty (pretty)
 import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>))

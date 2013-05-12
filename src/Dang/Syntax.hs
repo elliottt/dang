@@ -13,7 +13,6 @@ module Dang.Syntax (
 
 import Dang.IO (logStage,logInfo,logDebug,onFileNotFound,loadFile)
 import Dang.Monad (Dang,io,raiseE)
-import Dang.Pretty (pretty)
 import Dang.Syntax.AST (Module)
 import Dang.Syntax.Layout (layout)
 import Dang.Syntax.Lexeme (Lexeme)
@@ -21,6 +20,7 @@ import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Parser (parseModule)
 import Dang.Syntax.ParserCore (runParser)
 import Dang.Utils.Location (unLoc)
+import Dang.Utils.Pretty (pretty)
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L

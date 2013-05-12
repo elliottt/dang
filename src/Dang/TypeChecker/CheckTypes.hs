@@ -8,14 +8,14 @@ import Dang.Core.AST
 import Dang.IO
 import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.Interface (HasInterface,getTypes)
-import Dang.Monad
-import Dang.Pretty
 import Dang.ModuleSystem.QualName
+import Dang.Monad
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify (quantify,typeVars,Types)
 import Dang.TypeChecker.Vars
+import Dang.Utils.Pretty
 import Dang.Variables (freeVars,sccFreeNames,sccToList)
 import qualified Dang.Syntax.AST as Syn
 

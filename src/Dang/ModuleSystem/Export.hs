@@ -4,8 +4,8 @@
 
 module Dang.ModuleSystem.Export where
 
-import Dang.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 import Dang.Traversal (Data,Typeable)
+import Dang.Utils.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 
 import Data.Function (on)
 import Data.List (groupBy)
