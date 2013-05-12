@@ -22,7 +22,7 @@ module Dang.ModuleSystem.Imports (
 import Dang.ModuleSystem.Interface
     (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
 import Dang.Monad (Dang,Exception,raiseE)
-import Dang.QualName (QualName,isSimpleName,qualModule)
+import Dang.ModuleSystem.QualName (QualName,isSimpleName,qualModule)
 import Dang.Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))

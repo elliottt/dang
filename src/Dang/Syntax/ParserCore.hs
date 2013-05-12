@@ -6,7 +6,7 @@
 module Dang.Syntax.ParserCore where
 
 import Dang.ModuleSystem.Export (Export(..))
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
 import Dang.Syntax.Layout (layout)
 import Dang.Syntax.Lexeme

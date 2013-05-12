@@ -15,7 +15,7 @@ import Dang.Pretty (pretty)
 import Dang.Syntax.AST
     (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
     ,DataDecl(..),patVars)
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.TypeChecker.Types (Type(..),Kind)
 import Dang.TypeChecker.Vars (TParam())
 import qualified Data.ClashMap as CM
@@ -30,7 +30,9 @@ import qualified Data.Set as Set
 
 data RO = RO
   { roNames :: ResolvedNames
+    -- ^ A map of parsed names to resolved names.
   , roLevel :: !Int
+    -- ^ Lexical scope levels
   }
 
 emptyRO :: RO

@@ -10,7 +10,7 @@ import Dang.Core.AST
 import Dang.IO (logInfo,logStage,logDebug)
 import Dang.Monad (Dang)
 import Dang.Pretty (pretty)
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 
 import Control.Applicative (Applicative(..),(<$>))
 import Data.Generics (extM,Data(gmapM))

@@ -19,7 +19,7 @@ module Dang.ModuleSystem.Resolve (
 import Dang.ModuleSystem.Interface (InterfaceSet,lookupInterface,ifaceNames)
 import Dang.ModuleSystem.Imports (UseSet,Use(..))
 import Dang.ModuleSystem.Types (UsedName(..),simpleUsedName,mapUsedName,usedQualName)
-import Dang.QualName
+import Dang.ModuleSystem.QualName
     (QualName,Name,Namespace,qualName,primName,simpleName,changeNamespace
     ,qualNamespace)
 import Dang.Syntax.AST

@@ -8,7 +8,7 @@ import Dang.IO (withROBinaryFile,withWOBinaryFile)
 import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.Types (UsedName(..))
 import Dang.Monad (Dang,io)
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
     (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
 import Dang.TypeChecker.Types

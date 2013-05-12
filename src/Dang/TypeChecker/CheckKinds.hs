@@ -7,7 +7,7 @@ import Dang.IO
 import Dang.ModuleSystem.Interface (HasInterface,getKinds)
 import Dang.Monad
 import Dang.Pretty
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad

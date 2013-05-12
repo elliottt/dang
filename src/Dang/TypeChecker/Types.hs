@@ -8,7 +8,7 @@
 module Dang.TypeChecker.Types where
 
 import Dang.Pretty
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Vars
 import Dang.Variables

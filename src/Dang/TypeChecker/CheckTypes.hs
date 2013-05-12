@@ -10,7 +10,7 @@ import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.Interface (HasInterface,getTypes)
 import Dang.Monad
 import Dang.Pretty
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types

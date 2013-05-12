@@ -2,7 +2,7 @@
 
 module Dang.Syntax.Renumber where
 
-import Dang.QualName (Name)
+import Dang.ModuleSystem.QualName (Name)
 import Dang.Syntax.AST (ConstrGroup(..),Constr(..))
 import Dang.TypeChecker.Types (Type(..),uvar,Forall(..))
 import Dang.TypeChecker.Vars (Index,TParam(..),TVar(..))

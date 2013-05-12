@@ -5,7 +5,7 @@
 module Dang.TypeChecker.Vars where
 
 import Dang.Pretty
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 import Dang.Variables
 
 import Control.Applicative (Applicative(..),(<$>))

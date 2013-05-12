@@ -7,8 +7,8 @@
 module Dang.Syntax.Parser where
 
 import Dang.ModuleSystem.Export
+import Dang.ModuleSystem.QualName
 import Dang.ModuleSystem.Types
-import Dang.QualName
 import Dang.Syntax.AST
 import Dang.Syntax.Lexeme
 import Dang.Syntax.Lexer

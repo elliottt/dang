@@ -28,7 +28,7 @@ module Dang.TypeChecker.Monad (
   ) where
 
 import Dang.Monad
-import Dang.QualName (QualName,Name,simpleName)
+import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify
 import Dang.TypeChecker.Vars

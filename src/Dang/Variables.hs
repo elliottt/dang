@@ -4,7 +4,7 @@
 
 module Dang.Variables where
 
-import Dang.QualName
+import Dang.ModuleSystem.QualName
 
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)

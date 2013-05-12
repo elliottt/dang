@@ -2,7 +2,7 @@
 
 module Dang.ModuleSystem.Types where
 
-import Dang.QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)
+import Dang.ModuleSystem.QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)
 import Dang.TypeChecker.Vars (TParam,getTParam,putTParam,TVar,getTVar,putTVar)
 
 import Control.Applicative (Applicative(..),(<$>))

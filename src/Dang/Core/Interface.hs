@@ -6,7 +6,7 @@ import Dang.Core.AST
     (Module(..),Decl(..),declType,PrimType(..),PrimTerm(..))
 import Dang.ModuleSystem.Export (isExported)
 import Dang.ModuleSystem.Interface (Interface(..),emptyInterface,Symbol(..),NameMap)
-import Dang.QualName (mangle,QualName,primName,qualNamespace,Namespace)
+import Dang.ModuleSystem.QualName (mangle,QualName,primName,qualNamespace,Namespace)
 import Dang.TypeChecker.Types (toQual)
 
 import qualified Data.Map as Map

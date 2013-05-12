@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE Trustworthy #-}
 
-module Dang.QualName where
+module Dang.ModuleSystem.QualName where
 
 import Dang.Pretty
 import Dang.Traversal (Data,Typeable)

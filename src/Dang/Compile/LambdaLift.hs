@@ -14,7 +14,7 @@ import Dang.Core.AST
 import Dang.IO
 import Dang.Monad
 import Dang.Pretty (pretty)
-import Dang.QualName (QualName,Name,simpleName,qualSymbol)
+import Dang.ModuleSystem.QualName (QualName,Name,simpleName,qualSymbol)
 import Dang.TypeChecker.Types (Type,uvar,Forall(..),Kind)
 import Dang.TypeChecker.Unify (inst,quantify,typeVars)
 import Dang.TypeChecker.Vars (TParam,modifyTParamIndex)

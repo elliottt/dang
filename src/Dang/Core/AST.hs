@@ -10,7 +10,7 @@ module Dang.Core.AST (
 
 import Dang.ModuleSystem.Export (Exported(..),Export(..))
 import Dang.Pretty
-import Dang.QualName (QualName,Name,simpleName)
+import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
 import Dang.Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types (Type,Forall(..),forallData,tarrow)
