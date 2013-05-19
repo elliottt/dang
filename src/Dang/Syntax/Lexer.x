@@ -13,6 +13,7 @@ import Dang.Utils.Location
 
 import Data.Bits (shiftR,(.&.))
 import Data.Int (Int64)
+import Data.Monoid (mempty)
 import Data.Word (Word8)
 import MonadLib
 import qualified Data.Text.Lazy as L
@@ -184,7 +185,7 @@ scan source bytes = fst (runId (runStateT st0 (unLexer loop)))
         loop
 
       AlexEOF ->
-        return [Located (mkRange inp "") TEof]
+        return [Located mempty TEof]
 
       AlexError inp' ->
         return [Located (mkRange inp' "") (TError "Lexical error")]

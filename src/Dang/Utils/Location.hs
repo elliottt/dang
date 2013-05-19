@@ -72,8 +72,8 @@ instance Ord Position where
 zeroPosition :: Position
 zeroPosition  = Position
   { posOff  = 0
-  , posLine = 1
-  , posCol  = 1
+  , posLine = 0
+  , posCol  = 0
   }
 
 -- | Given a character, increment a position.

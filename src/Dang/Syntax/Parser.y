@@ -76,7 +76,7 @@ import MonadLib
 
 %tokentype { Lexeme }
 
-%lexer { lexer } { Located initPosition TEof }
+%lexer { lexer } { Located mempty TEof }
 
 %%
 
@@ -341,8 +341,6 @@ lexer k = do
     l:ls -> do
       set $! ps { psTokens = ls }
       k l
-
-    [l] -> parseError l
 
     [] -> happyError
 
