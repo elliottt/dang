@@ -25,9 +25,11 @@ posLevel p k tok = Level
   , levSep    = tok
   }
 
+-- | The level whose entries are separated by semicolons.
 semiLevel :: Position -> Processor -> Level
 semiLevel p k = posLevel p k (TReserved ";")
 
+-- | The level whose entries are separated by pipes.
 pipeLevel :: Position -> Processor -> Level
 pipeLevel p k = posLevel p k (TReserved "|")
 
@@ -45,7 +47,8 @@ continue st = case st of
   l:_ -> levCont l st
   _   -> normal st
 
--- | Partition the layout levels by a dividing column.
+-- | Partition the layout levels by a dividing column, finding levels that
+-- should be closed by the new column position.
 splitLevels :: State -> Int -> ([Level],State)
 splitLevels st col = span (\l -> col < levIndent l) st
 
