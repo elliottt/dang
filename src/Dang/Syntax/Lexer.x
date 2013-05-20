@@ -92,7 +92,7 @@ data LexerInput = LexerInput
 
 initLexerInput :: FilePath -> L.Text -> LexerInput
 initLexerInput source bytes = LexerInput
-  { liPosn   = zeroPosition
+  { liPosn   = Position 0 1 1
   , liSource = source
   , liChar   = '\n'
   , liBytes  = []
