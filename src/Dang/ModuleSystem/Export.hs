@@ -5,6 +5,7 @@
 module Dang.ModuleSystem.Export where
 
 import Dang.Traversal (Data,Typeable)
+import Dang.Utils.Location (Located,unLoc)
 import Dang.Utils.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
 
 import Data.Function (on)
@@ -31,6 +32,9 @@ class Exported a where
 
 instance Exported Export where
   exportSpec = id
+
+instance Exported a => Exported (Located a) where
+  exportSpec = exportSpec . unLoc
 
 isExported :: Exported a => a -> Bool
 isExported a = case exportSpec a of

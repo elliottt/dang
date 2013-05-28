@@ -10,12 +10,14 @@ module Dang.TypeChecker.Types where
 import Dang.ModuleSystem.QualName
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Vars
+import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (guard)
 import Data.Maybe (fromMaybe)
+import Data.Monoid (mempty)
 import Data.Serialize
     (Get,Putter,getWord8,putWord8,getListOf,putListOf,getSetOf,putSetOf)
 import Language.Haskell.TH.Syntax (Lift(..))
@@ -223,6 +225,10 @@ data Forall a = Forall
   { forallParams :: [TParam Kind]
   , forallData   :: a
   } deriving (Show,Eq,Ord,Data,Typeable,Functor)
+
+instance HasLocation (Forall a) where
+  -- XXX fix this
+  getLoc _ = mempty
 
 toForall :: a -> Forall a
 toForall  = Forall []

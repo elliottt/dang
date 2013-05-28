@@ -63,8 +63,8 @@ pushLevel :: Level -> State -> Layout
 pushLevel lev st = levCont lev (lev:st)
 
 -- | Create a block starting token.
-start :: Range -> Lexeme
-start range = Located range (TReserved "{")
+start :: SrcLoc -> Lexeme
+start loc = Located loc (TReserved "{")
 
 -- | Emit a separator if a token falls on a level boundary.
 sep :: State -> Lexeme -> [Lexeme]
@@ -73,11 +73,11 @@ sep st lx = case st of
   _                               -> [lx]
   where
   range = getLoc lx
-  pos   = rangeStart range
+  pos   = locStart lx
 
 -- | Create a block closing token.
-close :: Range -> Lexeme
-close range = Located range (TReserved "}")
+close :: SrcLoc -> Lexeme
+close loc = Located loc (TReserved "}")
 
 
 -- Lexeme Predicates -----------------------------------------------------------
@@ -111,7 +111,7 @@ closesBlock st lx = case closeLevels st pos of
           | otherwise -> Just (replicate n (close range), st')
   where
   range = getLoc lx
-  pos   = rangeStart range
+  pos   = locStart range
 
 
 -- Layout Processing -----------------------------------------------------------
@@ -148,10 +148,10 @@ normal st = Layout go
 startData :: Processor
 startData st = Layout go
   where
-  go lx = Done [start range, lx] (pushLevel (semiLevel pos dataGroups) st)
+  go lx = Done [start loc, lx] (pushLevel (semiLevel pos dataGroups) st)
     where
-    range = getLoc lx
-    pos   = rangeStart range
+    loc = getLoc lx
+    pos = locStart loc
 
 -- | Process a group of type declarations groups started by a ``='' token.
 dataGroups :: Processor
@@ -164,10 +164,10 @@ dataGroups st = Layout go
 startConstr :: Processor
 startConstr st = Layout go
   where
-  go lx = Done [start range,lx] (pushLevel (pipeLevel pos constr) st)
+  go lx = Done [start loc,lx] (pushLevel (pipeLevel pos constr) st)
     where
-    range = getLoc lx
-    pos   = rangeStart range
+    loc = getLoc lx
+    pos = locStart loc
 
 -- | Layout processing for data constructors.
 constr :: Processor
@@ -180,9 +180,9 @@ constr st = Layout go
 startBlock :: Processor
 startBlock st = Layout go
   where
-  go lx = Done [start range,lx] (pushLevel (semiLevel pos next) st)
+  go lx = Done [start loc,lx] (pushLevel (semiLevel pos next) st)
     where
-    range                 = getLoc lx
-    pos                   = rangeStart range
+    loc                   = getLoc lx
+    pos                   = locStart loc
     next | startsBlock lx = startBlock
          | otherwise      = normal

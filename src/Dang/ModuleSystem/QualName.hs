@@ -6,6 +6,7 @@ module Dang.ModuleSystem.QualName where
 
 import Dang.Traversal (Data,Typeable)
 import Dang.Utils (splitLast)
+import Dang.Utils.Location
 import Dang.Utils.Pretty
 
 import Control.Applicative ((<$>),(<*>))
@@ -18,7 +19,14 @@ import Language.Haskell.TH.Syntax (Lift(..),liftString,Exp(ListE))
 
 type Name = String
 
-type Namespace = [String]
+type LName = Located Name
+
+ppName :: Name -> Doc
+ppName  = text
+
+type Namespace = [Name]
+
+type LQualName = Located QualName
 
 data QualName
   = QualName Namespace Name

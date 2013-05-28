@@ -24,7 +24,6 @@ library
                         Dang.Syntax.Lexer,
                         Dang.Syntax.Parser,
                         Dang.Syntax.ParserCore,
-                        Dang.Syntax.Quote,
                         Dang.Syntax.Renumber,
 
                         -- module system
@@ -45,7 +44,6 @@ library
                         Dang.TypeChecker.CheckTypes,
                         Dang.TypeChecker.Env,
                         Dang.TypeChecker.Monad,
-                        Dang.TypeChecker.Quote,
                         Dang.TypeChecker.Types,
                         Dang.TypeChecker.Unify,
                         Dang.TypeChecker.Vars,

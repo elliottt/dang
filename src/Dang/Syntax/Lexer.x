@@ -100,9 +100,9 @@ initLexerInput source bytes = LexerInput
   }
 
 -- | Build a range from the lexer state.
-mkRange :: LexerInput -> String -> Range
+mkRange :: LexerInput -> String -> SrcLoc
 mkRange li str =
-  Range (liPosn li) (movesPos (liPosn li) str) (Just (liSource li))
+  SrcLoc (Range (liPosn li) (movesPos (liPosn li) str)) (Just (liSource li))
 
 fillBuffer :: LexerInput -> Maybe LexerInput
 fillBuffer li = do

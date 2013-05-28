@@ -27,6 +27,7 @@ import Dang.Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
 import Dang.TypeChecker.Types (Forall(..),Qual(..),Type(..))
+import Dang.Utils.Location (unLoc)
 
 import Control.Monad (guard)
 import Data.List (foldl')
@@ -138,6 +139,7 @@ instance UsesModules Term where
     Local _     -> Set.empty
     Global qn   -> globalName QualTerm qn
     Lit _       -> Set.empty
+    TLoc ltm    -> getUses (unLoc ltm)
 
 -- | Generate the import set for a used name, if one exists.
 globalName :: (QualName -> Use) -> QualName -> UseSet

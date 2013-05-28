@@ -13,6 +13,7 @@ import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify as Types
 import Dang.TypeChecker.Vars
+import Dang.Utils.Location (at,unLoc,getLoc)
 import Dang.Utils.Pretty
 import Dang.Variables (sccToList,sccFreeNames)
 
@@ -256,6 +257,7 @@ kcTerm env tm = case tm of
   Local{}     -> return tm
   Global{}    -> return tm
   Lit{}       -> return tm
+  TLoc ltm    -> (TLoc . (`at` getLoc ltm)) `fmap` kcTerm env (unLoc ltm)
 
 -- | Check the kind structure of any types hiding under a binder.
 kcMatch :: KindAssumps -> Match -> TC Match

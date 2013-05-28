@@ -1,57 +1,131 @@
 {-# LANGUAGE Safe #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module Dang.Utils.Location where
 
+import Dang.Utils.Pretty
+
 import Control.Monad (mplus)
+import Data.Data (Data)
 import Data.Function (on)
 import Data.List (foldl')
+import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(..))
+import Data.Typeable (Typeable)
 
 
 -- Located Things --------------------------------------------------------------
 
+class HasLocation a where
+  getLoc :: a -> SrcLoc
+
+locStart :: HasLocation a => a -> Position
+locStart a = srcStart (getLoc a)
+
+locEnd :: HasLocation a => a -> Position
+locEnd a = srcEnd (getLoc a)
+
 -- | Things that carry a range in the source syntax.
 data Located a = Located
-  { locRange :: !Range
+  { locRange :: !SrcLoc
   , locValue ::  a
-  } deriving (Show,Functor)
+  } deriving (Show,Functor,Ord,Eq,Data,Typeable)
+
+instance HasLocation (Located a) where
+  getLoc = locRange
+
+-- | Attach no location information to a value.
+noLoc :: a -> Located a
+noLoc a = Located
+  { locRange = NoLoc
+  , locValue = a
+  }
+
+-- | Attach location information to a value.
+at :: a -> SrcLoc -> Located a
+at a loc = Located
+  { locRange = loc
+  , locValue = a
+  }
+
+-- Drop the location information from a Pretty-printend thing.
+instance Pretty a => Pretty (Located a) where
+  pp p = pp p . unLoc
 
 -- | Strip off location information.
 unLoc :: Located a -> a
 unLoc  = locValue
 
--- | Get location information from a Located thing.
-getLoc :: Located a -> Range
-getLoc  = locRange
-
 -- | Extend the range of a located thing.
-extendLoc :: Range -> Located a -> Located a
+extendLoc :: SrcLoc -> Located a -> Located a
 extendLoc r loc = loc { locRange = locRange loc `mappend` r }
 
 
--- Source Ranges ---------------------------------------------------------------
+-- Source Locations ------------------------------------------------------------
+
+-- | Source locations.
+type Source = Maybe String
+
+-- | Pretty-print a source.
+ppSource :: Source -> Doc
+ppSource  = text . fromMaybe "<unknown>"
 
 -- | A range in the program source.
+data SrcLoc = NoLoc | SrcLoc !Range Source
+    deriving (Show,Ord,Eq,Data,Typeable)
+
+instance HasLocation SrcLoc where
+  getLoc = id
+
+instance Monoid SrcLoc where
+  mempty = NoLoc
+
+  -- widen source ranges, and prefer source names from the left
+  mappend (SrcLoc lr ls) (SrcLoc rr rs) = SrcLoc (mappend lr rr) (mplus ls rs)
+  mappend NoLoc          r              = r
+  mappend l              NoLoc          = l
+
+srcRange :: SrcLoc -> Range
+srcRange loc = case loc of
+  SrcLoc r _ -> r
+  NoLoc      -> mempty
+
+-- | Starting Position of a 'SrcLoc'.
+srcStart :: SrcLoc -> Position
+srcStart loc = case loc of
+  SrcLoc r _ -> rangeStart r
+  NoLoc      -> zeroPosition
+
+-- | Ending Position of a 'SrcLoc'.
+srcEnd :: SrcLoc -> Position
+srcEnd loc = case loc of
+  SrcLoc r _ -> rangeStart r
+  NoLoc      -> zeroPosition
+
+ppLoc :: SrcLoc -> Doc
+ppLoc loc = case loc of
+  NoLoc      -> text "<unknown>"
+  SrcLoc r s -> ppSource s <> colon <> ppr r
+
+
+-- Ranges ----------------------------------------------------------------------
+
+-- | The region between to source positions.
 data Range = Range
-  { rangeStart  :: !Position
-  , rangeEnd    :: !Position
-  , rangeSource ::  Maybe String
-  } deriving (Show)
+  { rangeStart :: !Position
+  , rangeEnd   :: !Position
+  } deriving (Show,Eq,Ord,Data,Typeable)
 
 instance Monoid Range where
-  mempty = Range
-    { rangeStart  = zeroPosition
-    , rangeEnd    = zeroPosition
-    , rangeSource = Nothing
-    }
+  mempty = Range zeroPosition zeroPosition
 
   -- widen the range
-  mappend (Range ls le lmb) (Range rs re rmb) = Range
-    { rangeStart  = if ls < rs then ls else rs
-    , rangeEnd    = if le > re then le else re
-    , rangeSource = lmb `mplus` rmb
-    }
+  mappend (Range ls le) (Range rs re) = Range (smallerOf ls rs) (largerOf le re)
+
+instance Pretty Range where
+  pp _ (Range s e) = ppr s <> char '-' <> ppr e
+
 
 -- Positions -------------------------------------------------------------------
 
@@ -60,13 +134,15 @@ data Position = Position
   { posOff  :: !Int
   , posLine :: !Int
   , posCol  :: !Int
-  } deriving (Show,Eq)
+  } deriving (Show,Eq,Data,Typeable)
+
+instance Pretty Position where
+  pp _ pos = int (posLine pos) <> char ':' <> int (posCol pos)
 
 -- | This only compares offset, assuming that the positions come from the same
 -- source.
 instance Ord Position where
   compare = compare `on` posOff
-
 
 -- | Starting position.
 zeroPosition :: Position
@@ -75,6 +151,19 @@ zeroPosition  = Position
   , posLine = 0
   , posCol  = 0
   }
+
+-- | Return smaller of the two positions, taking care to not allow the zero
+-- position to dominate.
+smallerOf :: Position -> Position -> Position
+smallerOf l r
+  | l < r && l /= zeroPosition = l
+  | otherwise                  = r
+
+-- | Return the larger of the two positions.
+largerOf :: Position -> Position -> Position
+largerOf l r
+  | l > r     = l
+  | otherwise = r
 
 -- | Given a character, increment a position.
 movePos :: Position -> Char -> Position

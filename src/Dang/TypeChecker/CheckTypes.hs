@@ -15,6 +15,7 @@ import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify (quantify,typeVars,Types)
 import Dang.TypeChecker.Vars
+import Dang.Utils.Location (unLoc)
 import Dang.Utils.Pretty
 import Dang.Variables (freeVars,sccFreeNames,sccToList)
 import qualified Dang.Syntax.AST as Syn
@@ -391,6 +392,9 @@ tcTerm env tm = case tm of
     return (ty, appT body (map uvar ps))
 
   Syn.Lit lit -> tcLit lit
+
+  -- XXX make use of the location information here
+  Syn.TLoc ltm -> tcTerm env (unLoc ltm)
 
 tcLit :: Syn.Literal -> TC (Type,Term)
 tcLit l = case l of

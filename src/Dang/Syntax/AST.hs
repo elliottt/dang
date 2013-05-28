@@ -1,7 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE Safe #-}
 
 module Dang.Syntax.AST where
 
@@ -10,11 +9,12 @@ import Dang.ModuleSystem.Export
 import Dang.ModuleSystem.QualName
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types
+import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
 import Data.List (partition,nub)
-import Language.Haskell.TH.Syntax (liftString,Lift(..))
+import Data.Monoid (mempty)
 import qualified Data.Set as Set
 
 
@@ -96,14 +96,6 @@ data TypedDecl = TypedDecl
   , typedBody   :: Match
   } deriving (Eq,Show,Ord,Data,Typeable)
 
-instance Lift TypedDecl where
-  lift td = [| TypedDecl
-    { typedName   = $(liftString (typedName td))
-    , typedType   = $(lift       (typedType td))
-    , typedExport = $(lift       (typedExport td))
-    , typedBody   = $(lift       (typedBody td))
-    } |]
-
 instance FreeVars TypedDecl where
   freeVars = freeVars . typedBody
 
@@ -112,6 +104,10 @@ instance DefinesName TypedDecl where
 
 instance Exported TypedDecl where
   exportSpec = typedExport
+
+instance HasLocation TypedDecl where
+  -- XXX fix this
+  getLoc _ = mempty
 
 ppTypedDecl :: TypedDecl -> Doc
 ppTypedDecl  = ppTypedDecl' empty
@@ -141,13 +137,6 @@ data UntypedDecl = UntypedDecl
   , untypedBody   :: Match
   } deriving (Eq,Show,Ord,Data,Typeable)
 
-instance Lift UntypedDecl where
-  lift ud = [| UntypedDecl
-    { untypedExport = untypedExport ud
-    , untypedName   = untypedName   ud
-    , untypedBody   = untypedBody   ud
-    } |]
-
 instance FreeVars UntypedDecl where
   freeVars = freeVars . untypedBody
 
@@ -162,6 +151,10 @@ instance DefinesName UntypedDecl where
 
 instance Exported UntypedDecl where
   exportSpec = untypedExport
+
+instance HasLocation UntypedDecl where
+  -- XXX fix this
+  getLoc _ = mempty
 
 
 -- Primitive Term Declarations -------------------------------------------------
@@ -181,6 +174,10 @@ instance FreeVars PrimTerm where
 instance DefinesName PrimTerm where
   definedName = primTermName
 
+instance HasLocation PrimTerm where
+  -- XXX fix this
+  getLoc _ = mempty
+
 
 -- Primitive Type Declarations -------------------------------------------------
 
@@ -192,6 +189,10 @@ data PrimType = PrimType
 instance Pretty PrimType where
   pp _ p = text "primitive type" <+> text (primTypeName p)
        <+> text "::" <+> pp 0 (primTypeKind p)
+
+instance HasLocation PrimType where
+  -- XXX fix this
+  getLoc _ = mempty
 
 
 -- Data Declarations -----------------------------------------------------------
@@ -284,14 +285,6 @@ data Match
   | MFail                   -- ^ Unconditional failure
     deriving (Eq,Show,Ord,Data,Typeable)
 
-instance Lift Match where
-  lift m = case m of
-    MTerm tm      -> [| MTerm  $(lift tm)                      |]
-    MPat p m'     -> [| MPat   $(lift p) $(lift m')            |]
-    MGuard p n m' -> [| MGuard $(lift p) $(lift n)  $(lift m') |]
-    MSplit l r    -> [| MSplit $(lift l) $(lift r)             |]
-    MFail         -> [| MFail                                  |]
-
 instance FreeVars Match where
   freeVars m = case m of
     MTerm tm      -> freeVars tm
@@ -337,12 +330,6 @@ data Pat
   | PWildcard           -- ^ The wildcard pattern
     deriving (Eq,Show,Ord,Data,Typeable)
 
-instance Lift Pat where
-  lift p = case p of
-    PVar n     -> [| PVar $(liftString n)            |]
-    PCon qn ps -> [| PCon $(lift qn)      $(lift ps) |]
-    PWildcard  -> [| PWildcard                       |]
-
 instance FreeVars Pat where
   freeVars p = case p of
     PVar n     -> Set.singleton (simpleName n)
@@ -374,17 +361,8 @@ data Term
   | Local Name
   | Global QualName
   | Lit Literal
+  | TLoc (Located Term)
     deriving (Eq,Show,Ord,Data,Typeable)
-
-instance Lift Term where
-  lift tm = case tm of
-    Abs m       -> [| Abs    $(lift m)                       |]
-    Case e m    -> [| Case   $(lift e)  $(lift m)            |]
-    Let ts us e -> [| Let    $(lift ts) $(lift us) $(lift e) |]
-    App f xs    -> [| App    $(lift f)  $(lift xs)           |]
-    Local n     -> [| Local  $(lift n)                       |]
-    Global qn   -> [| Global $(lift qn)                      |]
-    Lit l       -> [| Lit    $(lift l)                       |]
 
 instance FreeVars Term where
   freeVars tm = case tm of
@@ -396,6 +374,7 @@ instance FreeVars Term where
     Lit l       -> freeVars l
     Local x     -> Set.singleton (simpleName x)
     Global qn   -> Set.singleton qn
+    TLoc ltm    -> freeVars (unLoc ltm)
 
 instance Pretty Term where
   pp p t = case t of
@@ -406,6 +385,13 @@ instance Pretty Term where
     Local n     -> ppr n
     Global n    -> ppr n
     Lit l       -> ppr l
+    TLoc ltm    -> pp p (unLoc ltm)
+
+-- XXX should this make a better effort to reconstruct a location?
+instance HasLocation Term where
+  getLoc tm = case tm of
+    TLoc ltm -> getLoc ltm
+    _        -> mempty
 
 ppLet :: [TypedDecl] -> [UntypedDecl] -> Term -> Doc
 ppLet ts us e = text "let" <+> nest 0 (vcat decls) $$ text " in" <+> ppr e
@@ -433,10 +419,6 @@ apply f xs = App f xs
 data Literal
   = LInt Integer
     deriving (Eq,Show,Ord,Data,Typeable)
-
-instance Lift Literal where
-  lift lit = case lit of
-    LInt i -> [| LInt $(lift i) |]
 
 instance FreeVars Literal where
   freeVars _ = Set.empty

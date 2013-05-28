@@ -10,6 +10,16 @@ import Data.List (intersperse)
 import Text.PrettyPrint
 import qualified Data.Set as Set
 
+
+-- Markdown --------------------------------------------------------------------
+
+-- | Quote with backticks.
+quoted :: Doc -> Doc
+quoted doc = char '`' <> doc <> char '`'
+
+
+-- Utility ---------------------------------------------------------------------
+
 pretty :: Pretty a => a -> String
 pretty  = renderStyle fmt . ppr
   where

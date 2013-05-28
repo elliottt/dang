@@ -15,7 +15,8 @@ import Dang.Syntax.Lexer
 import Dang.Syntax.ParserCore
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Vars
-import Dang.Utils.Location (Located(..),unLoc,getLoc)
+import Dang.Utils.Location (Located(..),unLoc,getLoc,at,ppLoc,extendLoc)
+import Dang.Utils.Pretty
 
 import Data.Monoid (mempty,mappend,mconcat)
 import MonadLib
@@ -60,14 +61,14 @@ import MonadLib
   'of'        { Located $$ (TReserved "of")        }
 
 -- identifiers
-  CONIDENT { Located _ (TConIdent $$)  }
-  IDENT    { Located _ (TSymIdent $$)  }
-  OPER     { Located _ (TOperIdent $$) }
-  INT      { Located _ (TInt $$)       }
+  CONIDENT { Located _ (TConIdent _)  }
+  IDENT    { Located _ (TSymIdent _)  }
+  OPER     { Located _ (TOperIdent _) }
+  INT      { Located _ (TInt _)       }
 
 
 %monad { Parser } { (>>=) } { return }
-%error { parseError }
+%error { parseError' }
 
 %name parseModule top_module
 %name parseTerm   exp
@@ -83,12 +84,12 @@ import MonadLib
 -- Names -----------------------------------------------------------------------
 
 qual_name :: { QualName }
-  : qual_name_prefix '.' IDENT { QualName (reverse $1) $3 }
-  | IDENT                      { simpleName $1 }
+  : qual_name_prefix '.' ident { QualName (reverse $1) (unLoc $3) }
+  | ident                      { simpleName (unLoc $1) }
 
 mod_name :: { QualName }
-  : qual_name_prefix '.' CONIDENT { QualName (reverse $1) $3 }
-  | CONIDENT                      { QualName [] $1 }
+  : qual_name_prefix '.' conident { QualName (reverse $1) (unLoc $3) }
+  | conident                      { QualName [] (unLoc $1) }
 
 
 -- Modules ---------------------------------------------------------------------
@@ -121,8 +122,11 @@ primitive :: { PDecls }
   : 'primitive' primitive_body { $2 }
 
 primitive_body :: { PDecls }
-  : 'type' tycon '::' kind      { mkPrimType (PrimType $2 $4) }
-  | IDENT        '::' qual_type { mkPrimTerm (PrimTerm $1 $3) }
+  : 'type' tycon '::' kind
+    { mkPrimType ($1 `mappend` getLoc $2) (PrimType (unLoc $2) $4) }
+
+  | ident        '::' qual_type
+    { mkPrimTerm (getLoc $1) (PrimTerm (unLoc $1) $3) }
 
 
 -- Function Declarations -------------------------------------------------------
@@ -140,20 +144,28 @@ binds :: { PDecls }
   | type_bind           { $1 }
 
 qual_name_prefix :: { [Name] }
-  : qual_name_prefix '.' CONIDENT { $3:$1 }
-  | CONIDENT                      { [$1] }
+  : qual_name_prefix '.' conident { unLoc $3 : $1 }
+  | conident                      { [unLoc $1] }
 
 -- By default, everything is set to be exported as public.
-top_fun_bind :: { UntypedDecl }
-  : 'public'  fun_bind { $2 { untypedExport = Public } }
-  | 'private' fun_bind { $2 { untypedExport = Private } }
-  |           fun_bind { $1 { untypedExport = Public } }
+top_fun_bind :: { Located UntypedDecl }
+  : 'public' fun_bind
+    { fmap (\u -> u { untypedExport = Public }) (extendLoc $1 $2) }
+
+  | 'private' fun_bind
+    { fmap (\u -> u { untypedExport = Private }) (extendLoc $1 $2) }
+
+  | fun_bind
+    { fmap (\u -> u { untypedExport = Public }) $1 }
 
 type_bind :: { PDecls }
-  : IDENT '::' qual_type { mkTypeDecl $1 $3 }
+  : ident '::' qual_type { mkTypeDecl (getLoc $1) (unLoc $1) $3 }
 
-fun_bind :: { UntypedDecl }
-  : IDENT arg_list '=' exp { UntypedDecl Private $1 ($2 (MTerm $4)) }
+fun_bind :: { Located UntypedDecl }
+  : ident arg_list '=' exp
+    { UntypedDecl Private (unLoc $1) ($2 (MTerm $4))
+        `at` (getLoc $1 `mappend` getLoc $4)
+    }
 
 arg_list :: { Match -> Match }
   : pats        { \z -> foldl (flip MPat) z $1 }
@@ -162,33 +174,35 @@ arg_list :: { Match -> Match }
 
 -- Module Imports --------------------------------------------------------------
 
-open :: { Open }
-  : 'open' mod_name open_body { $3 $2 }
+open :: { Located Open }
+  : 'open' mod_name open_body { unLoc $3 $2 `at` ($1 `mappend` getLoc $3) }
 
-open_body :: { QualName -> Open }
-  : 'as' mod_name open_tail { \qn -> uncurry (Open qn (Just $2)) $3 }
-  | open_tail               { \qn -> uncurry (Open qn Nothing)   $1 }
+open_body :: { Located (QualName -> Open) }
+  : 'as' mod_name open_tail { (\qn -> uncurry (Open qn (Just $2)) (unLoc $3) )
+                                 `at` ($1 `mappend` getLoc $3) }
+  | open_tail               { (\qn -> uncurry (Open qn Nothing) (unLoc $1) )
+                                 `at` getLoc $1 }
 
-open_tail :: { (Bool,[OpenSymbol]) }
-  : {- empty -}                { (True,  []) }
-  | '(' open_list ')'          { (False, $2) }
-  | 'hiding' '(' open_list ')' { (True,  $3) }
+open_tail :: { Located (Bool,[OpenSymbol]) }
+  : {- empty -}                { (True,  []) `at` mempty            }
+  | '(' open_list ')'          { (False, $2) `at` ($1 `mappend` $3) }
+  | 'hiding' '(' open_list ')' { (True,  $3) `at` ($1 `mappend` $4) }
 
 open_list :: { [OpenSymbol] }
   : open_sym               { [$1] }
   | open_list ',' open_sym { $3:$1 }
 
 open_sym :: { OpenSymbol }
-  : IDENT                   { OpenTerm $1 }
-  | CONIDENT open_type_tail { OpenType $1 $2 }
+  : ident                   { OpenTerm (unLoc $1) }
+  | conident open_type_tail { OpenType (unLoc $1) $2 }
 
 open_type_tail :: { [Name] }
   : {- empty -}               { [] }
   | '(' open_type_members ')' { reverse $2 }
 
-open_type_members :: { [Name] }
-  : CONIDENT                       { [$1] }
-  | open_type_members ',' CONIDENT { $3 : $1 }
+open_type_members :: { [ Name] }
+  : conident                       { [unLoc $1] }
+  | open_type_members ',' conident { unLoc $3 : $1 }
 
 
 -- Data Declarations -----------------------------------------------------------
@@ -201,7 +215,7 @@ constr_groups :: { [(Name,Forall ConstrGroup)] }
   | constr_group                   { [$1] }
 
 constr_group :: { (Name,Forall ConstrGroup) }
-  : CONIDENT constr_group_body { ($1,$2) }
+  : conident constr_group_body { (unLoc $1,$2) }
 
 constr_group_body :: { Forall ConstrGroup }
   : atypes constr_group_tail { $2 (reverse $1) }
@@ -216,8 +230,8 @@ constrs :: { [Constr] }
   | constr             { [$1] }
 
 constr :: { Constr }
-  : CONIDENT constr_tail
-    { Constr { constrName = $1, constrExport = Public, constrFields = $2 } }
+  : conident constr_tail
+    { Constr { constrName = unLoc $1, constrExport = Public, constrFields = $2 } }
 
 constr_tail :: { [Type] }
   : atypes      { reverse $1 }
@@ -247,7 +261,7 @@ aexp :: { Term }
   | 'as'                  { Global (simpleName "as") }
   | qual_name             { Global $1 }
   | mod_name              { Global $1 }
-  | INT                   { Lit (LInt $1) }
+  | int                   { TLoc (fmap (Lit . LInt) $1) }
   | 'case' fexp 'of'
     '{' case_branches '}' { Case $2 (foldr MSplit MFail (reverse $5)) }
 
@@ -274,13 +288,13 @@ naked_pat :: { Pat }
   | complex_pat { $1 }
 
 simple_pat :: { Pat }
-  : IDENT { PVar $1   }
+  : ident { PVar (unLoc $1) }
   | 'as'  { PVar "as" }
   | '_'   { PWildcard }
 
 complex_pat :: { Pat }
-  : CONIDENT      { PCon (simpleName $1) [] }
-  | CONIDENT pats { PCon (simpleName $1) (reverse $2) }
+  : conident      { PCon (simpleName (unLoc $1)) [] }
+  | conident pats { PCon (simpleName (unLoc $1)) (reverse $2) }
 
 
 -- Types -----------------------------------------------------------------------
@@ -297,8 +311,8 @@ apptype :: { [Type] }
   | atype         { [$1] }
 
 atype :: { Type }
-  : IDENT        { uvar (TParam 0 True $1 setSort) }
-  | CONIDENT     { TCon (simpleName $1) }
+  : ident        { uvar (TParam 0 True (unLoc $1) setSort) }
+  | conident     { TCon (simpleName (unLoc $1)) }
   | '(' type ')' { $2 }
 
 atypes :: { [Type] }
@@ -306,18 +320,20 @@ atypes :: { [Type] }
   | atype        { [$1] }
 
 -- XXX fix the type parameters
+-- XXX add location information
 qual_type :: { Scheme }
   : type { mkScheme emptyCxt $1 }
 
-tycon :: { String }
-  : CONIDENT     { $1 }
-  | '(' OPER ')' { $2 }
+tycon :: { Located String }
+  : conident     { $1 }
+  | '(' oper ')' { $2 }
   -- XXX does reserved syntax really need to be repeated here?
-  | '(' '->' ')' { "->" }
+  | '(' '->' ')' { "->" `at` ($1 `mappend` $3) }
 
 
 -- Kinds -----------------------------------------------------------------------
 
+-- XXX add location information on this
 kind :: { Kind }
   : akind kind_body { $2 $1 }
 
@@ -328,6 +344,21 @@ kind_body :: { Kind -> Kind }
 akind :: { Kind }
   : '*'          { kstar }
   | '(' kind ')' { $2 }
+
+
+-- Utilities -------------------------------------------------------------------
+
+ident :: { Located String }
+  : IDENT { fmap fromSymIdent $1 }
+
+conident :: { Located String }
+  : CONIDENT { fmap fromConIdent $1 }
+
+oper :: { Located String }
+  : OPER { fmap fromOperIdent $1 }
+
+int :: { Located Integer }
+  : INT { fmap fromInt $1 }
 
 
 -- Parser Stuff ----------------------------------------------------------------
@@ -345,7 +376,7 @@ lexer k = do
     [] -> happyError
 
 happyError :: Parser a
-happyError  = raiseP "Happy error" mempty
+happyError  = parseError mempty (text "Happy error")
 
-parseError l = raiseP ("Parse error near: " ++ show (unLoc l)) (getLoc l)
+parseError' l = parseError (getLoc l) (text "Parse error near:" <+> ppLoc (getLoc l))
 }

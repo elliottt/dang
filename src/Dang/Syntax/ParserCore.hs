@@ -14,7 +14,8 @@ import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Renumber (renumber)
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify
-import Dang.Utils.Location (Range)
+import Dang.Utils.Location (SrcLoc,ppLoc,Located,at,unLoc,HasLocation(..))
+import Dang.Utils.Pretty
 import Data.ClashMap as CM
 
 import Control.Applicative (Applicative)
@@ -27,9 +28,40 @@ import qualified Data.Set as Set
 import qualified Data.Text.Lazy as L
 
 
--- Lexer/Parser Monad ----------------------------------------------------------
+-- Generic Errors --------------------------------------------------------------
 
-data Error = Error String Range deriving Show
+data Error = Error !SrcLoc Doc
+    deriving (Show)
+
+instance Pretty Error where
+  pp _ (Error loc msg) = (ppLoc loc <> colon) $$ nest 2 msg
+
+
+-- Definition Errors -----------------------------------------------------------
+
+data DefError
+  = MultipleDefs (Located Name) [SrcLoc]
+  | NoBinding (Located Name)
+    deriving (Show)
+
+fromDefError :: DefError -> Error
+fromDefError err = case err of
+
+  MultipleDefs n locs -> Error loc msg
+    where
+    loc = case locs of
+      l:_ -> l
+      []  -> mempty
+    msg = text "Multiple declarations of" <> quoted (ppName (unLoc n))
+       $$ text "Declared at:" <+> nest 0 (vcat (map ppLoc locs))
+
+  NoBinding ln -> Error (getLoc ln) msg
+    where
+    msg = sep [ text "The type signature for" <+> quoted (ppName (unLoc ln))
+              , text "lacks an accompanying binding" ]
+
+
+-- Lexer/Parser Monad ----------------------------------------------------------
 
 data ParserState = ParserState
   { psTokens  :: [Lexeme]
@@ -41,46 +73,39 @@ initParserState ls = ParserState
   }
 
 newtype Parser a = Parser
-  { unParser :: WriterT [ParserError]
-              (StateT ParserState (ExceptionT Error Id)) a
+  { unParser :: WriterT [DefError]
+              (StateT ParserState (ExceptionT [Error] Id)) a
   } deriving (Functor,Applicative,Monad)
-
-data ParserError
-  = MultipleDefs Name
-  | NoBinding Name
-    deriving (Show)
 
 instance StateM Parser ParserState where
   get = Parser   get
   set = Parser . set
 
-instance ExceptionM Parser Error where
-  raise = Parser . raise
+-- | Report some parser errors.
+report :: [DefError] -> Parser ()
+report errs = Parser (put errs)
 
-instance RunExceptionM Parser Error where
-  try m = Parser (try (unParser m))
+-- | Collect definition errors in a parser action.
+defErrors :: Parser a -> Parser (a,[DefError])
+defErrors m = Parser (collect (unParser m))
 
-instance WriterM Parser [ParserError] where
-  put = Parser . put
+raiseError :: [Error] -> Parser a
+raiseError errs = Parser (raise errs)
 
-instance RunWriterM Parser [ParserError] where
-  collect = Parser . collect . unParser
-
--- | Raise an exception from the parser.
-raiseP :: String -> Range -> Parser a
-raiseP msg pos = raise (Error msg pos)
+-- | Unrecoverable parser error.
+parseError :: SrcLoc -> Doc -> Parser a
+parseError range doc = Parser (raise [Error range doc])
 
 -- | Run the parser over the file given.
-runParser :: [Lexeme] -> Parser a -> Either Error a
+runParser :: [Lexeme] -> Parser a -> Either [Error] a
 runParser ls m =
   case runM (unParser body) (initParserState ls) of
-    Right ((a,_),_) -> Right a
-    Left err        -> Left err
+    Right ((res,_),_) -> Right res
+    Left errs         -> Left errs
   where
   body = do
-    (res,errs) <- collect m
-    unless (null errs)
-        (raiseP ("definition errors: " ++ show errs) mempty)
+    (res,errs) <- Parser (collect (unParser m))
+    unless (null errs) (raiseError (map fromDefError errs))
     return res
 
 -- | Run the parser over a string in the Q monad.
@@ -89,13 +114,13 @@ runParserQ m str = do
   loc <- location
   let tokens = layout (scan (loc_filename loc) (L.pack str))
   case runParser tokens m of
-    Right a            -> return a
-    Left (Error err _) -> fail err
+    Right a   -> return a
+    Left errs -> fail (render (vcat (map ppr errs)))
 
 
 -- Parsed Syntax ---------------------------------------------------------------
 
-type NameMap = CM.ClashMap Name
+type NameMap = CM.ClashMap LName
 
 -- | A collection of parsed declarations.  Loosely, this is a module.
 data PDecls = PDecls
@@ -133,6 +158,13 @@ data PDecl
   | DeclTyped TypedDecl
     deriving (Show)
 
+instance HasLocation PDecl where
+  getLoc pd = case pd of
+    DeclTerm lu  -> getLoc lu
+    DeclType ls  -> getLoc ls
+    DeclTyped lt -> getLoc lt
+
+
 -- | Merge type and untyped declarations into a typed declaration, otherwise
 -- generate a name clash.
 resolveTypes :: Strategy PDecl
@@ -143,12 +175,16 @@ resolveTypes a b = case (a,b) of
 
 
 -- | Generate a term declaration that's lacking a type binding.
-mkUntyped :: UntypedDecl -> PDecls
-mkUntyped d = mempty { parsedPDecls = singleton (untypedName d) (DeclTerm d) }
+mkUntyped :: Located UntypedDecl -> PDecls
+mkUntyped ld = mempty
+  { parsedPDecls = singleton (untypedName `fmap` ld) (DeclTerm (unLoc ld))
+  }
 
 -- | Generate a declaration of a type for a term.
-mkTypeDecl :: Name -> Scheme -> PDecls
-mkTypeDecl n t = mempty { parsedPDecls = singleton n (DeclType t) }
+mkTypeDecl :: SrcLoc -> Name -> Scheme -> PDecls
+mkTypeDecl range n t = mempty
+  { parsedPDecls = singleton (n `at` range) (DeclType t)
+  }
 
 -- | Quantify all free variables in a parsed type.
 mkScheme :: Context -> Type -> Scheme
@@ -166,37 +202,43 @@ mkConstrGroup args cs = quantify vars ConstrGroup
   vars  = Set.toList (typeVars args')
 
 
-addDecl :: UntypedDecl -> PDecls -> PDecls
-addDecl d ds = ds
-  { parsedPDecls = CM.insertWith resolveTypes (untypedName d) (DeclTerm d)
-      (parsedPDecls ds)
+addDecl :: Located UntypedDecl -> PDecls -> PDecls
+addDecl ld ds = ds
+  { parsedPDecls =
+      CM.insertWith resolveTypes lname (DeclTerm udecl) (parsedPDecls ds)
   }
-
-mkDecls :: [UntypedDecl] -> PDecls
-mkDecls ds =  mempty { parsedPDecls = foldl step CM.empty ds }
   where
-  step m d = CM.insertWith resolveTypes (untypedName d) (DeclTerm d) m
+  udecl = unLoc ld
+  lname = untypedName `fmap` ld
+
+mkDecls :: [Located UntypedDecl] -> PDecls
+mkDecls  = foldr addDecl mempty
 
 exportBlock :: Export -> PDecls -> PDecls
 exportBlock ex pds = pds { parsedPDecls = f `fmap` parsedPDecls pds }
   where
-  f (DeclTerm d)  = DeclTerm d { untypedExport = ex }
-  f (DeclTyped d) = DeclTyped d { typedExport = ex }
+  f (DeclTerm d)  = DeclTerm  d { untypedExport = ex }
+  f (DeclTyped d) = DeclTyped d { typedExport   = ex }
   f e             = e
 
-mkOpen :: Open -> PDecls
-mkOpen o = mempty { parsedOpens = [o] }
+mkOpen :: Located Open -> PDecls
+mkOpen o = mempty { parsedOpens = [unLoc o] }
 
-mkPrimTerm :: PrimTerm -> PDecls
-mkPrimTerm d = mempty { parsedPrimTerms = singleton (primTermName d) d }
+mkPrimTerm :: SrcLoc -> PrimTerm -> PDecls
+mkPrimTerm range d = mempty
+  { parsedPrimTerms = singleton (primTermName d `at` range) d
+  }
 
-mkPrimType :: PrimType -> PDecls
-mkPrimType d = mempty { parsedPrimTypes = singleton (primTypeName d) d }
+mkPrimType :: SrcLoc -> PrimType -> PDecls
+mkPrimType range d = mempty
+  { parsedPrimTypes = singleton (primTypeName d `at` range) d
+  }
 
-mkDataDecl :: Range -> [(Name,Forall ConstrGroup)] -> Parser PDecls
+mkDataDecl :: SrcLoc -> [(Name,Forall ConstrGroup)] -> Parser PDecls
 mkDataDecl range groups = do
   let (ns,qgs) = unzip groups
-  when (null groups) (raiseP "No types defined by data declaration" range)
+  when (null groups)
+      (parseError range (text "No types defined by data declaration"))
   n <- groupName range ns
   a <- groupArity range qgs
   let d = DataDecl
@@ -208,27 +250,27 @@ mkDataDecl range groups = do
         }
   return mempty { parsedDataDecls = [d] }
 
-groupName :: Range -> [Name] -> Parser Name
+groupName :: SrcLoc -> [Name] -> Parser Name
 groupName range ns =
   case nub ns of
     [n] -> return n
-    _   -> raiseP "Type names don't agree" range
+    _   -> parseError range (text "Type names don't agree")
 
-groupArity :: Range -> [Forall ConstrGroup] -> Parser Int
+groupArity :: SrcLoc -> [Forall ConstrGroup] -> Parser Int
 groupArity range gs =
   case nub (map arity gs) of
     [n] -> return n
-    _   -> raiseP "Type group arities don't agree" range
+    _   -> parseError range (text "Type group arities don't agree")
   where
   arity = length . groupArgs . forallData
 
-resolveNamed :: NameMap a -> Parser [a]
+resolveNamed :: HasLocation a => NameMap a -> Parser [a]
 resolveNamed nm = do
   let (oks,clashes) = CM.foldClashMap step ([],[]) nm
       step n c (as,bs) = case clashElems c of
         [a] -> (a:as,bs)
-        _es -> (as,MultipleDefs n:bs)
-  put clashes
+        es  -> (as,MultipleDefs n (map getLoc es):bs)
+  report clashes
   return oks
 
 processBindings :: NameMap PDecl -> Parser ([TypedDecl],[UntypedDecl])
@@ -238,8 +280,8 @@ processBindings ds = do
         [DeclTyped t]  -> (t:ts,us,bs)
         [DeclTerm u]   -> (ts,u:us,bs)
         [DeclType _ty] -> (ts,us,NoBinding n:bs)
-        _es            -> (ts,us,MultipleDefs n:bs)
-  put clashes
+        es             -> (ts,us,MultipleDefs n (map getLoc es):bs)
+  report clashes
   return (typed,untyped)
 
 -- | Make a module from a set of parsed declarations, and a name.
