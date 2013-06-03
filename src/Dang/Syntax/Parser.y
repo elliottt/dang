@@ -18,6 +18,7 @@ import Dang.TypeChecker.Vars
 import Dang.Utils.Location (Located(..),unLoc,getLoc,at,ppLoc,extendLoc)
 import Dang.Utils.Pretty
 
+import Data.Foldable (foldMap)
 import Data.Monoid (mempty,mappend,mconcat)
 import MonadLib
 }
@@ -83,19 +84,24 @@ import MonadLib
 
 -- Names -----------------------------------------------------------------------
 
-qual_name :: { QualName }
-  : qual_name_prefix '.' ident { QualName (reverse $1) (unLoc $3) }
-  | ident                      { simpleName (unLoc $1) }
+qual_name :: { Located QualName }
+  : qual_name_prefix '.' ident { let { loc = mappend (getLoc $3) (foldMap getLoc $1)
+                                     ; ns  = map unLoc (reverse $1)
+                                     } in QualName ns (unLoc $3) `at` loc }
+  | ident                      { fmap simpleName $1 }
+  | 'as'                       { simpleName "as" `at` $1 }
 
-mod_name :: { QualName }
-  : qual_name_prefix '.' conident { QualName (reverse $1) (unLoc $3) }
-  | conident                      { QualName [] (unLoc $1) }
+mod_name :: { Located QualName }
+  : qual_name_prefix '.' conident { let { loc = mappend (getLoc $3) (foldMap getLoc $1)
+                                        ; ns  = map unLoc (reverse $1)
+                                        } in QualName ns (unLoc $3) `at` loc }
+  | conident                      { fmap (QualName []) $1 }
 
 
 -- Modules ---------------------------------------------------------------------
 
 top_module :: { Module }
-  : 'module' mod_name 'where' '{' top_decls '}' {% mkModule $2 $5 }
+  : 'module' mod_name 'where' '{' top_decls '}' {% mkModule (unLoc $2) $5 }
 
 
 -- Declarations ----------------------------------------------------------------
@@ -143,9 +149,9 @@ binds :: { PDecls }
   | fun_bind            { mkUntyped $1 }
   | type_bind           { $1 }
 
-qual_name_prefix :: { [Name] }
-  : qual_name_prefix '.' conident { unLoc $3 : $1 }
-  | conident                      { [unLoc $1] }
+qual_name_prefix :: { [Located Name] }
+  : qual_name_prefix '.' conident { $3 : $1 }
+  | conident                      { [$1] }
 
 -- By default, everything is set to be exported as public.
 top_fun_bind :: { Located UntypedDecl }
@@ -163,7 +169,7 @@ type_bind :: { PDecls }
 
 fun_bind :: { Located UntypedDecl }
   : ident arg_list '=' exp
-    { UntypedDecl Private (unLoc $1) ($2 (MTerm $4))
+    { UntypedDecl Private (unLoc $1) ($2 (MTerm (TLoc $4)))
         `at` (getLoc $1 `mappend` getLoc $4)
     }
 
@@ -175,10 +181,10 @@ arg_list :: { Match -> Match }
 -- Module Imports --------------------------------------------------------------
 
 open :: { Located Open }
-  : 'open' mod_name open_body { unLoc $3 $2 `at` ($1 `mappend` getLoc $3) }
+  : 'open' mod_name open_body { unLoc $3 (unLoc $2) `at` ($1 `mappend` getLoc $3) }
 
 open_body :: { Located (QualName -> Open) }
-  : 'as' mod_name open_tail { (\qn -> uncurry (Open qn (Just $2)) (unLoc $3) )
+  : 'as' mod_name open_tail { (\qn -> uncurry (Open qn (Just (unLoc $2))) (unLoc $3) )
                                  `at` ($1 `mappend` getLoc $3) }
   | open_tail               { (\qn -> uncurry (Open qn Nothing) (unLoc $1) )
                                  `at` getLoc $1 }
@@ -240,37 +246,54 @@ constr_tail :: { [Type] }
 
 -- Terms -----------------------------------------------------------------------
 
-exp :: { Term }
-  : '\\' arg_list '->' lexp { Abs ($2 (MTerm $4)) }
-  | lexp                    { $1 }
+exp :: { Located Term }
+  : '\\' arg_list '->' lexp
+    { let loc = mappend $1 (getLoc $4)
+       in Abs ($2 (MTerm (TLoc $4))) `at` loc }
+  | lexp
+    { $1 }
 
-lexp :: { Term }
-  : 'let' '{' binds '}' 'in' fexp {% (\(ts,us) -> Let ts us $6) `fmap`
-                                      processBindings (parsedPDecls $3) }
-  | fexp                          { $1 }
+lexp :: { Located Term }
+  : 'let' '{' binds '}' 'in' fexp
+    {% do { (ts,us) <- processBindings (parsedPDecls $3)
+          ; let loc = mappend $1 (getLoc $6)
+          ; return (Let ts us (TLoc $6) `at` loc)
+          }
 
-fexp :: { Term }
-  : aexp aexp_list { apply $1 (reverse $2) }
+    }
+  | fexp
+    { $1 }
 
-aexp_list :: { [Term] }
+fexp :: { Located Term }
+  : aexp aexp_list
+    { let { loc = getLoc $1 `mappend` foldMap getLoc $2
+          ; f   = TLoc $1
+          ; xs  = map TLoc (reverse $2)
+          } in if null xs
+                  then $1
+                  else apply f xs `at` loc
+    }
+
+aexp_list :: { [Located Term] }
   : aexp_list aexp { $2 : $1 }
   | {- empty -}    { [] }
 
-aexp :: { Term }
+aexp :: { Located Term }
   : '(' exp ')'           { $2 }
-  | 'as'                  { Global (simpleName "as") }
-  | qual_name             { Global $1 }
-  | mod_name              { Global $1 }
-  | int                   { TLoc (fmap (Lit . LInt) $1) }
-  | 'case' fexp 'of'
-    '{' case_branches '}' { Case $2 (foldr MSplit MFail (reverse $5)) }
+  | qual_name             { fmap Global $1 }
+  | mod_name              { fmap Global $1 }
+  | int                   { fmap (Lit . LInt) $1 }
+  | 'case' fexp 'of' '{' case_branches '}'
+    { let loc = mappend $1 $6
+       in Case (TLoc $2) (foldr MSplit MFail (reverse $5)) `at` loc
+    }
 
 case_branches :: { [Match] }
   : case_branches ';' case_branch { $3:$1 }
   | case_branch                   { [$1]  }
 
 case_branch :: { Match }
-  : naked_pat '->' exp { MPat $1 (MTerm $3) }
+  : naked_pat '->' exp { MPat $1 (MTerm (TLoc $3)) }
 
 
 -- Patterns --------------------------------------------------------------------
