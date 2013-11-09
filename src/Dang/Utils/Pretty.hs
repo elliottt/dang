@@ -70,6 +70,10 @@ class Pretty a where
   ppList :: Int -> [a] -> Doc
   ppList p as = hsep (map (pp p) as)
 
+instance Pretty Doc where
+  {-# INLINE pp #-}
+  pp _ = id
+
 instance Pretty Bool where
   pp _ True  = int 1
   pp _ False = int 0

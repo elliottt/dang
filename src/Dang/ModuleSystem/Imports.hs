@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Trustworthy #-}
@@ -15,25 +15,23 @@ module Dang.ModuleSystem.Imports (
   , loadInterfaces
 
     -- * Errors
-  , MissingInterface
   , missingInterface
   ) where
 
 import Dang.ModuleSystem.Interface
     (readInterface,InterfaceSet,emptyInterfaceSet,addInterface)
-import Dang.Monad (Dang,Exception,raiseE)
+import Dang.Monad ( DangM, addErr, tryMsgs )
 import Dang.ModuleSystem.QualName (QualName,isSimpleName,qualModule)
 import Dang.Syntax.AST
     (Module(..),Open(..),PrimType(..),PrimTerm(..),TypedDecl(..),UntypedDecl(..)
     ,DataDecl(..),ConstrGroup(..),Constr(..),Match(..),Pat(..),Term(..))
 import Dang.TypeChecker.Types (Forall(..),Qual(..),Type(..))
 import Dang.Utils.Location (unLoc)
+import Dang.Utils.Pretty
 
-import Control.Monad (guard)
+import Control.Monad ( guard, mzero )
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
-import Data.Typeable (Typeable)
-import MonadLib (BaseM,inBase,try,RunExceptionM)
 import qualified Data.Set as Set
 import qualified Data.Foldable as F
 
@@ -166,22 +164,20 @@ minimalImports us = ms Set.\\ rs
 
 -- | Attempt to load an interface set that contains all the module interfaces
 -- named in an import set.
-loadInterfaces :: BaseM m Dang => ImportSet -> m InterfaceSet
-loadInterfaces  = inBase . F.foldlM step emptyInterfaceSet
+loadInterfaces :: DangM m => ImportSet -> m InterfaceSet
+loadInterfaces  = F.foldlM step emptyInterfaceSet
   where
   step is m = do
-    e <- try (readInterface m)
+    (_,_,e) <- tryMsgs (readInterface m)
     case e of
-      Right iface -> return (addInterface iface is)
-      Left{}      -> missingInterface m
+      Just iface -> return (addInterface iface is)
+      _          -> missingInterface m
 
 
 -- Errors ----------------------------------------------------------------------
 
-data MissingInterface = MissingInterface QualName
-    deriving (Show,Typeable)
-
-instance Exception MissingInterface
-
-missingInterface :: BaseM m Dang => QualName -> m a
-missingInterface  = inBase . raiseE . MissingInterface
+missingInterface :: DangM m => QualName -> m a
+missingInterface n =
+  do addErr $ text "unable to find the interface file for module"
+          <+> quoted (ppr n)
+     mzero

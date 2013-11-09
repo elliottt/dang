@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Trustworthy #-}
@@ -7,7 +8,7 @@ module Dang.ModuleSystem.Interface where
 import Dang.IO (withROBinaryFile,withWOBinaryFile)
 import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.Types (UsedName(..))
-import Dang.Monad (Dang,io)
+import Dang.Monad ( DangM, io )
 import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
     (DataDecl(..),ConstrGroup(..),Constr(..),PrimType(..),PrimTerm(..))
@@ -18,7 +19,6 @@ import Dang.TypeChecker.Types
 import Control.Applicative (pure,(<$>),(<*>))
 import Data.Serialize
     (runPut,Putter,putMapOf,putListOf,runGet,Get,getMapOf,getListOf,get,put)
-import MonadLib (BaseM)
 import System.FilePath ((</>),(<.>))
 import qualified Data.Map as Map
 import qualified Data.ByteString as S
@@ -173,12 +173,12 @@ instance HasInterface InterfaceSet where
 modInterface :: QualName -> FilePath
 modInterface qn = foldr (</>) (qualSymbol qn <.> "di") (qualPrefix qn)
 
-writeInterface :: BaseM m Dang => Interface -> m ()
+writeInterface :: DangM m => Interface -> m ()
 writeInterface iface =
   withWOBinaryFile (modInterface (ifaceName iface)) $ \ h ->
     io (S.hPutStr h (runPut (putInterface iface)))
 
-readInterface :: BaseM m Dang => QualName -> m Interface
+readInterface :: DangM m => QualName -> m Interface
 readInterface qn =
   withROBinaryFile (modInterface qn) $ \ h -> do
     bytes <- io (S.hGetContents h)

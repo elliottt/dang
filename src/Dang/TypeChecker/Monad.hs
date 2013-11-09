@@ -1,30 +1,31 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.Monad (
+    -- * Type Checking Monad
     TC()
   , runTC
 
-    -- Unification
+    -- ** Unification
   , unify
   , applySubst
   , getSubst
 
-    -- Variables
+    -- ** Variables
   , freshName
   , freshVar
   , freshVarFromTParam
   , FreeVars, emitFreeVar, collectVars
-  , UnboundIdentifier(..)
-  , unboundIdentifier
   , withVarIndex
   , bindVars
   , withSkolems, skolems
 
-    -- Types
+    -- ** Types
   , freshInst, freshInst', withRigidInst
+
+    -- ** Errors
+  , unboundIdentifier
   ) where
 
 import Dang.Monad
@@ -32,17 +33,17 @@ import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify
 import Dang.TypeChecker.Vars
+import Dang.Utils.Pretty
 
 import Control.Applicative (Applicative)
 import Control.Monad.Fix (MonadFix)
 import Data.Monoid (Monoid(..))
-import Data.Typeable (Typeable)
 import MonadLib
 import qualified Data.Set as Set
 
 
 newtype TC a = TC { unTC :: ReaderT RO (WriterT WO (StateT RW Dang)) a }
-    deriving (Functor,Applicative,Monad,MonadFix)
+    deriving (Functor,Applicative,Monad,MonadFix,MonadPlus)
 
 runTC :: TC a -> Dang a
 runTC (TC m) = fmap (fst . fst)
@@ -52,12 +53,6 @@ runTC (TC m) = fmap (fst . fst)
 
 instance BaseM TC Dang where
   inBase = TC . inBase
-
-instance ExceptionM TC SomeException where
-  raise = TC . raise
-
-instance RunExceptionM TC SomeException where
-  try = TC . try . unTC
 
 
 -- Read-only Environment -------------------------------------------------------
@@ -211,11 +206,8 @@ withRigidInst tc k = do
   let sv = Set.fromList ps
   withSkolems sv (k sv ty)
 
-data UnboundIdentifier = UnboundIdentifier QualName
-    deriving (Show,Typeable)
-
-instance Exception UnboundIdentifier
-
 -- | Generate an @UnboundIdentifier@ exception.
 unboundIdentifier :: QualName -> TC a
-unboundIdentifier  = raiseE . UnboundIdentifier
+unboundIdentifier qn =
+  do addErr (text "Unbound identifier: " <+> quoted (ppr qn))
+     mzero

@@ -1,172 +1,74 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.Monad (
-    Dang
+
+    -- * Dang Monad
+    Dang, DangM
   , runDang
   , runDangWithArgs
 
-  , Options(..)
-  , DebugOpts(..)
+    -- ** Options
   , getOptions
-  , Verbosity
-  , displayHelp
   , whenDebugOpt
 
-  , Action(..)
-  , actionSources
-
-  , raiseE
-  , catchE
-  , catchJustE
-
+    -- ** IO
   , io
 
-  , Exception(..)
-  , SomeException()
+    -- ** Locations
+  , askLoc
+  , withLoc
+
+    -- ** Errors and Warnings
+  , Error(..), addErr, addErrL
+  , Warning(..), addWarn, addWarnL
+  , collectMessages
+
+    -- ** Error Recovery
+  , try
+  , tryMsgs
   ) where
 
-import Control.Applicative (Applicative)
-import Control.Exception (Exception(..),SomeException)
+import Dang.Options ( Options(..), DebugOpts(..), parseOptions )
+import Dang.Utils.Location ( SrcLoc(NoLoc), ppLoc )
+import Dang.Utils.Pretty
+
+import Control.Applicative ( Applicative(..), (<$>) )
+import Control.Monad ( MonadPlus(..), when )
 import Control.Monad.Fix (MonadFix)
-import Data.List (partition)
+import Data.IORef
+           ( IORef, newIORef, readIORef, modifyIORef', atomicModifyIORef' )
 import Data.Typeable (Typeable)
-import MonadLib
-import System.Console.GetOpt
-import System.Environment (getArgs, getProgName)
-import System.Exit (exitSuccess,exitFailure)
-import System.FilePath (takeExtension)
-import qualified Control.Exception as E
-
-
--- Errors ----------------------------------------------------------------------
-
-data DangError = DangError String
-    deriving (Show,Typeable)
-
-instance Exception DangError
-
-
--- Environment Configuration ---------------------------------------------------
-
-data Options = Options
-  { optKeepTempFiles :: Bool
-  , optAction        :: Action
-  , optVerbosity     :: Verbosity
-  , optCompileOnly   :: Bool
-  , optDebugOpts      :: DebugOpts
-  } deriving Show
-
-defaultOptions :: Options
-defaultOptions  = Options
-  { optKeepTempFiles = False
-  , optAction        = NoAction
-  , optVerbosity     = 0
-  , optCompileOnly   = False
-  , optDebugOpts      = emptyDebugOpts
-  }
-
-data Action
-  = Compile [FilePath]
-  | Link [FilePath] [FilePath]
-  | NoAction
-    deriving Show
-
-actionSources :: Action -> [FilePath]
-actionSources (Compile fs) = fs
-actionSources (Link fs _)  = fs
-actionSources NoAction     = []
-
-type Verbosity = Int
-
-type Option = Options -> IO Options
-
-parseOptions :: [String] -> IO Options
-parseOptions args =
-  case getOpt Permute options args of
-    (os,fs,[]) -> buildOptions os fs
-    (_,_,errs) -> do
-      displayHelp errs
-      exitFailure
-
-buildOptions :: [Option] -> [String] -> IO Options
-buildOptions os fs = do
-  opts <- foldM (flip id) defaultOptions os
-  return opts { optAction = inferAction opts fs }
-
-inferAction :: Options -> [String] -> Action
-inferAction opts fs
-  | optCompileOnly opts = Compile sources
-  | otherwise           = Link sources objs
-  where
-  (sources,objs) = partition (\f -> takeExtension f == ".dg") fs
-
-displayHelp :: [String] -> IO ()
-displayHelp errs = do
-  prog <- getProgName
-  let banner = unlines (errs ++ ["Usage: " ++ prog ++ " [options] source"])
-  putStr (usageInfo banner options)
-
-options :: [OptDescr Option]
-options  =
-  [ Option "h" ["help"] (NoArg handleHelp)
-    "Display this message"
-  , Option [] ["keep-temp-files"] (NoArg setKeepTempFiles)
-    "Don't remove temp files created during compilation"
-  , Option "v" ["verbosity"] (ReqArg setVerbosity "LEVEL")
-    "Set the logging verbosity"
-  , Option "c" [] (NoArg setCompileOnly)
-    "Compile only"
-  ] ++ debugOpts
-
-handleHelp :: Option
-handleHelp _ = do
-  displayHelp []
-  exitSuccess
-
-setKeepTempFiles :: Option
-setKeepTempFiles opts = return opts { optKeepTempFiles = True }
-
-setVerbosity :: String -> Option
-setVerbosity msg opts =
-  case reads msg of
-    [(v,[])] -> return opts { optVerbosity = v }
-    _        -> fail ("Unable to parse verbosity from: " ++ msg)
-
-setCompileOnly :: Option
-setCompileOnly opts = return opts { optCompileOnly = True }
-
-updateDebugOpts :: (DebugOpts -> IO DebugOpts) -> Option
-updateDebugOpts k opts = do
-  d <- k (optDebugOpts opts)
-  return opts { optDebugOpts = d }
-
-data DebugOpts = DebugOpts
-  { dbgDumpLLVM :: Bool
-  } deriving Show
-
-emptyDebugOpts :: DebugOpts
-emptyDebugOpts  = DebugOpts
-  { dbgDumpLLVM = False
-  }
-
-debugOpts :: [OptDescr Option]
-debugOpts  =
-  [ Option "" ["dump-llvm"] (NoArg (updateDebugOpts setDumpLLVM))
-    "Dump the generated LLVM assembly"
-  ]
-
-setDumpLLVM :: DebugOpts -> IO DebugOpts
-setDumpLLVM opts = return opts { dbgDumpLLVM = True }
+import MonadLib ( BaseM(..), RunM(..), ReaderT, ask )
+import qualified Control.Exception as X
 
 
 -- Monad -----------------------------------------------------------------------
 
+data DangError = DangError (Maybe String)
+                 deriving (Show,Typeable)
+
+instance X.Exception DangError
+
+
+data RO = RO { roOptions :: Options
+             , roLoc     :: IORef SrcLoc
+             , roErrors  :: IORef [Error]
+             , roWarns   :: IORef [Warning]
+             }
+
+
+-- | Monads that can be used with base 'Dang' operations.
+type DangM m = (Functor m, MonadPlus m, BaseM m Dang)
+
+-- | The Dang monad.
 newtype Dang a = Dang
-  { getDang :: ReaderT Options IO a
+  { getDang :: ReaderT RO IO a
   } deriving (Functor,Applicative,MonadFix)
 
 instance Monad Dang where
@@ -177,68 +79,145 @@ instance Monad Dang where
   Dang m >>= f = Dang (getDang . f =<< m)
 
   {-# INLINE fail #-}
-  fail msg = raiseE (DangError msg)
-
-instance ReaderM Dang Options where
-  ask = Dang ask
-
-instance ExceptionM Dang SomeException where
-  {-# INLINE raise #-}
-  raise = io . E.throwIO
-
-instance RunExceptionM Dang SomeException where
-  {-# INLINE try #-}
-  try m = do
-    opts <- ask
-    io (E.try (runReaderT opts (getDang m)))
+  fail msg = Dang (inBase (X.throwIO (DangError (Just msg))))
 
 instance BaseM Dang Dang where
+  {-# INLINE inBase #-}
   inBase = id
 
+instance MonadPlus Dang where
+  {-# INLINE mzero #-}
+  mzero = Dang (inBase (X.throwIO (DangError Nothing)))
+
+  {-# INLINE mplus #-}
+  mplus l r =
+    do ro <- askRO
+       io (run ro l `X.catch` \ DangError{} -> run ro r)
+    where
+    run ro m = runM (getDang m) ro
+
+instance RunM Dang a (Dang a) where
+  {-# INLINE runM #-}
+  runM = id
+
 -- | Do some IO.
-io :: BaseM m Dang => IO a -> m a
-io  = inBase . Dang . inBase
+io :: DangM m => IO a -> m a
+io m = inBase (Dang (inBase m))
 
 -- | Get the operations, in a derived monad.
-getOptions :: BaseM m Dang => m Options
-getOptions  = inBase ask
+getOptions :: DangM m => m Options
+getOptions  = roOptions `fmap` askRO
+
+-- | Get the current location.
+askLoc :: DangM m => m SrcLoc
+askLoc  =
+  do ro <- askRO
+     io (readIORef (roLoc ro))
+
+-- | Run a computation with a different location.
+withLoc :: DangM m => SrcLoc -> m a -> m a
+withLoc loc m =
+  do ro   <- askRO
+     loc' <- io (atomicModifyIORef' (roLoc ro) (\loc' -> (loc,loc')))
+     a    <- m
+     io (modifyIORef' (roLoc ro) (const loc'))
+     return a
+
+-- | Construct a new RO, to run a Dang computation.
+newRO :: Options -> IO RO
+newRO opts = RO opts <$> newIORef NoLoc <*> newIORef [] <*> newIORef []
+
+askRO :: DangM m => m RO
+askRO  = inBase (Dang ask)
 
 -- | Turn a Dang operation into an IO operation.  This will allow exceptions to
 -- escape.
-runDang :: Dang a -> IO a
-runDang m = do
-  args <- getArgs
-  runDangWithArgs args m
+runDang :: Options -> Dang a -> IO a
+runDang opts m = do
+  ro <- newRO opts
+  runM (getDang m) ro
 
 -- | Turn a Dang operation into an IO operation, using the provided arguments as
 -- the command-line arguments.
 runDangWithArgs :: [String] -> Dang a -> IO a
 runDangWithArgs args m = do
   opts <- parseOptions args
-  runReaderT opts (getDang m)
+  runDang opts m
 
--- | Raise an exception.
-raiseE :: (ExceptionM m SomeException, Exception e) => e -> m a
-raiseE  = raise . toException
+-- Options ---------------------------------------------------------------------
 
--- | Catch an exception.
-catchE :: (RunExceptionM m SomeException, Exception e)
-       => m a -> (e -> m a) -> m a
-catchE m h = do
-  e <- try m
-  case e of
-    Left se -> maybe (raise se) h (fromException se)
-    Right a -> return a
-
--- | Catch an exception guarded by a predicate.
-catchJustE :: (RunExceptionM m SomeException, Exception e)
-           => (e -> Maybe b) -> m a -> (b -> m a) -> m a
-catchJustE p m h = catchE m $ \ e ->
-  case p =<< fromException e of
-    Just b  -> h b
-    Nothing -> raiseE e
-
-whenDebugOpt :: (BaseM m Dang) => (DebugOpts -> Bool) -> m () -> m ()
+whenDebugOpt :: DangM m => (DebugOpts -> Bool) -> m () -> m ()
 whenDebugOpt p m = do
   opts <- getOptions
   when (p (optDebugOpts opts)) m
+
+
+-- Messages --------------------------------------------------------------------
+
+-- | Collect all the messages produced by a dang action.
+collectMessages :: DangM m => m a -> m ([Error], [Warning], a)
+collectMessages m =
+  do res     <- replace ([],[])
+     a       <- m
+     (es,ws) <- replace res
+     return (es,ws,a)
+  where
+  replace (es',ws') =
+    do ro <- askRO
+       io $ do es <- atomicModifyIORef' (roErrors ro) (\es -> (es',es))
+               ws <- atomicModifyIORef' (roWarns  ro) (\ws -> (ws',ws))
+               return (es,ws)
+
+
+-- | Location-tagged error messages.
+data Error = Error SrcLoc Doc
+             deriving (Show)
+
+instance Pretty Error where
+  pp _ (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
+                            2 msg
+
+-- | Record an error with the current source location.
+addErr :: (Pretty msg, DangM m) => msg -> m ()
+addErr msg =
+  do loc <- askLoc
+     addErrL loc msg
+
+-- | Add an error with a source location.
+addErrL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
+addErrL loc msg = inBase $ Dang $
+  do ro <- ask
+     inBase (modifyIORef' (roErrors ro) (\es -> es ++ [Error loc (ppr msg)]))
+
+
+-- | Location-tagged warning messages.
+data Warning = Warning SrcLoc Doc
+               deriving (Show)
+
+instance Pretty Warning where
+  pp _ (Warning loc msg) = hang (text "[warning]" <+> ppLoc loc)
+                              2 msg
+
+-- | Add a warning with no location information.
+addWarn :: (Pretty msg, DangM m) => msg -> m ()
+addWarn msg =
+  do loc <- askLoc
+     addErrL loc msg
+
+-- | Add a warning with location information
+addWarnL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
+addWarnL loc msg = inBase $ Dang $
+  do ro <- ask
+     inBase (modifyIORef' (roWarns ro) (\ws -> ws ++ [Warning loc (ppr msg)]))
+
+
+-- Recovery --------------------------------------------------------------------
+
+-- | Try to run a computation.  If it fails with 'fail' or 'mzero', return
+-- Nothing.
+try :: DangM m => m a -> m (Maybe a)
+try m = fmap Just m `mplus` return Nothing
+
+-- | A combination of 'try' and 'collectMessages'.
+tryMsgs :: DangM m => m a -> m ([Error], [Warning], Maybe a)
+tryMsgs  = collectMessages . try

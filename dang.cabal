@@ -69,6 +69,7 @@ library
                         Dang.Monad,
                         Dang.Tool,
                         Data.ClashMap,
+                        Dang.Options
                         Dang.Prim,
                         Dang.ReadWrite,
                         Dang.Traversal,

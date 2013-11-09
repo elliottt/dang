@@ -11,7 +11,8 @@ module Dang.CodeGen (
 import Dang.Core.AST (Module)
 import Dang.IO (logStage)
 import Dang.ModuleSystem.Interface (InterfaceSet,Interface)
-import Dang.Monad (Dang,whenDebugOpt,dbgDumpLLVM,io)
+import Dang.Monad (Dang,whenDebugOpt,io)
+import Dang.Options ( dbgDumpLLVM )
 import Dang.Utils.Pretty (Doc,empty)
 
 import Text.LLVM (ppModule,runLLVM)

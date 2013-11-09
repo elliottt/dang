@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Trustworthy #-}
 
@@ -11,8 +12,6 @@ module Dang.IO (
   , withOpenTempFile
   , E.IOException
 
-  , onFileNotFound
-
   , whenVerbosity
   , logInfo, logStage
   , logDebug
@@ -21,45 +20,46 @@ module Dang.IO (
 
 import Dang.Colors
 import Dang.Monad
+import Dang.Options
+import Dang.Utils.Pretty ( text, vcat, (<+>) )
 
-import MonadLib
-import System.Directory
+import Control.Monad ( unless, when, mzero )
+import System.Directory ( createDirectoryIfMissing, removeFile )
 import System.IO
-import System.IO.Error
 import qualified Control.Exception as E
 import qualified Data.Text.Lazy    as L
 import qualified Data.Text.Lazy.IO as L
 
 
 -- | Read in a file as a strict ByteString.
-loadFile :: BaseM m Dang => FilePath -> m L.Text
+loadFile :: DangM m => FilePath -> m L.Text
 loadFile path = do
   logInfo ("load file: " ++ path)
-  io (L.readFile path)
-
-onFileNotFound :: RunExceptionM m SomeException
-               => m a -> (E.IOException -> FilePath -> m a) -> m a
-onFileNotFound m = catchJustE p m . uncurry
+  e <- io (E.try (L.readFile path))
+  handle e
   where
-  p e = do
-    guard (isDoesNotExistError e)
-    path <- ioeGetFileName e
-    return (e,path)
+  handle :: DangM m => Either E.IOException L.Text -> m L.Text
+  handle e = case e of
+    Right bytes -> return bytes
+    Left x      ->
+      do addErr $ vcat [ text "Unable to open file" <+> text path
+                       , text (show x) ]
+         mzero
 
 dangTempDir :: FilePath
 dangTempDir  = "/tmp/dang"
 
-ensureTempDir :: BaseM m Dang => m ()
+ensureTempDir :: DangM m => m ()
 ensureTempDir  = io (createDirectoryIfMissing True dangTempDir)
 
-ensureClosed :: BaseM m Dang => Handle -> m ()
+ensureClosed :: DangM m => Handle -> m ()
 ensureClosed h = io $ do
   b <- hIsClosed h
   unless b $ do
     hFlush h
     hClose h
 
-withROFile :: BaseM m Dang => FilePath -> (Handle -> m a) -> m a
+withROFile :: DangM m => FilePath -> (Handle -> m a) -> m a
 withROFile path k = do
   logInfo ("read file: " ++ path)
   h   <- io (openFile path ReadMode)
@@ -67,7 +67,7 @@ withROFile path k = do
   ensureClosed h
   return res
 
-withROBinaryFile :: BaseM m Dang => FilePath -> (Handle -> m a) -> m a
+withROBinaryFile :: DangM m => FilePath -> (Handle -> m a) -> m a
 withROBinaryFile path k = do
   logInfo ("read file[b]: " ++ path)
   h   <- io (openBinaryFile path ReadMode)
@@ -75,7 +75,7 @@ withROBinaryFile path k = do
   ensureClosed h
   return res
 
-withWOBinaryFile :: BaseM m Dang => FilePath -> (Handle -> m a) -> m a
+withWOBinaryFile :: DangM m => FilePath -> (Handle -> m a) -> m a
 withWOBinaryFile path k = do
   logInfo ("write file[b]: " ++ path)
   h   <- io (openBinaryFile path WriteMode)
@@ -83,7 +83,7 @@ withWOBinaryFile path k = do
   ensureClosed h
   return res
 
-withOpenTempFile :: BaseM m Dang => (FilePath -> Handle -> m a) -> m a
+withOpenTempFile :: DangM m => (FilePath -> Handle -> m a) -> m a
 withOpenTempFile k = do
   ensureTempDir
   (path,h) <- io (openTempFile "/tmp/dang" "dang.tmp")
@@ -96,7 +96,7 @@ withOpenTempFile k = do
     io (removeFile path)
   return res
 
-withClosedTempFile :: BaseM m Dang => (FilePath -> m a) -> m a
+withClosedTempFile :: DangM m => (FilePath -> m a) -> m a
 withClosedTempFile k = withOpenTempFile $ \path h -> do
   io (hClose h)
   k path
@@ -104,28 +104,28 @@ withClosedTempFile k = withOpenTempFile $ \path h -> do
 
 -- Logging ---------------------------------------------------------------------
 
-whenVerbosity :: BaseM m Dang => Verbosity -> m () -> m ()
+whenVerbosity :: DangM m => Verbosity -> m () -> m ()
 whenVerbosity v m = do
   opts <- getOptions
   when (optVerbosity opts >= v) m
 
-logString :: BaseM m Dang => (String -> String) -> String -> String -> m ()
+logString :: DangM m => (String -> String) -> String -> String -> m ()
 logString mode label str =
   io $ putStrLn $ showString (mode ('[' : label ++ "]")) $ showChar '\t' str
 
-logError :: BaseM m Dang => String -> m ()
+logError :: DangM m => String -> m ()
 logError  = whenVerbosity 0
           . logString (withGraphics [fg red, bold]) "ERROR"
 
-logInfo :: BaseM m Dang => String -> m ()
+logInfo :: DangM m => String -> m ()
 logInfo  = whenVerbosity 1
          . logString (withGraphics [fg cyan, bold]) "INFO"
 
-logDebug :: BaseM m Dang => String -> m ()
+logDebug :: DangM m => String -> m ()
 logDebug  = whenVerbosity 2
           . logString (withGraphics [fg blue, bold]) "DEBUG"
 
-logStage :: BaseM m Dang => String -> m ()
+logStage :: DangM m => String -> m ()
 logStage l = whenVerbosity 1 (io (putStrLn msg))
   where
   msg  = concat

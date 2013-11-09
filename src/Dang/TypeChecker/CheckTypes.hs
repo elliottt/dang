@@ -1,5 +1,4 @@
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.CheckTypes where
@@ -20,9 +19,8 @@ import Dang.Utils.Pretty
 import Dang.Variables (freeVars,sccFreeNames,sccToList)
 import qualified Dang.Syntax.AST as Syn
 
-import Control.Monad (foldM,mapAndUnzipM,unless)
+import Control.Monad ( foldM, mapAndUnzipM, unless, mzero )
 import Data.Maybe (fromMaybe)
-import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
@@ -44,7 +42,7 @@ interfaceAssumps  = foldl step emptyAssumps . getTypes
 typeAssump :: QualName -> TypeAssumps -> TC (Assump Scheme)
 typeAssump qn env = case lookupAssump qn env of
   Just a  -> return a
-  Nothing -> raiseE (UnboundIdentifier qn)
+  Nothing -> unboundIdentifier qn
 
 -- | Add primitive terms to the typing environment.
 primAssumps :: Namespace -> [Syn.PrimTerm] -> TypeAssumps -> TC TypeAssumps
@@ -115,10 +113,11 @@ tcModule i m = do
 
 -- Typed Declarations ----------------------------------------------------------
 
-data LessPolymorphic = LessPolymorphic QualName
-    deriving (Show,Typeable)
-
-instance Exception LessPolymorphic
+lessPolymorphic :: QualName -> TC a
+lessPolymorphic qn =
+  do addErr $ sep [ text "Type signature for declaration" <+> ppr qn
+                  , text "was less polymorphic than expected" ]
+     mzero
 
 -- | Check a typed declaration.
 tcTypedDecl :: Namespace -> TypeAssumps -> Syn.TypedDecl -> TC Decl
@@ -134,7 +133,7 @@ tcTypedDecl ns env td = do
 
     env' <- applySubst env
     unless (Set.null (typeVars env' `Set.intersection` rigidVars))
-      (raiseE (LessPolymorphic name))
+        (lessPolymorphic name)
 
     let ps = Set.toList (genVars env m')
     return Decl

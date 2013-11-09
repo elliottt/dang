@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Trustworthy #-}
 
@@ -6,40 +6,37 @@ module Dang.Tool where
 
 import Dang.IO
 import Dang.Monad
+import Dang.Utils.Pretty
 
-import Data.Typeable (Typeable)
-import MonadLib
-import System.Exit
-import System.Process
-
-data ToolError = ToolError Tool
-    deriving (Show,Typeable)
-
-instance Exception ToolError
+import Control.Monad ( mzero )
+import System.Exit ( ExitCode(..) )
+import System.Process ( CreateProcess(..), proc, waitForProcess, createProcess )
 
 
 data Tool = Tool
   { toolName :: String
   , toolProg :: String
   , toolArgs :: [String]
-  } deriving (Show,Typeable)
+  } deriving (Show)
 
 toolProcess :: Tool -> [String] -> CreateProcess
 toolProcess t extra = proc (toolProg t) (toolArgs t ++ extra)
 
-logTool :: BaseM m Dang => Tool -> [String] -> m ()
+logTool :: DangM m => Tool -> [String] -> m ()
 logTool t extra = logInfo $ unwords $ toolProg t : toolArgs t ++ extra
 
 -- | Run a tool with optional extra arguments, waiting for it to exit.
-sync :: BaseM m Dang => Tool -> [String] -> m ()
+sync :: DangM m => Tool -> [String] -> m ()
 sync t extra = do
   logTool t extra
-  io $ do
+  exit <- io $ do
     (_,_,_,ph) <- createProcess (toolProcess t extra)
-    exit       <- waitForProcess ph
-    case exit of
-      ExitSuccess   -> return ()
-      ExitFailure _ -> raiseE (ToolError t)
+    waitForProcess ph
+  case exit of
+    ExitSuccess   -> return ()
+    ExitFailure _ ->
+      do addErr (text "Failed while running tool:" <+> text (toolName t))
+         mzero
 
 -- LLVM Tools ------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
-dist
-cabal-dev
-*.swp
+dist/
+.cabal-sandbox/
+cabal.sandbox.config
+build-deps/

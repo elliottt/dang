@@ -21,10 +21,11 @@ import Dang.Utils.Pretty (pretty)
 import Dang.Variables (freeLocals,freeVars)
 
 import Control.Applicative(Applicative(..),(<$>))
+import Control.Monad ( MonadPlus, foldM, guard )
 import Data.Generics (extM,Data(gmapM))
 import Data.List (partition)
 import Data.Maybe (isJust)
-import MonadLib hiding (lift)
+import MonadLib ( BaseM(..), ReaderT, ask, local, WriterT, put, collect, runM )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -45,27 +46,27 @@ lambdaLift m = do
 
 newtype LL a = LL
   { unLL :: ReaderT Env (WriterT [Decl] Dang) a
-  } deriving (Functor,Applicative,Monad)
+  } deriving (Functor,Applicative,Monad,MonadPlus)
 
 instance BaseM LL Dang where
   inBase = LL . inBase
 
-instance WriterM LL [Decl] where
-  put = LL . put
-
-instance RunWriterM LL [Decl] where
-  collect = LL .collect . unLL
-
-instance ReaderM LL Env where
-  ask = LL ask
-
-instance RunReaderM LL Env where
-  local env m = LL (local env (unLL m))
-
 runLL :: LL a -> Dang a
 runLL m = do
-  (a,_) <- runWriterT (runReaderT emptyEnv (unLL m))
+  (a,_) <- runM (unLL m) emptyEnv
   return a
+
+emitDecls :: [Decl] -> LL ()
+emitDecls ds = LL (put ds)
+
+collectDecls :: LL a -> LL (a,[Decl])
+collectDecls m = LL (collect (unLL m))
+
+withEnv :: Env -> LL a -> LL a
+withEnv env m = LL (local env (unLL m))
+
+getEnv :: LL Env
+getEnv  = LL ask
 
 
 -- Lambda-lifting Environment --------------------------------------------------
@@ -91,14 +92,14 @@ addRewrites rws env = env { envRewrite = Map.union rws (envRewrite env) }
 
 introParams :: [TParam Kind] -> ([TParam Kind] -> LL a) -> LL a
 introParams ps k = do
-  env <- ask
+  env <- getEnv
   let ps' = map (modifyTParamIndex (+ envDepth env)) ps
-  local (env { envDepth = envDepth env + length ps }) (k ps')
+  withEnv (env { envDepth = envDepth env + length ps }) (k ps')
 
 introPatArgs :: Pat -> LL a -> LL a
 introPatArgs p k = do
-  env <- ask
-  local (patArgs p env) k
+  env <- getEnv
+  withEnv (patArgs p env) k
 
 patArgs :: Pat -> Env -> Env
 patArgs p env = case p of
@@ -108,14 +109,14 @@ patArgs p env = case p of
 
 lookupType :: Name -> LL Type
 lookupType n = do
-  env <- ask
+  env <- getEnv
   case Map.lookup n (envArgs env) of
     Just ty -> return ty
     Nothing -> fail ("lookupType: " ++ n)
 
 lookupRewrite :: QualName -> LL (Maybe Rewrite)
 lookupRewrite qn = do
-  env <- ask
+  env <- getEnv
   return $! Map.lookup qn (envRewrite env)
 
 
@@ -130,7 +131,7 @@ llPass  =
 
 llModule :: Module -> LL Module
 llModule m = do
-  (ds,ls) <- collect (llPass (modDecls m))
+  (ds,ls) <- collectDecls (llPass (modDecls m))
   return m { modDecls = ds ++ ls }
 
 llDecl :: Decl -> LL Decl
@@ -177,13 +178,13 @@ llLocal n ps = maybe (Local n) rewriteSymbol <$> lookupRewrite qn
 
 llLet :: [Decl] -> Term -> LL Term
 llLet ds e = do
-  env <- ask
+  env <- getEnv
   let args = Set.fromList (Map.keys (envArgs env))
   rewrites <- buildRewriteMap args ds
-  local (addRewrites rewrites env) $ do
+  withEnv (addRewrites rewrites env) $ do
     ds' <- mapM llDecl ds
     let (lift,keep) = partition hasArgs ds'
-    put lift
+    emitDecls lift
     letIn keep <$> llTerm e
 
 

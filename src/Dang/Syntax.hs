@@ -11,8 +11,8 @@ module Dang.Syntax (
   , testLexer'
   ) where
 
-import Dang.IO (logStage,logInfo,logDebug,onFileNotFound,loadFile)
-import Dang.Monad (Dang,io,raiseE)
+import Dang.IO (logStage,logInfo,logDebug,loadFile)
+import Dang.Monad ( Dang, io )
 import Dang.Syntax.AST (Module)
 import Dang.Syntax.Layout (layout)
 import Dang.Syntax.Lexeme (Lexeme)
@@ -29,10 +29,8 @@ import qualified Data.Text.Lazy.IO as L
 loadModule :: FilePath -> Dang Module
 loadModule path = do
   logStage "parser"
-  source <- onFileNotFound (loadFile path) $ \ x p -> do
-    io (putStrLn ("Unable to open file: " ++ p))
-    raiseE x
-  m <- parseSource path source
+  source <- loadFile path
+  m      <- parseSource path source
   logInfo ("Parsed module\n" ++ pretty m)
   logDebug (show m)
   return m

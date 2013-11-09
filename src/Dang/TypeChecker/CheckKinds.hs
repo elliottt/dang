@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.CheckKinds where
@@ -6,7 +5,6 @@ module Dang.TypeChecker.CheckKinds where
 import Dang.IO
 import Dang.ModuleSystem.Interface (HasInterface,getKinds)
 import Dang.ModuleSystem.QualName
-import Dang.Monad
 import Dang.Syntax.AST
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
@@ -19,7 +17,6 @@ import Dang.Variables (sccToList,sccFreeNames)
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (foldM,mapAndUnzipM,replicateM)
-import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 
 
@@ -27,18 +24,6 @@ import qualified Data.Set as Set
 
 freshKindVar :: TC Kind
 freshKindVar  = freshVar setSort
-
-
--- Errors ----------------------------------------------------------------------
-
-data KindError = KindError String
-    deriving (Typeable,Show)
-
-instance Exception KindError
-
--- | Raise a kind-checking error.
-kindError :: String -> TC a
-kindError  = raiseE . KindError
 
 
 -- Kind Assumptions ------------------------------------------------------------

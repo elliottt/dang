@@ -21,8 +21,9 @@ import Dang.Utils.Pretty (pretty)
 import qualified Data.ClashMap as CM
 
 import Control.Applicative (Applicative,(<$>))
+import Control.Monad ( MonadPlus )
 import Data.Generics (Data(gmapM),extM)
-import MonadLib
+import MonadLib ( BaseM(..), ReaderT, ask, local, runM )
 import qualified Data.Set as Set
 
 
@@ -43,13 +44,13 @@ emptyRO  = RO
 
 newtype Scope a = Scope
   { unScope :: ReaderT RO Dang a
-  } deriving (Functor,Applicative,Monad)
+  } deriving (Functor,Applicative,Monad,MonadPlus)
 
 instance BaseM Scope Dang where
   inBase = Scope . inBase
 
 runScope :: Scope a -> Dang a
-runScope  = runReaderT emptyRO . unScope
+runScope m = runM (unScope m) emptyRO
 
 withResolved :: ResolvedNames -> Scope a -> Scope a
 withResolved names m = Scope $ do

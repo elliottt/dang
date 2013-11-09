@@ -1,11 +1,12 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.TypeChecker.Unify where
 
 import Dang.Core.AST
+import Dang.ModuleSystem.QualName ( QualName )
 import Dang.Monad
 import Dang.Syntax.AST (DataDecl(..),ConstrGroup(..),Constr(..))
 import Dang.TypeChecker.Types
@@ -13,10 +14,8 @@ import Dang.TypeChecker.Vars
 import Dang.Utils.Pretty
 
 import Control.Arrow (second)
-import Control.Monad (unless,guard)
+import Control.Monad ( unless, guard, mzero )
 import Data.List (intersect)
-import Data.Typeable (Typeable)
-import MonadLib (ExceptionM)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
@@ -246,22 +245,35 @@ instance Types Constr where
 
 -- Unification -----------------------------------------------------------------
 
-data UnifyError
-  = UnifyError Type Type
-  | UnifyBoundSkolem (TParam Kind) Type
-  | UnifyOccursCheck (TParam Kind) Type
-  | UnifyGeneric String
-    deriving (Show,Typeable)
+invalidInfixCon :: DangM m => QualName -> QualName -> m a
+invalidInfixCon l r =
+  do addErr $ sep [ text "Expected infix constructor" <+> quoted (ppr l)
+                  , text "got" <+> quoted (ppr r) ]
+     mzero
 
-instance Exception UnifyError
+unifyError :: DangM m => Type -> Type -> m a
+unifyError l r =
+  do addErr $ sep [ text "The types" <+> quoted (ppr l)
+                  , text "and" <+> quoted (ppr r)
+                  , text "do not unify" ]
+     mzero
 
-unifyError :: ExceptionM m SomeException => String -> m a
-unifyError  = raiseE . UnifyGeneric
+unifyBoundSkolem :: DangM m => TParam k -> Type -> m a
+unifyBoundSkolem p ty =
+  do addErr $ sep [ text "Attempted to unify skolem variable" <+> quoted (ppr p)
+                  , text "with type" <+> quoted (ppr ty) ]
+     mzero
+
+occursCheckFailed :: DangM m => TParam k -> Type -> m a
+occursCheckFailed p ty =
+  do addErr $ hang (text "Cannot construct the infinite type:")
+                 2 (ppr p <+> char '=' <+> ppr ty)
+     mzero
 
 type Skolems = Set.Set (TParam Kind)
 
 -- | Generate the most-general unifier for two types.
-mgu :: ExceptionM m SomeException => Skolems -> Type -> Type -> m Subst
+mgu :: DangM m => Skolems -> Type -> Type -> m Subst
 mgu skolems = loop
   where
   loop a b = case (a,b) of
@@ -274,9 +286,7 @@ mgu skolems = loop
 
     -- infix type constructor application
     (TInfix n l r, TInfix m x y) -> do
-      unless (n == m) $ unifyError $ concat
-        [ "Expected infix constructor ``", pretty n
-        , "'', got ``", pretty m, "''" ]
+      unless (n == m) (invalidInfixCon n m)
       sl <- loop l x
       sr <- loop (apply sl r) (apply sl y)
       return (sl @@ sr)
@@ -287,16 +297,15 @@ mgu skolems = loop
     -- constructors
     (TCon l, TCon r) | l == r -> return emptySubst
 
-    _ -> raiseE (UnifyError a b)
+    _ -> unifyError a b
 
 
 -- | Generate a substitution that unifies a variable with a type.
-varBind :: ExceptionM m SomeException
-        => Skolems -> TParam Kind -> Type -> m Subst
+varBind :: DangM m => Skolems -> TParam Kind -> Type -> m Subst
 varBind skolems p ty
   | Just p' <- destUVar ty, p == p' = return emptySubst
-  | p `Set.member` skolems          = raiseE (UnifyBoundSkolem p ty)
-  | occursCheck p ty                = raiseE (UnifyOccursCheck p ty)
+  | p `Set.member` skolems          = unifyBoundSkolem p ty
+  | occursCheck p ty                = occursCheckFailed p ty
   | otherwise                       = return (varSubst (paramIndex p) ty)
 
 
