@@ -33,6 +33,16 @@ data QualName
   | PrimName Namespace Name
     deriving (Ord,Eq,Show,Data,Typeable)
 
+mkLocal :: Name -> QualName
+mkLocal  = QualName []
+
+mkQual :: Namespace -> Name -> QualName
+mkQual  = QualName
+
+mkPrim :: Namespace -> Name -> QualName
+mkPrim  = PrimName
+
+
 instance Lift QualName where
   lift qn = case qn of
     QualName ps n ->

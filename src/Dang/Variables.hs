@@ -1,55 +1,69 @@
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Dang.Variables where
 
 import Dang.ModuleSystem.QualName
 
+import Data.Foldable ( foldMap )
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
 import qualified Data.Set as Set
 
 
+-- Free Variables --------------------------------------------------------------
+
 class FreeVars a where
   freeVars :: a -> Set.Set QualName
 
 instance FreeVars a => FreeVars (Maybe a) where
-  freeVars = maybe Set.empty freeVars
+  freeVars = foldMap freeVars
 
 instance FreeVars a => FreeVars [a] where
-  freeVars = Set.unions . map freeVars
+  freeVars = foldMap freeVars
 
 instance FreeVars a => FreeVars (Set.Set a) where
-  freeVars = freeVars . Set.toList
+  freeVars = foldMap freeVars
 
 instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
   freeVars (a,b) = freeVars a `Set.union` freeVars b
 
 
-class FreeVars a => DefinesName a where
-  definedName :: a -> Name
+-- Bound Variables -------------------------------------------------------------
 
-class FreeVars a => DefinesQualName a where
-  definedQualName :: a -> QualName
+class BoundVars a where
+  boundVars :: a -> Set.Set QualName
 
-freeLocals :: FreeVars a => a -> Set.Set Name
-freeLocals  = Set.map qualSymbol . Set.filter isSimpleName . freeVars
+instance BoundVars a => BoundVars (Maybe a) where
+  boundVars = foldMap boundVars
+
+instance BoundVars a => BoundVars [a] where
+  boundVars = foldMap boundVars
+
+instance BoundVars a => BoundVars (Set.Set a) where
+  boundVars = foldMap boundVars
 
 
-deriving instance Show a => Show (SCC a)
+-- Strongly Connected Components -----------------------------------------------
 
-sccFreeNames :: DefinesName a => Namespace -> [a] -> [SCC a]
-sccFreeNames ns as = stronglyConnComp graph
+data Group a = NonRecursive a
+             | Recursive [a]
+               deriving (Show,Eq,Ord)
+
+flattenGroup :: Group a -> [a]
+flattenGroup g = case g of
+  NonRecursive a -> [a]
+  Recursive as   -> as
+
+toGroup :: SCC a -> Group a
+toGroup s = case s of
+  AcyclicSCC a -> NonRecursive a
+  CyclicSCC as -> Recursive as
+
+sccFreeNames :: (FreeVars a, BoundVars a) => [a] -> [Group a]
+sccFreeNames as = map toGroup (stronglyConnComp graph)
   where
-  graph = [ (a, qualName ns (definedName a), Set.toList (freeVars a))
-          | a <- as ]
-
-sccFreeQualNames :: DefinesQualName a => [a] -> [SCC a]
-sccFreeQualNames as = stronglyConnComp graph
-  where
-  graph = [ (a, definedQualName a, Set.toList (freeVars a)) | a <- as ]
-
-sccToList :: SCC a -> [a]
-sccToList (AcyclicSCC a) = [a]
-sccToList (CyclicSCC as) = as
+  graph = [ (a, n, Set.toList fvs) | a <- as
+                                   , let fvs = freeVars a
+                                   , n <- Set.toList (boundVars a) ]
