@@ -11,16 +11,18 @@ import Dang.Monad
 import Dang.Options
 import Dang.Syntax
 import Dang.TypeChecker
+import Dang.Utils.Pretty ( ppr )
 
 import Control.Monad ( unless )
 import System.Environment ( getArgs )
+import System.Exit ( exitSuccess, exitFailure )
 import System.FilePath ( dropExtension )
 
 
 main :: IO ()
 main  =
-  do opts <- parseOptions =<< getArgs
-     runDang opts $ do
+  do opts       <- parseOptions =<< getArgs
+     (es,ws,mb) <- runDang opts $ tryMsgs $ do
        logStage "dang"
 
        let a      = optAction opts
@@ -35,3 +37,11 @@ main  =
        compile iset tcm (ofile file)
        unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
        logStage "oh-snap"
+
+     let dump m = print (ppr m)
+     mapM_ dump ws
+     mapM_ dump es
+
+     case mb of
+       Just () -> exitSuccess
+       _       -> exitFailure

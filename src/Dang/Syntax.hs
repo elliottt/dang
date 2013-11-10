@@ -12,7 +12,7 @@ module Dang.Syntax (
   ) where
 
 import Dang.IO (logStage,logInfo,logDebug,loadFile)
-import Dang.Monad ( Dang, io )
+import Dang.Monad ( Dang, putErrs )
 import Dang.Syntax.AST (Module)
 import Dang.Syntax.Layout (layout)
 import Dang.Syntax.Lexeme (Lexeme)
@@ -22,6 +22,7 @@ import Dang.Syntax.ParserCore (runParser)
 import Dang.Utils.Location (unLoc)
 import Dang.Utils.Pretty (pretty)
 
+import Control.Monad ( mzero )
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L
 
@@ -38,8 +39,10 @@ loadModule path = do
 parseSource :: FilePath -> L.Text -> Dang Module
 parseSource path source =
   case runParser (layout (scan path source)) parseModule of
-    Left err -> io (putStrLn (show err)) >> fail "Parse error"
     Right m  -> return m
+    Left err ->
+      do putErrs err
+         mzero
 
 testLexer :: FilePath -> String -> [Lexeme]
 testLexer path = layout . scan path . L.pack

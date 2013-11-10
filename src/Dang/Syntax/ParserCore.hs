@@ -5,6 +5,7 @@
 
 module Dang.Syntax.ParserCore where
 
+import Dang.Monad ( Error(..) )
 import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
@@ -26,15 +27,6 @@ import Language.Haskell.TH.Syntax (Loc(loc_filename),location)
 import MonadLib
 import qualified Data.Set as Set
 import qualified Data.Text.Lazy as L
-
-
--- Generic Errors --------------------------------------------------------------
-
-data Error = Error !SrcLoc Doc
-    deriving (Show)
-
-instance Pretty Error where
-  pp _ (Error loc msg) = (ppLoc loc <> colon) $$ nest 2 msg
 
 
 -- Definition Errors -----------------------------------------------------------

@@ -21,7 +21,7 @@ module Dang.IO (
 import Dang.Colors
 import Dang.Monad
 import Dang.Options
-import Dang.Utils.Pretty ( text, vcat, (<+>) )
+import Dang.Utils.Pretty ( text, (<+>), quoted )
 
 import Control.Monad ( unless, when, mzero )
 import System.Directory ( createDirectoryIfMissing, removeFile )
@@ -41,9 +41,8 @@ loadFile path = do
   handle :: DangM m => Either E.IOException L.Text -> m L.Text
   handle e = case e of
     Right bytes -> return bytes
-    Left x      ->
-      do addErr $ vcat [ text "Unable to open file" <+> text path
-                       , text (show x) ]
+    Left _x     ->
+      do addErr (text "Unable to open file" <+> quoted (text path))
          mzero
 
 dangTempDir :: FilePath

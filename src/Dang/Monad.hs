@@ -25,8 +25,8 @@ module Dang.Monad (
   , withLoc
 
     -- ** Errors and Warnings
-  , Error(..), addErr, addErrL
-  , Warning(..), addWarn, addWarnL
+  , Error(..), addErr, addErrL, putErrs
+  , Warning(..), addWarn, addWarnL, putWarns
   , collectMessages
 
     -- ** Error Recovery
@@ -175,7 +175,7 @@ data Error = Error SrcLoc Doc
 
 instance Pretty Error where
   pp _ (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
-                            2 msg
+                            2 (msg $$ text "")
 
 -- | Record an error with the current source location.
 addErr :: (Pretty msg, DangM m) => msg -> m ()
@@ -185,9 +185,13 @@ addErr msg =
 
 -- | Add an error with a source location.
 addErrL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
-addErrL loc msg = inBase $ Dang $
-  do ro <- ask
-     inBase (modifyIORef' (roErrors ro) (\es -> es ++ [Error loc (ppr msg)]))
+addErrL loc msg = putErrs [Error loc (ppr msg)]
+
+-- | Primitive error recording.
+putErrs :: DangM m => [Error] -> m ()
+putErrs errs =
+  do ro <- askRO
+     io (modifyIORef' (roErrors ro) (\es -> es ++ errs))
 
 
 -- | Location-tagged warning messages.
@@ -196,7 +200,7 @@ data Warning = Warning SrcLoc Doc
 
 instance Pretty Warning where
   pp _ (Warning loc msg) = hang (text "[warning]" <+> ppLoc loc)
-                              2 msg
+                              2 (msg $$ text "")
 
 -- | Add a warning with no location information.
 addWarn :: (Pretty msg, DangM m) => msg -> m ()
@@ -206,9 +210,12 @@ addWarn msg =
 
 -- | Add a warning with location information
 addWarnL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
-addWarnL loc msg = inBase $ Dang $
-  do ro <- ask
-     inBase (modifyIORef' (roWarns ro) (\ws -> ws ++ [Warning loc (ppr msg)]))
+addWarnL loc msg = putWarns [Warning loc (ppr msg)]
+
+putWarns :: DangM m => [Warning] -> m ()
+putWarns warns =
+  do ro <- askRO
+     io (modifyIORef' (roWarns ro) (\ws -> ws ++ warns))
 
 
 -- Recovery --------------------------------------------------------------------

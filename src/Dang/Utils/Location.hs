@@ -105,7 +105,7 @@ srcEnd loc = case loc of
 
 ppLoc :: SrcLoc -> Doc
 ppLoc loc = case loc of
-  NoLoc      -> text "<unknown>"
+  NoLoc      -> empty
   SrcLoc r s -> ppSource s <> colon <> ppr r
 
 
