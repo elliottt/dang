@@ -11,7 +11,6 @@ import Dang.Utils.Pretty
 import Dang.Variables
 
 import Data.List (partition,nub)
-import Data.Monoid (mempty)
 import qualified Data.Set as Set
 
 
@@ -36,7 +35,9 @@ data Block a = BSingle a
              | BComb (Block a) (Block a)
                -- ^ Non-overlapping combination of declarations.
              | BSeq (Block a) (Block a)
-               -- ^ Left-to-right combination of declaraitons.
+               -- ^ Left-to-right combination of declaraitons.  The resulting
+               -- binding group will prefer names from the right, shadowing
+               -- names on the left.
              | BLocal (Block a) (Block a)
                -- ^ Declarations that are local to a group of other
                -- declarations.
@@ -66,13 +67,13 @@ data Decl = DBind Bind
             deriving (Show,Data,Typeable)
 
 -- | Function binding.
-data Bind = Bind { bindName :: Name
+data Bind = Bind { bindName :: QualName
                  , bindType :: Maybe Schema
                  , bindBody :: Match
                  } deriving (Show,Data,Typeable)
 
 -- | A name with a signature.
-data Signature = Signature { sigNames  :: [Located Name]
+data Signature = Signature { sigNames  :: [Located QualName]
                            , sigSchema :: Schema
                            } deriving (Show,Data,Typeable)
 
@@ -83,7 +84,7 @@ data PrimTerm = PrimTerm { primTermName :: Located Name
 
 -- | A primitive type, with a kind signature.
 data PrimType = PrimType { primTypeName :: Name
-                         , primTypeKind :: Kind
+                         , primTypeKind :: Schema
                          } deriving (Show,Data,Typeable)
 
 -- | GADT declaration.
@@ -133,7 +134,7 @@ data Pat = PVar Name           -- ^ Variable introduction
 
 data Term = Abs Match
           | Case Term Match
-          | Let [Decl] Term
+          | Let (Block Decl) Term
           | App Term [Term]
           | Local Name
           | Global QualName
@@ -143,3 +144,82 @@ data Term = Abs Match
 
 data Literal = LInt Integer
                deriving (Show,Data,Typeable)
+
+
+-- Variable Binders-------------------------------------------------------------
+
+instance BoundVars a => BoundVars (Block a) where
+  boundVars b = case b of
+    BSingle a    -> boundVars a
+    BExport _ b' -> boundVars b'
+    BRec b'      -> boundVars b'
+    BComb l r    -> boundVars [l,r]
+    BSeq l r     -> boundVars [l,r]
+    BLocal _ b'  -> boundVars b'
+    BSource _ b' -> boundVars b'
+
+instance BoundVars Decl where
+  boundVars d = case d of
+    DBind b -> boundVars b
+    DSig s  -> boundVars s
+
+instance BoundVars Bind where
+  boundVars b = Set.singleton (bindName b)
+
+instance BoundVars Signature where
+  boundVars sig = Set.fromList (map unLoc (sigNames sig))
+
+instance BoundVars Pat where
+  boundVars p = case p of
+    PVar n       -> Set.singleton (mkLocal n)
+    PCon qn ps   -> Set.insert qn (boundVars ps)
+    PWildcard    -> Set.empty
+    PSource _ p' -> boundVars p'
+
+
+-- Free Variables --------------------------------------------------------------
+
+instance (BoundVars a, FreeVars a) => FreeVars (Block a) where
+  freeVars b = case b of
+    BSingle a    -> freeVars a
+    BExport _ b' -> freeVars b'
+    BRec b'      -> freeVars b'
+    BComb l r    -> freeVars [l,r]  Set.\\ boundVars [l,r]
+    BSeq l r     -> freeVars [l,r]  Set.\\ boundVars l
+    BLocal l b'  -> freeVars [l,b'] Set.\\ boundVars l
+    BSource _ b' -> freeVars b'
+
+instance FreeVars Decl where
+  freeVars d = case d of
+    DBind b -> freeVars b
+    DSig _  -> Set.empty
+
+instance FreeVars Bind where
+  freeVars b = freeVars (bindBody b) Set.\\ boundVars b
+
+instance FreeVars Match where
+  freeVars m = case m of
+    MTerm tm       -> freeVars tm
+    MPat p m'      -> freeVars m'      Set.\\ boundVars p
+    MGuard p tm m' -> freeVars (tm,m') Set.\\ boundVars p
+    MSplit l r     -> freeVars [l,r]
+    MFail          -> Set.empty
+    MSource _ m'   -> freeVars m'
+
+instance FreeVars Term where
+  freeVars tm = case tm of
+    Abs m     -> freeVars m
+    Case e m  -> freeVars e `Set.union` freeVars m
+    Let b e   -> freeVars (b,e) Set.\\ boundVars b
+    App f xs  -> freeVars f `Set.union` freeVars xs
+    Local n   -> Set.singleton (mkLocal n)
+    Global qn -> Set.singleton qn
+    Lit _     -> Set.empty
+    TLoc ltm  -> freeVars ltm
+
+
+-- Pretty Printing -------------------------------------------------------------
+
+instance Pretty Literal where
+  pp lit = case lit of
+    LInt i -> int i

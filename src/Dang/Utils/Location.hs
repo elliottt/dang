@@ -1,6 +1,8 @@
 {-# LANGUAGE Safe #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Dang.Utils.Location where
 
@@ -8,10 +10,12 @@ import Dang.Utils.Pretty
 
 import Control.Monad (mplus)
 import Data.Data (Data)
+import Data.Foldable ( Foldable )
 import Data.Function (on)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(..))
+import Data.Traversable ( Traversable )
 import Data.Typeable (Typeable)
 
 
@@ -30,7 +34,7 @@ locEnd a = srcEnd (getLoc a)
 data Located a = Located
   { locRange :: !SrcLoc
   , locValue ::  a
-  } deriving (Show,Functor,Ord,Eq,Data,Typeable)
+  } deriving (Show,Functor,Ord,Eq,Data,Typeable,Foldable,Traversable)
 
 instance HasLocation (Located a) where
   getLoc = locRange

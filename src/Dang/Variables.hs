@@ -5,6 +5,7 @@
 module Dang.Variables where
 
 import Dang.ModuleSystem.QualName
+import Dang.Utils.Location
 
 import Data.Foldable ( foldMap )
 import Data.Graph (SCC(..))
@@ -16,6 +17,9 @@ import qualified Data.Set as Set
 
 class FreeVars a where
   freeVars :: a -> Set.Set QualName
+
+instance FreeVars a => FreeVars (Located a) where
+  freeVars = foldMap freeVars
 
 instance FreeVars a => FreeVars (Maybe a) where
   freeVars = foldMap freeVars

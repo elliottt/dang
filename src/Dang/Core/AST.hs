@@ -4,17 +4,15 @@
 module Dang.Core.AST (
     module Dang.Core.AST
   , Literal(..)
-  , PrimType(..)
-  , PrimTerm(..)
   ) where
 
 import Dang.ModuleSystem.Export (Exported(..),Export(..))
 import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
-import Dang.Syntax.AST (Literal(..),PrimType(..),PrimTerm(..))
+import Dang.Syntax.AST ( Literal(..) )
 import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types (Type,Forall(..),forallData,tarrow)
 import Dang.Utils.Pretty
-import Dang.Variables (FreeVars(freeVars),DefinesQualName(definedQualName))
+import Dang.Variables (FreeVars(freeVars),BoundVars(boundVars))
 
 import Data.List (nub)
 import qualified Data.Set as Set
@@ -22,16 +20,12 @@ import qualified Data.Set as Set
 
 data Module = Module
   { modName      :: QualName
-  , modPrimTypes :: [PrimType]
-  , modPrimTerms :: [PrimTerm]
   , modDecls     :: [Decl]
   } deriving (Show,Data,Typeable)
 
 emptyModule :: QualName -> Module
 emptyModule qn = Module
   { modName      = qn
-  , modPrimTypes = []
-  , modPrimTerms = []
   , modDecls     = []
   }
 
@@ -40,8 +34,7 @@ instance Pretty Module where
                , declBlock decls
                ]
     where
-    decls = map ppr (modPrimTypes m)
-         ++ map ppr (modDecls m)
+    decls = map ppr (modDecls m)
 
 -- | Pretty print a list of type parameters for a type application/definition.
 ppTyApp :: Pretty a => [a] -> Doc
@@ -61,8 +54,8 @@ data Decl = Decl
 instance Exported Decl where
   exportSpec = declExport
 
-instance DefinesQualName Decl where
-  definedQualName = declName
+instance BoundVars Decl where
+  boundVars d = Set.singleton (declName d)
 
 instance FreeVars Decl where
   freeVars d = Set.delete (declName d) (freeVars (forallData (declBody d)))
@@ -245,7 +238,7 @@ instance FreeVars Term where
                      Set.\\ Set.fromList (map declName ds)
     Global qn -> Set.singleton qn
     Local n   -> Set.singleton (simpleName n)
-    Lit l     -> freeVars l
+    Lit l     -> Set.empty
 
 instance Pretty Term where
   pp p tm = case tm of

@@ -24,7 +24,6 @@ library
                         Dang.Syntax.Lexer,
                         Dang.Syntax.Parser,
                         Dang.Syntax.ParserCore,
-                        Dang.Syntax.Renumber,
 
                         -- module system
                         Dang.ModuleSystem,
