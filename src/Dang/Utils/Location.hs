@@ -55,7 +55,7 @@ at a loc = Located
 
 -- Drop the location information from a Pretty-printend thing.
 instance Pretty a => Pretty (Located a) where
-  pp p = pp p . unLoc
+  ppr loc = ppr (unLoc loc)
 
 -- | Strip off location information.
 unLoc :: Located a -> a
@@ -72,8 +72,8 @@ extendLoc r loc = loc { locRange = locRange loc `mappend` r }
 type Source = Maybe String
 
 -- | Pretty-print a source.
-ppSource :: Source -> Doc
-ppSource  = text . fromMaybe "<unknown>"
+ppSource :: Source -> PPDoc
+ppSource src = text (fromMaybe "<unknown>" src)
 
 -- | A range in the program source.
 data SrcLoc = NoLoc | SrcLoc !Range Source
@@ -107,10 +107,10 @@ srcEnd loc = case loc of
   SrcLoc r _ -> rangeStart r
   NoLoc      -> zeroPosition
 
-ppLoc :: SrcLoc -> Doc
+ppLoc :: SrcLoc -> PPDoc
 ppLoc loc = case loc of
   NoLoc      -> empty
-  SrcLoc r s -> ppSource s <> colon <> ppr r
+  SrcLoc r s -> ppSource s <> char ':' <> ppr r
 
 
 -- Ranges ----------------------------------------------------------------------
@@ -128,7 +128,7 @@ instance Monoid Range where
   mappend (Range ls le) (Range rs re) = Range (smallerOf ls rs) (largerOf le re)
 
 instance Pretty Range where
-  pp _ (Range s e) = ppr s <> char '-' <> ppr e
+  ppr (Range s e) = ppr s <> char '-' <> ppr e
 
 
 -- Positions -------------------------------------------------------------------
@@ -141,7 +141,7 @@ data Position = Position
   } deriving (Show,Eq,Data,Typeable)
 
 instance Pretty Position where
-  pp _ pos = int (posLine pos) <> char ':' <> int (posCol pos)
+  ppr pos = int (posLine pos) <> char ':' <> int (posCol pos)
 
 -- | This only compares offset, assuming that the positions come from the same
 -- source.
