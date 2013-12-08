@@ -33,6 +33,9 @@ instance FreeVars a => FreeVars (Set.Set a) where
 instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
   freeVars (a,b) = freeVars a `Set.union` freeVars b
 
+instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c) where
+  freeVars (a,b,c) = freeVars a `Set.union` freeVars b `Set.union` freeVars c
+
 
 -- Bound Variables -------------------------------------------------------------
 

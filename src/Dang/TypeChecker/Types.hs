@@ -13,13 +13,15 @@ import Data.Maybe (fromMaybe)
 -- Types -----------------------------------------------------------------------
 
 data Type
-  = TCon Name [Type]
+  = TApp Type Type
+  | TCon Name [Type]
   | TVar TParam
   | TGen TParam
     deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty Type where
-  ppr (TCon con tys) = optParens 10 (ppr con <+> hsep (map (ppPrec 10) tys))
+  ppr (TApp l r)     = optParens 10 (pp   l <+> ppPrec 10 r)
+  ppr (TCon con tys) = optParens 10 (pp con <+> hsep (map (ppPrec 10) tys))
   ppr (TVar tp)      = pp tp
   ppr (TGen tp)      = pp tp
 

@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Safe #-}
 
 module Dang.Core.AST (
     module Dang.Core.AST
@@ -7,49 +6,43 @@ module Dang.Core.AST (
   ) where
 
 import Dang.ModuleSystem.Export (Exported(..),Export(..))
-import Dang.ModuleSystem.QualName (QualName,Name,simpleName)
+import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST ( Literal(..) )
 import Dang.Traversal (Data,Typeable)
-import Dang.TypeChecker.Types (Type,Forall(..),forallData,tarrow)
+import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 import Dang.Variables (FreeVars(freeVars),BoundVars(boundVars))
 
-import Data.List (nub)
 import qualified Data.Set as Set
 
 
 data Module = Module
-  { modName      :: QualName
-  , modDecls     :: [Decl]
+  { modName  :: ModName
+  , modDecls :: [Decl]
   } deriving (Show,Data,Typeable)
 
-emptyModule :: QualName -> Module
-emptyModule qn = Module
-  { modName      = qn
-  , modDecls     = []
-  }
+emptyModule :: ModName -> Module
+emptyModule qn = Module { modName = qn, modDecls = [] }
 
 instance Pretty Module where
-  pp _ m = sep [ text "module" <+> ppr (modName m)
-               , declBlock decls
-               ]
-    where
-    decls = map ppr (modDecls m)
+  ppr m = sep [ text "module" <+> pp (modName m)
+              , layout (concatMap (ppDecl True) (modDecls m))
+              ]
 
 -- | Pretty print a list of type parameters for a type application/definition.
-ppTyApp :: Pretty a => [a] -> Doc
+ppTyApp :: Pretty a => [a] -> PPDoc
 ppTyApp [] = empty
-ppTyApp ts = brackets (commas (map ppr ts))
+ppTyApp ts = fsep (list (char '[') comma (char ']') (map pp ts))
 
 
 -- Declarations ----------------------------------------------------------------
 
 -- | Fully qualified declarations.
-data Decl = Decl
-  { declName   :: QualName
-  , declExport :: Export
-  , declBody   :: Forall Match
-  } deriving (Show,Data,Typeable)
+data Decl = Decl { declName   :: Name
+                 , declExport :: Export
+                 , declType   :: Schema
+                 , declBody   :: Term
+                 } deriving (Show,Data,Typeable)
 
 instance Exported Decl where
   exportSpec = declExport
@@ -58,71 +51,47 @@ instance BoundVars Decl where
   boundVars d = Set.singleton (declName d)
 
 instance FreeVars Decl where
-  freeVars d = Set.delete (declName d) (freeVars (forallData (declBody d)))
-
-instance Pretty Decl where
-  pp _ d   = ppr (declExport d) <+> ppDecl d
-  ppList _ = declBlock . map ppr
+  freeVars d = freeVars (declBody d)
 
 -- | Pretty-print a declaration without its export annotation.
-ppDecl :: Decl -> Doc
-ppDecl d = sep [ ppr (declName d) <+> ppTyApp ps
-               , sep as <+> char '='
-               , nest 2 b
-               ]
+ppDecl :: Bool -> Decl -> [PPDoc]
+ppDecl withExp d | withExp   = [ hang (ppr (declExport d)) 2 (vcat body) ]
+                 | otherwise = body
   where
-  Forall ps body = declBody d
-  (as,b)         = ppMatch body
-
--- | Determine if a declaration has arguments.
-hasArgs :: Decl -> Bool
-hasArgs  = not . isMTerm . forallData . declBody
+  body = [ ppr (declName d) <+> char ':' <+> ppr (declType d)
+         , ppr (declName d) <+> char '=' <+> ppr (declBody d) ]
 
 -- | Determine if a declaration is monomorphic.
 isMono :: Decl -> Bool
-isMono  = null . forallParams . declBody
-
--- | Compute the type of a declaration.
-declType :: Decl -> Forall Type
-declType d = Forall ps (matchType m)
-  where
-  Forall ps m = declBody d
+isMono d = null (sParams (declType d))
 
 
 -- Variable Introduction -------------------------------------------------------
 
 -- | Typed variable introduction.
-data Match
- = MTerm  Term  Type
- | MSplit Match Match
- | MPat   Pat   Match
- | MGuard Pat   Term  Type Match
- | MFail  Type
-   deriving (Show,Data,Typeable)
+data Match = MSplit Match Match
+           | MPat   Pat   Match
+           | MGuard Pat   Term  Type Match
+           | MFail Type
+             deriving (Show,Data,Typeable)
 
 instance FreeVars Match where
   freeVars m = case m of
-    MTerm t _       -> freeVars t
     MSplit l r      -> freeVars l `Set.union` freeVars r
-    MPat p m'       -> freeVars m' Set.\\ freeVars p
-    MGuard p e _ m' -> (freeVars e `Set.union` freeVars m') Set.\\ freeVars p
+    MPat p m'       -> freeVars (p,m')   Set.\\ boundVars p
+    MGuard p e _ m' -> freeVars (p,e,m') Set.\\ boundVars p
     MFail _         -> Set.empty
 
 instance Pretty Match where
-  pp _ m = case m of
-    MTerm t ty -> text "->" <+> ppr t <+> text "::" <+> ppr ty
+  ppr m = case m of
+    MSplit l r -> pp l $$ pp r
 
-    MSplit l r ->
-      let lArm = ppMatch l
-          rArm = ppMatch r
-          ppArm (as,b) = hsep as <+> text "->" <+> b
-       in ppArm lArm $$ ppArm rArm
-
-    MPat p m' -> ppr p <+> ppr m'
+    MPat p m' -> hang (ppPrec 10 p)
+                    2 (pp m')
 
     MGuard p e ty m' -> cat
-      [ ppr p <+> text "<-" <+> parens (ppr e <+> ppr ty)
-      , char ',' <+> ppr m'
+      [ pp p <+> text "<-" <+> parens (pp e <+> pp ty)
+      , char ',' <+> pp m'
       ]
 
     MFail _ -> empty
@@ -130,51 +99,18 @@ instance Pretty Match where
 -- | The type of a match.
 matchType :: Match -> Type
 matchType m = case m of
-  MTerm _ ty      -> ty
   MSplit l _      -> matchType l
-  MPat p m'       -> patType p `tarrow` matchType m'
+  MPat p m'       -> patType p `tArrow` matchType m'
   MGuard _ _ _ m' -> matchType m'
   MFail ty        -> ty
-
--- | Pretty-print the arguments with precedence 1, and the body with precedence
--- 0.
-ppMatch :: Match -> ([Doc],Doc)
-ppMatch m = case m of
-  MPat p m' -> let (as,b) = ppMatch m' in (pp 2 p:as, b)
-  _         -> ([], ppr m)
-
-ppCaseArms :: Match -> [Doc]
-ppCaseArms m = case m of
-  MSplit l r -> ppr l : ppCaseArms r
-  _          -> [ppr m]
-
-isMTerm :: Match -> Bool
-isMTerm MTerm{} = True
-isMTerm _       = False
-
-isMPat :: Match -> Bool
-isMPat MPat{} = True
-isMPat _      = False
-
--- | Apply a function on the @MTerm@ portion of a @Match@.
-atMTerm :: (Match -> Match) -> (Match -> Match)
-atMTerm k = loop
-  where
-  loop m = case m of
-    MTerm _ _        -> k m
-    MSplit l r       -> MSplit (loop l) (loop r)
-    MPat p m'        -> MPat p (loop m')
-    MGuard p e ty m' -> MGuard p e ty (loop m')
-    MFail _          -> m
 
 
 -- Variable Patterns -----------------------------------------------------------
 
-data Pat
-  = PVar Name Type
-  | PCon QualName [Pat] Type
-  | PWildcard Type
-    deriving (Show,Data,Typeable)
+data Pat = PVar Name Type
+         | PCon Name [Name] Type
+         | PWildcard Type
+           deriving (Show,Data,Typeable)
 
 patType :: Pat -> Type
 patType p = case p of
@@ -185,33 +121,41 @@ patType p = case p of
 patVars :: Pat -> [Name]
 patVars p = case p of
   PVar n _    -> [n]
-  PCon _ ps _ -> nub (concatMap patVars ps)
+  PCon _ ps _ -> ps
   PWildcard _ -> []
+
+instance BoundVars Pat where
+  boundVars pat = case pat of
+    PCon _ ps _ -> Set.fromList ps
+    PVar n _    -> Set.singleton n
+    PWildcard _ -> Set.empty
 
 instance FreeVars Pat where
   freeVars p = case p of
-    PVar n _     -> Set.singleton (simpleName n)
-    PCon qn ps _ -> Set.singleton qn `Set.union` freeVars ps
-    PWildcard _  -> Set.empty
+    PCon n _ _  -> Set.singleton n
+    PVar{}      -> Set.empty
+    PWildcard{} -> Set.empty
 
 instance Pretty Pat where
-  pp _ p = parens $ case p of
-    PVar n ty     -> ppr n    <+> text "::"                       <+> ppr ty
-    PCon qn ps ty -> ppr qn   <+> hsep (map ppr ps) <+> text "::" <+> ppr ty
-    PWildcard ty  -> char '_' <+> text "::"                       <+> ppr ty
+  ppr pat = parens $ case pat of
+    PVar n ty     -> ppr n    <+> text ":"                       <+> ppr ty
+    PCon qn ps ty -> ppr qn   <+> hsep (map ppr ps) <+> text ":" <+> ppr ty
+    PWildcard ty  -> char '_' <+> text ":"                       <+> ppr ty
 
 
 -- Terms -----------------------------------------------------------------------
 
-data Term
-  = AppT Term [Type]
-  | App Term [Term]
-  | Case Term Match
-  | Let [Decl] Term
-  | Global QualName
-  | Local Name
-  | Lit Literal
-    deriving (Show,Data,Typeable)
+data Term = AbsT TParam Term
+          | Abs Name Term
+
+          | AppT Term [Type]
+          | App Term [Term]
+
+          | Case Term Match
+          | Let [Decl] Term
+          | Var Name
+          | Lit Literal
+            deriving (Show,Data,Typeable)
 
 appT :: Term -> [Type] -> Term
 appT f [] = f
@@ -231,27 +175,32 @@ letIn ds e = Let ds e
 
 instance FreeVars Term where
   freeVars tm = case tm of
+    AbsT _ t' -> freeVars t'
     AppT f _  -> freeVars f
+    Abs n t'  -> Set.delete n (freeVars t')
     App t as  -> freeVars (t:as)
     Case e m  -> freeVars e `Set.union` freeVars m
     Let ds t  -> (freeVars t `Set.union` freeVars ds)
                      Set.\\ Set.fromList (map declName ds)
-    Global qn -> Set.singleton qn
-    Local n   -> Set.singleton (simpleName n)
-    Lit l     -> Set.empty
+    Var n     -> Set.singleton n
+    Lit _     -> Set.empty
 
 instance Pretty Term where
-  pp p tm = case tm of
-    AppT f vs -> pp 1 f <> char '@' <> brackets (commas (map ppr vs))
-    App f xs  -> optParens (p > 0) (ppr f <+> ppList 1 xs)
-    Case e m  -> optParens (p > 0) (ppCase e m)
-    Let ds e  -> optParens (p > 0)
-               $ text "let" <+> declBlock (map ppDecl ds)
+  ppr tm = case tm of
+    AbsT p t' -> hang (text "/\\" <+> pp p <+> text "->")
+                    2 (pp t')
+    AppT f vs -> ppPrec 10 f <> char '@'
+                         <> fsep (list (char '[') comma (char ']') (map pp vs))
+    Abs n t'  -> hang (text "\\" <+> pp n <+> text "->")
+                    2 (pp t')
+    App f xs  -> optParens 10 (ppr f <+> fsep (map (ppPrec 10) xs))
+    Case e m  -> optParens 10 (ppCase e m)
+    Let ds e  -> optParens 10
+               $ text "let" <+> layout (concatMap (ppDecl False) ds)
              <+> text "in"  <+> ppr e
-    Global qn -> ppr qn
-    Local n   -> ppr n
+    Var n     -> ppr n
     Lit l     -> ppr l
 
-ppCase :: Term -> Match -> Doc
-ppCase e m = text "case" <+> ppr e <+> text "of"
-          $$ cat (ppCaseArms m)
+ppCase :: Term -> Match -> PPDoc
+ppCase e m = hang (text "case" <+> ppr e <+> text "of")
+                2 (pp m)

@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Safe #-}
 
 module Dang.Syntax.AST where
 
@@ -10,22 +9,18 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import Data.List (partition,nub)
 import qualified Data.Set as Set
 
 
 -- Parsed AST ------------------------------------------------------------------
 
--- | The namespace provided by a module.
-modNamespace :: Module -> [Name]
-modNamespace  = qualNamespace . locValue . modName
-
 -- | A parsed program.
-data Module = Module { modName  :: Located QualName
+data Module = Module { modName  :: Located ModName
                      , modOpens :: [Located Open]
                      , modDecls :: Block TopDecl
                      } deriving (Show,Data,Typeable)
 
+-- | Binding blocks.
 data Block a = BSingle a
                -- ^ A single declaration.
              | BExport Export (Block a)
@@ -51,15 +46,15 @@ data TopDecl = TDDecl Decl
                deriving (Show,Data,Typeable)
 
 -- | A module import.
-data Open = Open { openMod     :: QualName
-                 , openAs      :: Maybe QualName
+data Open = Open { openMod     :: ModName
+                 , openAs      :: Maybe ModName
                  , openHiding  :: Bool
                  , openSymbols :: [OpenSymbol]
                  } deriving (Show,Data,Typeable)
 
 -- | Symbols that can be imported.
-data OpenSymbol = OpenTerm Name
-                | OpenType Name [Name]
+data OpenSymbol = OpenTerm String
+                | OpenType String [String]
                   deriving (Show,Data,Typeable)
 
 data Decl = DBind Bind
@@ -67,13 +62,13 @@ data Decl = DBind Bind
             deriving (Show,Data,Typeable)
 
 -- | Function binding.
-data Bind = Bind { bindName :: QualName
+data Bind = Bind { bindName :: Name
                  , bindType :: Maybe Schema
                  , bindBody :: Match
                  } deriving (Show,Data,Typeable)
 
 -- | A name with a signature.
-data Signature = Signature { sigNames  :: [Located QualName]
+data Signature = Signature { sigNames  :: [Located Name]
                            , sigSchema :: Schema
                            } deriving (Show,Data,Typeable)
 
@@ -106,15 +101,18 @@ data Constr = Constr { constrName   :: Name
                      , constrFields :: [Type]
                      } deriving (Show,Data,Typeable)
 
-data Schema = Forall Type
+-- | Type schemas, with constraints.
+data Schema = Forall [Prop] Type
               deriving (Show,Data,Typeable)
 
 -- | Kinds and types use the same surface syntax.
 type Kind = Type
 
-data Type = TApp QualName [Type]
-          | TInfix Type QualName Type
-          | TCon QualName
+type Prop = Type
+
+data Type = TApp Type [Type]
+          | TInfix Type Name Type
+          | TCon Name
           | TVar Name
             deriving (Show,Data,Typeable)
 
@@ -127,7 +125,7 @@ data Match = MTerm  Term             -- ^ Body of a match
              deriving (Show,Data,Typeable)
 
 data Pat = PVar Name           -- ^ Variable introduction
-         | PCon QualName [Pat] -- ^ Constructor patterns
+         | PCon Name [Pat]     -- ^ Constructor patterns
          | PWildcard           -- ^ The wildcard pattern
          | PSource SrcLoc Pat  -- ^ Source location
            deriving (Show,Data,Typeable)
@@ -136,8 +134,7 @@ data Term = Abs Match
           | Case Term Match
           | Let (Block Decl) Term
           | App Term [Term]
-          | Local Name
-          | Global QualName
+          | Var Name
           | Lit Literal
           | TLoc (Located Term)
             deriving (Show,Data,Typeable)
@@ -171,7 +168,7 @@ instance BoundVars Signature where
 
 instance BoundVars Pat where
   boundVars p = case p of
-    PVar n       -> Set.singleton (mkLocal n)
+    PVar n       -> Set.singleton n
     PCon qn ps   -> Set.insert qn (boundVars ps)
     PWildcard    -> Set.empty
     PSource _ p' -> boundVars p'
@@ -212,8 +209,7 @@ instance FreeVars Term where
     Case e m  -> freeVars e `Set.union` freeVars m
     Let b e   -> freeVars (b,e) Set.\\ boundVars b
     App f xs  -> freeVars f `Set.union` freeVars xs
-    Local n   -> Set.singleton (mkLocal n)
-    Global qn -> Set.singleton qn
+    Var n     -> Set.singleton n
     Lit _     -> Set.empty
     TLoc ltm  -> freeVars ltm
 
@@ -221,5 +217,5 @@ instance FreeVars Term where
 -- Pretty Printing -------------------------------------------------------------
 
 instance Pretty Literal where
-  pp lit = case lit of
-    LInt i -> int i
+  ppr lit = case lit of
+    LInt i -> integer i

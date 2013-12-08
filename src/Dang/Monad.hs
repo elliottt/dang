@@ -171,11 +171,10 @@ collectMessages m =
 
 -- | Location-tagged error messages.
 data Error = Error SrcLoc PPDoc
-             deriving (Show)
 
 instance Pretty Error where
-  pp (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
-                          2 (msg $$ text "")
+  ppr (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
+                           2 (msg $$ text "")
 
 -- | Record an error with the current source location.
 addErr :: (Pretty msg, DangM m) => msg -> m ()
@@ -195,12 +194,11 @@ putErrs errs =
 
 
 -- | Location-tagged warning messages.
-data Warning = Warning SrcLoc Doc
-               deriving (Show)
+data Warning = Warning SrcLoc PPDoc
 
 instance Pretty Warning where
-  pp _ (Warning loc msg) = hang (text "[warning]" <+> ppLoc loc)
-                              2 (msg $$ text "")
+  ppr (Warning loc msg) = hang (text "[warning]" <+> ppLoc loc)
+                             2 (msg $$ text "")
 
 -- | Add a warning with no location information.
 addWarn :: (Pretty msg, DangM m) => msg -> m ()

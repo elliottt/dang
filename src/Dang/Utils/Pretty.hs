@@ -203,6 +203,9 @@ sep ds = fmap PP.sep (sequence ds)
 fsep :: [PPDoc] -> PPDoc
 fsep ds = fmap PP.fsep (sequence ds)
 
+cat :: [PPDoc] -> PPDoc
+cat ds = fmap PP.cat (sequence ds)
+
 vcat :: [PPDoc] -> PPDoc
 vcat ds = fmap PP.vcat (sequence ds)
 
