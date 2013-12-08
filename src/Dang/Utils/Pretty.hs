@@ -17,12 +17,19 @@ import qualified Text.PrettyPrint as PP
 
 -- Pretty-printing Monad -------------------------------------------------------
 
-data PPEnv = PPEnv { ppePrec   :: Int
+data PPEnv = PPEnv { ppePrec :: Int
+                     -- ^ The current precedence level.
                    , ppeLayout :: Bool
+                     -- ^ If layout should be used when printing.
+                   , ppePrintLevels :: Bool
+                     -- ^ Whether or not names should be annotated with their
+                     -- level.
                    } deriving (Show)
 
 defaultPPEnv :: PPEnv
-defaultPPEnv  = PPEnv { ppePrec = 0, ppeLayout = True }
+defaultPPEnv  = PPEnv { ppePrec        = 0
+                      , ppeLayout      = True
+                      , ppePrintLevels = False }
 
 newtype PPM a = PPM { getPPM :: ReaderT PPEnv Id a
                     } deriving (Functor,Applicative,Monad)
@@ -38,14 +45,16 @@ pretty a = PP.renderStyle fmt (runPPM defaultPPEnv (pp a))
   where
   fmt = PP.Style PP.PageMode 80 1.0
 
-ppPrec :: Int -> PPM a -> PPM a
-ppPrec p m = PPM $
+ppPrec :: Pretty a => Int -> a -> PPDoc
+ppPrec p a = PPM $
   do env <- ask
-     local env { ppePrec = p } (getPPM m)
+     local env { ppePrec = p } (getPPM (ppr a))
 
 getPrec :: PPM Int
 getPrec  = PPM (ppePrec `fmap` ask)
 
+getPrintLevels :: PPM Bool
+getPrintLevels  = PPM (ppePrintLevels `fmap` ask)
 
 -- Utility ---------------------------------------------------------------------
 
@@ -170,14 +179,23 @@ punctuate p xs = go xs
 parens :: PPDoc -> PPDoc
 parens = fmap PP.parens
 
+infixl 6 <+>
 (<+>) :: PPDoc -> PPDoc -> PPDoc
 (<+>)  = liftM2 (PP.<+>)
 
+infixl 6 <>
 (<>) :: PPDoc -> PPDoc -> PPDoc
 (<>)  = liftM2 (PP.<>)
 
+infixl 5 $$
+($$) :: PPDoc -> PPDoc -> PPDoc
+($$)  = liftM2 (PP.$$)
+
 comma :: PPDoc
 comma  = return PP.comma
+
+hsep :: [PPDoc] -> PPDoc
+hsep ds = fmap PP.hsep (sequence ds)
 
 sep :: [PPDoc] -> PPDoc
 sep ds = fmap PP.sep (sequence ds)

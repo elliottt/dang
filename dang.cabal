@@ -45,7 +45,6 @@ library
                         Dang.TypeChecker.Monad,
                         Dang.TypeChecker.Types,
                         Dang.TypeChecker.Unify,
-                        Dang.TypeChecker.Vars,
 
                         -- compilation
                         Dang.Compile,

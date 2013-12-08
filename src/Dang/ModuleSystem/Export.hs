@@ -1,16 +1,14 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE Safe #-}
 
 module Dang.ModuleSystem.Export where
 
 import Dang.Traversal (Data,Typeable)
 import Dang.Utils.Location (Located,unLoc)
-import Dang.Utils.Pretty (Pretty(..),Doc,text,isEmpty,empty,nest,($$))
+import Dang.Utils.Pretty (Pretty(..),PPDoc,text,hang)
 
 import Data.Function (on)
 import Data.List (groupBy)
-import Language.Haskell.TH.Syntax (Lift(..))
 
 
 -- Export Specifications -------------------------------------------------------
@@ -19,22 +17,19 @@ data Export = Public | Private
     deriving (Eq,Show,Ord,Data,Typeable)
 
 instance Pretty Export where
-  pp _ Public  = text "public"
-  pp _ Private = text "private"
-
-instance Lift Export where
-  lift ex = case ex of
-    Public  -> [| Public  |]
-    Private -> [| Private |]
+  ppr Public  = text "public"
+  ppr Private = text "private"
 
 class Exported a where
   exportSpec :: a -> Export
 
 instance Exported Export where
+  {-# INLINE exportSpec #-}
   exportSpec = id
 
 instance Exported a => Exported (Located a) where
-  exportSpec = exportSpec . unLoc
+  {-# INLINE exportSpec #-}
+  exportSpec loc = exportSpec (unLoc loc)
 
 isExported :: Exported a => a -> Bool
 isExported a = case exportSpec a of
@@ -44,10 +39,8 @@ isExported a = case exportSpec a of
 groupByExport :: Exported a => [a] -> [[a]]
 groupByExport  = groupBy ((==) `on` exportSpec)
 
-ppPublic :: Doc -> Doc
-ppPublic d | isEmpty d = empty
-           | otherwise = text "public" $$ nest 2 d
+ppPublic :: PPDoc -> PPDoc
+ppPublic  = hang (text "public") 2
 
-ppPrivate :: Doc -> Doc
-ppPrivate d | isEmpty d = empty
-            | otherwise = text "private" $$ nest 2 d
+ppPrivate :: PPDoc -> PPDoc
+ppPrivate  = hang (text "private") 2

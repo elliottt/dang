@@ -1,128 +1,105 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Trustworthy #-}
 
 module Dang.ModuleSystem.QualName where
 
 import Dang.Traversal (Data,Typeable)
-import Dang.Utils (splitLast)
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 
 import Control.Applicative ((<$>),(<*>))
-import Control.Monad (guard)
 import Data.Char (isSpace)
+import Data.Maybe ( fromMaybe )
 import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
+import Data.String ( IsString(..) )
 import Numeric (showHex)
-import Language.Haskell.TH.Syntax (Lift(..),liftString,Exp(ListE))
 
 
-type Name = String
+-- | Where a name lives.  This is to allow things at different levels
+-- (expression, type, kind) to share the same name.
+data Level = Expr | Type Int
+             deriving (Show,Eq,Ord,Data,Typeable)
+
+instance Pretty Level where
+  ppr l =
+    do cond <- getPrintLevels
+       if cond then case l of
+                      Expr   -> brackets (char 'e')
+                      Type i -> brackets (char 't' <> int i)
+               else empty
+
+putLevel :: Putter Level
+putLevel l = case l of
+  Expr   -> putWord8 0
+  Type i -> putWord8 1 >> put i
+
+getLevel :: Get Level
+getLevel  = getWord8 >>= \ tag -> case tag of
+  0 -> return Expr
+  1 -> Type <$> get
+  _ -> fail ("unexpected tag: " ++ show tag)
+
+
+type ModName = [String]
+
+putModName :: Putter ModName
+putModName  = put
+
+getModName :: Get ModName
+getModName  = get
+
 
 type LName = Located Name
 
-ppName :: Name -> Doc
-ppName  = text
+data Name = LocalName Level String
+          | QualName Level ModName String
+            deriving (Ord,Eq,Show,Data,Typeable)
 
-type Namespace = [Name]
-
-type LQualName = Located QualName
-
-data QualName
-  = QualName Namespace Name
-  | PrimName Namespace Name
-    deriving (Ord,Eq,Show,Data,Typeable)
-
-mkLocal :: Name -> QualName
-mkLocal  = QualName []
-
-mkQual :: Namespace -> Name -> QualName
-mkQual  = QualName
-
-mkPrim :: Namespace -> Name -> QualName
-mkPrim  = PrimName
-
-
-instance Lift QualName where
-  lift qn = case qn of
-    QualName ps n ->
-      [| QualName $(ListE `fmap` mapM liftString ps) $(liftString n) |]
-    PrimName ps n ->
-      [| PrimName $(ListE `fmap` mapM liftString ps) $(liftString n) |]
-
-instance Pretty QualName where
-  pp _ (QualName ns n) = ppWithNamespace ns (text n)
-  pp _ (PrimName _  n) = text n -- XXX how should the namespace be used here?
-  ppList _             = brackets . commas . map ppr
-
-ppWithNamespace :: Namespace -> Doc -> Doc
-ppWithNamespace [] d = d
-ppWithNamespace ns d = dots (map text ns) <> dot <> d
-
-instance Serialize QualName where
-  get = getQualName
-  put = putQualName
-
-putName :: Putter Name
-putName  = put
+instance Pretty Name where
+  ppr name = case name of
+    LocalName l n   -> text n <> pp l
+    QualName l ns n -> dots (map text ns ++ [text n]) <> pp l
 
 getName :: Get Name
-getName  = get
-
-getQualName :: Get QualName
-getQualName  = getWord8 >>= \tag ->
+getName  = getWord8 >>= \tag ->
   case tag of
-    0 -> QualName <$> get <*> get
-    1 -> PrimName <$> get <*> get
+    0 -> LocalName <$> getLevel <*> get
+    1 -> QualName  <$> getLevel <*> getModName <*> get
     _ -> fail ("QualName: unknown tag 0x" ++ showHex tag "")
 
-putQualName :: Putter QualName
-putQualName (QualName ns n) = putWord8 0 >> put ns >> put n
-putQualName (PrimName ns n) = putWord8 1 >> put ns >> put n
+putName :: Putter Name
+putName name = case name of
+  LocalName l n   -> putWord8 0 >> putLevel l >> put n
+  QualName l mn n -> putWord8 0 >> putLevel l >> putModName mn >> put n
 
--- | Make a qualified name.
-qualName :: Namespace -> Name -> QualName
-qualName  = QualName
+mkLocal :: Level -> String -> Name
+mkLocal  = LocalName
 
--- | Make a simple name.
-simpleName :: Name -> QualName
-simpleName  = QualName []
+mkQual :: Level -> ModName -> String -> Name
+mkQual  = QualName
 
-isSimpleName :: QualName -> Bool
-isSimpleName (QualName ns _) = null ns
-isSimpleName _               = False
+-- | Get the name part of a name
+qualSymbol :: Name -> String
+qualSymbol name = case name of
+  LocalName _ n  -> n
+  QualName _ _ n -> n
 
--- | Make a primitive name.
-primName :: Namespace -> Name -> QualName
-primName  = PrimName
+-- | Modify the symbol in a name.
+mapSymbol :: (String -> String) -> (Name -> Name)
+mapSymbol f name = case name of
+  LocalName l n   -> LocalName l (f n)
+  QualName l mn n -> QualName l mn (f n)
 
--- | Get the prefix of a qualified name.
-qualPrefix :: QualName -> Namespace
-qualPrefix (QualName ps _) = ps
-qualPrefix (PrimName ps _) = ps
+-- | Get the module name associated with a name.
+qualModule :: Name -> Maybe ModName
+qualModule name = case name of
+  QualName _ m _ -> Just m
+  LocalName{}    -> Nothing
 
--- | Get the name part of a qualified name
-qualSymbol :: QualName -> Name
-qualSymbol (QualName _ n) = n
-qualSymbol (PrimName _ n) = n
-
--- | Modify the symbol in a qualified name.
-mapSymbol :: (Name -> Name) -> (QualName -> QualName)
-mapSymbol f (QualName ns n) = QualName ns (f n)
-mapSymbol f (PrimName ns n) = PrimName ns (f n)
-
--- | Get the module name associated with a qualified name.
-qualModule :: QualName -> Maybe QualName
-qualModule qn = do
-  let pfx = qualPrefix qn
-  guard (not (null pfx))
-  (ns,n) <- splitLast pfx
-  return (QualName ns n)
-
--- | Mangle a qualified name into one that is suitable for code generation.
-mangle :: QualName -> String
-mangle qn = foldr prefix (qualSymbol qn) (qualPrefix qn)
+-- | Mangle a name into one that is suitable for code generation.
+mangle :: IsString string => Name -> string
+mangle name = fromString (foldr prefix (qualSymbol name) modName)
   where
+  modName         = fromMaybe [] (qualModule name)
   prefix pfx rest = rename pfx ++ "_" ++ rest
   rename          = concatMap $ \c ->
     case c of
@@ -131,12 +108,8 @@ mangle qn = foldr prefix (qualSymbol qn) (qualPrefix qn)
       _ | isSpace c -> []
         | otherwise -> [c]
 
--- | The namespace generated by a qualified name.
-qualNamespace :: QualName -> Namespace
-qualNamespace (QualName ps n) = ps ++ [n]
-qualNamespace (PrimName ps n) = ps ++ [n]
-
--- | Modify the namespace of a qualified name.
-changeNamespace :: Namespace -> QualName -> QualName
-changeNamespace ns (QualName _ n) = QualName ns n
-changeNamespace ns (PrimName _ n) = PrimName ns n
+-- | Modify the namespace of a name.
+changeModule :: ModName -> Name -> Name
+changeModule m name = case name of
+  QualName l _ n -> QualName l m n
+  LocalName{}    -> name

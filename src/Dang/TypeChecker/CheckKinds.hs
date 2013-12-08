@@ -10,7 +10,6 @@ import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify as Types
-import Dang.TypeChecker.Vars
 import Dang.Utils.Location (at,unLoc,getLoc)
 import Dang.Utils.Pretty
 import Dang.Variables (sccToList,sccFreeNames)

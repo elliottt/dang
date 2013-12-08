@@ -13,7 +13,6 @@ import Dang.TypeChecker.Env
 import Dang.TypeChecker.Monad
 import Dang.TypeChecker.Types
 import Dang.TypeChecker.Unify (quantify,typeVars,Types)
-import Dang.TypeChecker.Vars
 import Dang.Utils.Location (unLoc)
 import Dang.Utils.Pretty
 import Dang.Variables (freeVars,sccFreeNames,sccToList)

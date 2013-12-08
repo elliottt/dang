@@ -16,7 +16,7 @@ import qualified Data.Set as Set
 -- Free Variables --------------------------------------------------------------
 
 class FreeVars a where
-  freeVars :: a -> Set.Set QualName
+  freeVars :: a -> Set.Set Name
 
 instance FreeVars a => FreeVars (Located a) where
   freeVars = foldMap freeVars
@@ -37,7 +37,7 @@ instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
 -- Bound Variables -------------------------------------------------------------
 
 class BoundVars a where
-  boundVars :: a -> Set.Set QualName
+  boundVars :: a -> Set.Set Name
 
 instance BoundVars a => BoundVars (Maybe a) where
   boundVars = foldMap boundVars

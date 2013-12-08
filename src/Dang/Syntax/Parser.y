@@ -13,8 +13,6 @@ import Dang.Syntax.AST
 import Dang.Syntax.Lexeme
 import Dang.Syntax.Lexer
 import Dang.Syntax.ParserCore
-import Dang.TypeChecker.Types
-import Dang.TypeChecker.Vars
 import Dang.Utils.Location (Located(..),unLoc,getLoc,at,ppLoc,extendLoc)
 import Dang.Utils.Pretty
 

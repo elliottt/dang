@@ -15,8 +15,6 @@ import Dang.Syntax.AST
     (Module(..),UntypedDecl(..),TypedDecl(..),Match(..),Term(..),Pat(..)
     ,DataDecl(..),patVars)
 import Dang.ModuleSystem.QualName
-import Dang.TypeChecker.Types (Type(..),Kind)
-import Dang.TypeChecker.Vars (TParam())
 import Dang.Utils.Pretty (pretty)
 import qualified Data.ClashMap as CM
 

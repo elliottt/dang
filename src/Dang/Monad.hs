@@ -170,12 +170,12 @@ collectMessages m =
 
 
 -- | Location-tagged error messages.
-data Error = Error SrcLoc Doc
+data Error = Error SrcLoc PPDoc
              deriving (Show)
 
 instance Pretty Error where
-  pp _ (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
-                            2 (msg $$ text "")
+  pp (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
+                          2 (msg $$ text "")
 
 -- | Record an error with the current source location.
 addErr :: (Pretty msg, DangM m) => msg -> m ()

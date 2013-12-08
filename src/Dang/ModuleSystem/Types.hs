@@ -2,54 +2,73 @@
 
 module Dang.ModuleSystem.Types where
 
-import Dang.ModuleSystem.QualName (QualName,simpleName,qualSymbol,putQualName,getQualName)
-import Dang.TypeChecker.Vars (TParam,getTParam,putTParam,TVar,getTVar,putTVar)
+import Dang.ModuleSystem.QualName
+           (Name,putName,getName)
 
 import Control.Applicative (Applicative(..),(<$>))
-import Data.Serialize (Get,Putter,getWord8,putWord8)
+import Data.Serialize (Get,Putter,getWord8,putWord8,get,put,getListOf,putListOf)
 
 
 -- Name Uses -------------------------------------------------------------------
 
 data UsedName
-  = UsedType QualName
-  | UsedTerm QualName
+  = UsedType Name
+  | UsedTerm Name
     deriving (Ord,Show,Eq)
 
-mapUsedName :: (QualName -> QualName) -> (UsedName -> UsedName)
+mapUsedName :: (Name -> Name) -> (UsedName -> UsedName)
 mapUsedName f (UsedType qn) = UsedType (f qn)
 mapUsedName f (UsedTerm qn) = UsedTerm (f qn)
 
-simpleUsedName :: UsedName -> UsedName
-simpleUsedName  = mapUsedName (simpleName . qualSymbol)
-
-usedQualName :: UsedName -> QualName
-usedQualName (UsedType qn) = qn
-usedQualName (UsedTerm qn) = qn
+usedName :: UsedName -> Name
+usedName (UsedType qn) = qn
+usedName (UsedTerm qn) = qn
 
 
 -- Type Representation ---------------------------------------------------------
 
+type IfaceProp = IfaceType
+
 data IfaceType
-  = IfaceTVar (TVar IfaceKind)
-  | IfaceTCon QualName
+  = IfaceTVar IfaceParam
+  | IfaceTCon Name
   | IfaceTApp IfaceType IfaceType
-  | IfaceForall (TParam IfaceKind) IfaceType
+  | IfaceForall [IfaceParam] [IfaceProp] IfaceType
 
 putIfaceType :: Putter IfaceType
 putIfaceType ty = case ty of
-  IfaceTVar n     -> putWord8 0 >> putTVar putIfaceKind n
-  IfaceTCon qn    -> putWord8 1 >> putQualName qn
-  IfaceTApp l r   -> putWord8 2 >> putIfaceType l           >> putIfaceType r
-  IfaceForall p b -> putWord8 3 >> putTParam putIfaceKind p >> putIfaceType b
+  IfaceTVar tp        -> putWord8 0 >> putIfaceParam tp
+  IfaceTCon qn        -> putWord8 1 >> putName qn
+  IfaceTApp l r       -> putWord8 2 >> putIfaceType l   >> putIfaceType r
+  IfaceForall tp ps b -> putWord8 3 >> putListOf putIfaceParam tp
+                                    >> putListOf putIfaceType ps
+                                    >> putIfaceType b
 
 getIfaceType :: Get IfaceType
 getIfaceType  = getWord8 >>= \ tag -> case tag of
-  0 -> IfaceTVar   <$> getTVar getIfaceKind
-  1 -> IfaceTCon   <$> getQualName
-  2 -> IfaceTApp   <$> getIfaceType           <*> getIfaceType
-  3 -> IfaceForall <$> getTParam getIfaceKind <*> getIfaceType
+  0 -> IfaceTVar   <$> getIfaceParam
+  1 -> IfaceTCon   <$> getName
+  2 -> IfaceTApp   <$> getIfaceType  <*> getIfaceType
+  3 -> IfaceForall <$> getListOf getIfaceParam
+                   <*> getListOf getIfaceType
+                   <*> getIfaceType
   _ -> fail ("unknown IfaceType tag: " ++ show tag)
+
+
+-- | Interface-written types won't ever have unification variables present,
+-- which allows for the parameter type to just contain the index.
+data IfaceParam = IfaceParam { ipName  :: Maybe String
+                             , ipIndex :: !Int
+                             , ipKind  :: IfaceKind }
+
+putIfaceParam :: Putter IfaceParam
+putIfaceParam ip = put (ipName ip)
+                >> put (ipIndex ip)
+                >> putIfaceKind (ipKind ip)
+
+getIfaceParam :: Get IfaceParam
+getIfaceParam  = IfaceParam <$> get <*> get <*> getIfaceKind
+
 
 type IfaceKind = IfaceType
 
