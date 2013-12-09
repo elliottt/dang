@@ -50,8 +50,7 @@ import qualified Control.Exception as X
 
 -- Monad -----------------------------------------------------------------------
 
-data DangError = DangError (Maybe String)
-                 deriving (Show,Typeable)
+data DangError = DangError deriving (Show,Typeable)
 
 instance X.Exception DangError
 
@@ -76,10 +75,12 @@ instance Monad Dang where
   return x = Dang (return x)
 
   {-# INLINE (>>=) #-}
-  Dang m >>= f = Dang (getDang . f =<< m)
+  m >>= f = Dang (getDang . f =<< getDang m)
 
   {-# INLINE fail #-}
-  fail msg = Dang (inBase (X.throwIO (DangError (Just msg))))
+  fail msg =
+    do addErr (text msg)
+       mzero
 
 instance BaseM Dang Dang where
   {-# INLINE inBase #-}
@@ -87,12 +88,12 @@ instance BaseM Dang Dang where
 
 instance MonadPlus Dang where
   {-# INLINE mzero #-}
-  mzero = Dang (inBase (X.throwIO (DangError Nothing)))
+  mzero = Dang (inBase (X.throwIO DangError))
 
   {-# INLINE mplus #-}
   mplus l r =
     do ro <- askRO
-       io (run ro l `X.catch` \ DangError{} -> run ro r)
+       io (run ro l `X.catch` \ DangError -> run ro r)
     where
     run ro m = runM (getDang m) ro
 
@@ -101,7 +102,7 @@ instance RunM Dang a (Dang a) where
   runM = id
 
 -- | Do some IO.
-io :: DangM m => IO a -> m a
+io :: BaseM m Dang => IO a -> m a
 io m = inBase (Dang (inBase m))
 
 -- | Get the operations, in a derived monad.
@@ -109,13 +110,13 @@ getOptions :: DangM m => m Options
 getOptions  = roOptions `fmap` askRO
 
 -- | Get the current location.
-askLoc :: DangM m => m SrcLoc
+askLoc :: BaseM m Dang => m SrcLoc
 askLoc  =
   do ro <- askRO
      io (readIORef (roLoc ro))
 
 -- | Run a computation with a different location.
-withLoc :: DangM m => SrcLoc -> m a -> m a
+withLoc :: BaseM m Dang => SrcLoc -> m a -> m a
 withLoc loc m =
   do ro   <- askRO
      loc' <- io (atomicModifyIORef' (roLoc ro) (\loc' -> (loc,loc')))
@@ -127,7 +128,7 @@ withLoc loc m =
 newRO :: Options -> IO RO
 newRO opts = RO opts <$> newIORef NoLoc <*> newIORef [] <*> newIORef []
 
-askRO :: DangM m => m RO
+askRO :: BaseM m Dang => m RO
 askRO  = inBase (Dang ask)
 
 -- | Turn a Dang operation into an IO operation.  This will allow exceptions to
@@ -177,17 +178,17 @@ instance Pretty Error where
                            2 (msg $$ text "")
 
 -- | Record an error with the current source location.
-addErr :: (Pretty msg, DangM m) => msg -> m ()
+addErr :: (Pretty msg, BaseM m Dang) => msg -> m ()
 addErr msg =
   do loc <- askLoc
      addErrL loc msg
 
 -- | Add an error with a source location.
-addErrL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
+addErrL :: (Pretty msg, BaseM m Dang) => SrcLoc -> msg -> m ()
 addErrL loc msg = putErrs [Error loc (ppr msg)]
 
 -- | Primitive error recording.
-putErrs :: DangM m => [Error] -> m ()
+putErrs :: BaseM m Dang => [Error] -> m ()
 putErrs errs =
   do ro <- askRO
      io (modifyIORef' (roErrors ro) (\es -> es ++ errs))
@@ -201,16 +202,16 @@ instance Pretty Warning where
                              2 (msg $$ text "")
 
 -- | Add a warning with no location information.
-addWarn :: (Pretty msg, DangM m) => msg -> m ()
+addWarn :: (Pretty msg, BaseM m Dang) => msg -> m ()
 addWarn msg =
   do loc <- askLoc
      addErrL loc msg
 
 -- | Add a warning with location information
-addWarnL :: (Pretty msg, DangM m) => SrcLoc -> msg -> m ()
+addWarnL :: (Pretty msg, BaseM m Dang) => SrcLoc -> msg -> m ()
 addWarnL loc msg = putWarns [Warning loc (ppr msg)]
 
-putWarns :: DangM m => [Warning] -> m ()
+putWarns :: BaseM m Dang => [Warning] -> m ()
 putWarns warns =
   do ro <- askRO
      io (modifyIORef' (roWarns ro) (\ws -> ws ++ warns))

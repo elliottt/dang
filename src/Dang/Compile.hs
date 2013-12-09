@@ -4,7 +4,6 @@ module Dang.Compile where
 
 import Dang.CodeGen
 import Dang.Compile.LambdaLift
-import Dang.Compile.Rename
 import Dang.Core.AST
 import Dang.Core.Interface (moduleInterface)
 import Dang.IO
@@ -18,7 +17,7 @@ import System.IO (hPrint,hFlush)
 
 compile :: InterfaceSet -> Module -> FilePath -> Dang ()
 compile iset m out = do
-  lambdaLift =<< rename m
+  lambdaLift m
   writeInterface (moduleInterface m)
   return ()
   {-

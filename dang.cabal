@@ -49,7 +49,6 @@ library
                         -- compilation
                         Dang.Compile,
                         Dang.Compile.LambdaLift,
-                        Dang.Compile.Rename,
                         Dang.Link,
 
                         -- code generation
@@ -73,6 +72,7 @@ library
                         Dang.Traversal,
                         Dang.Utils,
                         Dang.Utils.Location,
+                        Dang.Utils.Panic,
                         Dang.Utils.Pretty,
                         Dang.Variables
 

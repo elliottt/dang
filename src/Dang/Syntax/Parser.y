@@ -11,7 +11,6 @@ import Dang.ModuleSystem.QualName
 import Dang.ModuleSystem.Types
 import Dang.Syntax.AST
 import Dang.Syntax.Lexeme
-import Dang.Syntax.Lexer
 import Dang.Syntax.ParserCore
 import Dang.Utils.Location (Located(..),unLoc,getLoc,at,ppLoc,extendLoc)
 import Dang.Utils.Pretty
@@ -67,7 +66,7 @@ import MonadLib
 
 
 %monad { Parser } { (>>=) } { return }
-%error { parseError' }
+%error { parseError }
 
 %name parseModule top_module
 
@@ -85,13 +84,13 @@ cident :: { Located Name }
 ident :: { Located Name }
   : IDENT { let TSymIdent n = locValue $1 in fmap (const n) $1 }
 
-mod_name :: { Located QualName }
+mod_name :: { Located Name }
   : qual_cident { $1 }
 
-qual_cident :: { Located QualName }
+qual_cident :: { Located Name }
   : sep1('.', cident) { $1 }
 
-qual_ident :: { Located QualName }
+qual_ident :: { Located Name }
   : sep1('.', cident) '.' ident
     { mkQual (map locValue $1) (locValue $3)
           `at` mappend (mconcat (map getLoc $1)) (getLoc $3) }
@@ -120,7 +119,7 @@ open :: { Open }
                                                        , getLoc $3
                                                        , getLoc $5 ] }
 
-opt_as :: { Maybe QualName }
+opt_as :: { Maybe Name }
   : 'as' mod_name { Just $2 }
   | {- empty -}   { Nothing }
 

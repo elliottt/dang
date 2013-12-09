@@ -26,7 +26,7 @@ $capletter   = [A-Z]
 $symbol      = [\- \> \< \: \*]
 
 @conident  = $capletter [$letter $digit [_ \! \? \']]*
-@symident  = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
+@ident     = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
 @operident = $symbol+
 
 :-
@@ -44,36 +44,42 @@ $white          ;
 "--".*$         ;
 "{-"            { begin comment }
 
-\\              { reserved }
-"="             { reserved }
-"("             { reserved }
-")"             { reserved }
-"let"           { reserved }
-"in"            { reserved }
-","             { reserved }
-"."             { reserved }
-"=>"            { reserved }
-"|"             { reserved }
-"_"             { reserved }
+-- reserved symbols
+\\              { keyword Klambda     }
+"="             { keyword Kassign     }
+"("             { keyword Klparen     }
+")"             { keyword Krparen     }
+"["             { keyword Klbracket   }
+"]"             { keyword Krbrace     }
+"{"             { keyword Klbrace     }
+"}"             { keyword Krbrace     }
+","             { keyword Kcomma      }
+"."             { keyword Kdot        }
+"=>"            { keyword KfatArrow   }
+"|"             { keyword Kpipe       }
+"_"             { keyword Kunderscore }
 
-"data"          { reserved }
-"module"        { reserved }
-"where"         { reserved }
-"open"          { reserved }
-"as"            { reserved }
-"hiding"        { reserved }
-"public"        { reserved }
-"private"       { reserved }
-"forall"        { reserved }
-"primitive"     { reserved }
-"type"          { reserved }
-"case"          { reserved }
-"of"            { reserved }
+-- keywords
+"let"           { keyword Klet       }
+"in"            { keyword Kin        }
+"data"          { keyword Kdata      }
+"module"        { keyword Kmodule    }
+"where"         { keyword Kwhere     }
+"open"          { keyword Kopen      }
+"as"            { keyword Kas        }
+"hiding"        { keyword Khiding    }
+"public"        { keyword Kpublic    }
+"private"       { keyword Kprivate   }
+"forall"        { keyword Kforall    }
+"primitive"     { keyword Kprimitive }
+"type"          { keyword Ktype      }
+"case"          { keyword Kcase      }
+"of"            { keyword Kof        }
 
 @conident       { emitS TConIdent     }
-@symident       { emitS TSymIdent     }
+@ident          { emitS TIdent        }
 @operident      { emitS TOperIdent    }
-$digit+         { emitS (TInt . read) }
+$digit+         { emitS ((`TInt` 10) . read) }
 }
 
 {
@@ -225,8 +231,8 @@ emitS mk li len = return (Just $! Located (mkRange li str) (mk str))
   range = mkRange li str
   str   = L.unpack (L.take (fromIntegral len) (liInput li))
 
-reserved :: AlexAction (Lexer (Maybe Lexeme))
-reserved  = emitS TReserved
+keyword :: Keyword -> AlexAction (Lexer (Maybe Lexeme))
+keyword kw = emitT (TKeyword kw)
 
 begin :: Int -> AlexAction (Lexer (Maybe Lexeme))
 begin code _ _ = alexSetStartCode code >> return Nothing
