@@ -8,12 +8,8 @@ module Dang.Syntax.Layout (
 import Dang.Syntax.Lexer
 import Dang.Syntax.Lexeme
 import Dang.Utils.Location
-import Dang.Utils.Panic
-import Dang.Utils.Pretty hiding ( layout )
 
 import qualified Data.Text.Lazy as L
-
-import Debug.Trace
 
 
 layout :: [Lexeme] -> [Lexeme]
@@ -42,11 +38,7 @@ type State = [Scope] -> [Lexeme] -> [Lexeme]
 
 -- | Normal processing.
 normal :: State
-normal stack ts@(l:ls)
-  | trace "normal" False = undefined
-
-    -- close all scopes
-  | TEof <- unLoc l = map (closeScope (getLoc l)) stack ++ [l]
+normal stack (l:ls)
 
     -- this token will begin a layout block
   | startsLayout (unLoc l) = l : startLayout stack ls
@@ -55,8 +47,11 @@ normal stack ts@(l:ls)
   | TKeyword Krbrace  <- unLoc l
   , Explicit : stack' <- stack = l : normal stack' ls
 
+    -- close all scopes
+  | TEof <- unLoc l = map (closeScope (getLoc l)) stack ++ [l]
+
     -- perform the offsides check
-  | Layout n : stack' <- stack = offsides n stack' l stack ls
+  | Layout n : stack' <- stack = offsides l n stack' stack ls
 
     -- emit the lexeme, and continue processing
   | otherwise = l : normal stack ls
@@ -72,20 +67,34 @@ normal stack ts@(l:ls)
 normal _ [] = eof
 
 
-offsides :: Int -> [Scope] -> Lexeme -> State
-offsides n stack' l stack ls
-  | trace "offsides" False = undefined
+-- | The passed token will be subject to the offsides rule, at the current
+-- column.
+offsides :: Lexeme -> Int -> [Scope] -> State
+offsides l n stack' stack ls
 
-    -- punctuate the current layout block
-  | lexCol l == n = TVirt VSep `at` getLoc l : l : normal stack ls
+    -- punctuate the current layout block, also detecting the start of a new
+    -- layout block
+  | lexCol l == n = virt VSep : l : if startsLayout (unLoc l) 
+                                       then startLayout stack ls
+                                       else normal stack ls
 
-    -- close the current layout block
-  | lexCol l < n = TVirt VClose `at` getLoc l : l : normal stack' ls
+    -- close the current layout block, and pass the token back to the normal
+    -- state, just in case it needs additional processing.  this will have the
+    -- added bonus of transitioning back to the offsides state in the event that
+    -- the token will close multiple levels of layout
+  | lexCol l < n = virt VClose : normal stack' (l:ls)
 
     -- `in` will close a layout block
-  | TKeyword Kin <- unLoc l = TVirt VClose `at` getLoc l : l : normal stack' ls
+  | TKeyword Kin <- unLoc l = virt VClose : normal stack' (l:ls)
 
+    -- the token doesn't require any special handling, emit it and continue as
+    -- normal
   | otherwise = l : normal stack ls
+
+  where
+
+  virt t = TVirt t `at` getLoc l
+
 
 -- | Check if a token signals the start of a layout block
 startsLayout :: Token -> Bool
@@ -99,14 +108,26 @@ startsLayout tok = case tok of
 -- | The next token begins layout.  Augment the stack, and transition back to
 -- the normal state.
 startLayout :: State
-startLayout stack ts@(l:ls)
-  | trace "startLayout" False = undefined
+startLayout stack (l:ls)
 
     -- an explicit block
   | TKeyword Klbrace <- unLoc l = l : normal (Explicit : stack) ls
 
+    -- when the next token also begins a layout block, e.g.
+    --
+    -- module X where
+    --  public
+    --    x
+    --
+    -- where starts a layout block, then public starts a layout block
+    -- immediately
+  | startsLayout (unLoc l) = open : l : startLayout (virt : stack) ls
+
     -- the column of this token begins the layout block
-  | otherwise = TVirt VOpen `at` getLoc l
-              : normal (layoutScope (getLoc l) : stack) ts
+  | otherwise = open : l : normal (virt : stack) ls
+
+  where
+  open = TVirt VOpen `at` getLoc l
+  virt = layoutScope (getLoc l)
 
 startLayout _ [] = eof

@@ -64,6 +64,7 @@ isEof _    = False
 
 instance Pretty Token where
   ppr tok = case tok of
+    TVirt v      -> ppr v
     TKeyword k   -> ppr k
     TConIdent c  -> text c
     TIdent i     -> text i
