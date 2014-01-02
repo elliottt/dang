@@ -1,4 +1,3 @@
-{-# LANGUAGE Safe #-}
 
 module Dang.CodeGen (
     codeGen
@@ -10,14 +9,14 @@ module Dang.CodeGen (
 
 import Dang.Core.AST (Module)
 import Dang.IO (logStage)
-import Dang.ModuleSystem.Interface (InterfaceSet,Interface)
+import Dang.ModuleSystem.Interface (IfaceSet,Iface)
 import Dang.Monad (Dang,whenDebugOpt,io)
 import Dang.Options ( dbgDumpLLVM )
-import Dang.Utils.Pretty (Doc,empty)
+import Dang.Utils.Pretty ( PPDoc, empty )
 
 import Text.LLVM (ppModule,runLLVM)
 
-codeGen :: InterfaceSet -> Interface -> Module ->  Dang Doc
+codeGen :: IfaceSet -> Iface -> Module ->  Dang PPDoc
 codeGen env iface ds = do
   logStage "code-generator"
   return empty

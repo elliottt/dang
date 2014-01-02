@@ -38,6 +38,8 @@ data Block a = BSingle a
                -- declarations.
              | BSource SrcLoc (Block a)
                -- ^ Source lcoations attached to a block of declaration.
+             | BEmpty
+               -- ^ No declarations.
                deriving (Show,Data,Typeable)
 
 -- | Top-level declarations.
@@ -46,10 +48,10 @@ data TopDecl = TDDecl Decl
                deriving (Show,Data,Typeable)
 
 -- | A module import.
-data Open = Open { openMod     :: ModName
-                 , openAs      :: Maybe ModName
+data Open = Open { openMod     :: Located ModName
+                 , openAs      :: Maybe (Located ModName)
                  , openHiding  :: Bool
-                 , openSymbols :: [OpenSymbol]
+                 , openSymbols :: [Located OpenSymbol]
                  } deriving (Show,Data,Typeable)
 
 -- | Symbols that can be imported.
@@ -154,6 +156,7 @@ instance BoundVars a => BoundVars (Block a) where
     BSeq l r     -> boundVars [l,r]
     BLocal _ b'  -> boundVars b'
     BSource _ b' -> boundVars b'
+    BEmpty       -> Set.empty
 
 instance BoundVars Decl where
   boundVars d = case d of
@@ -185,6 +188,7 @@ instance (BoundVars a, FreeVars a) => FreeVars (Block a) where
     BSeq l r     -> freeVars [l,r]  Set.\\ boundVars l
     BLocal l b'  -> freeVars [l,b'] Set.\\ boundVars l
     BSource _ b' -> freeVars b'
+    BEmpty       -> Set.empty
 
 instance FreeVars Decl where
   freeVars d = case d of

@@ -2,23 +2,17 @@
 
 module Dang.Compile where
 
-import Dang.CodeGen
-import Dang.Compile.LambdaLift
-import Dang.Core.AST
-import Dang.Core.Interface (moduleInterface)
-import Dang.IO
-import Dang.ModuleSystem.Interface (InterfaceSet,Interface,writeInterface)
+import Dang.Compile.LambdaLift ( lambdaLift )
+import Dang.Core.AST ( Module )
+import Dang.Core.Interface ( moduleIface )
+import Dang.ModuleSystem.Interface (IfaceSet,Iface,writeIface)
 import Dang.Monad
-import Dang.Tool
-import Dang.Utils.Pretty
-
-import System.IO (hPrint,hFlush)
 
 
-compile :: InterfaceSet -> Module -> FilePath -> Dang ()
+compile :: IfaceSet -> Module -> FilePath -> Dang ()
 compile iset m out = do
   lambdaLift m
-  writeInterface (moduleInterface m)
+  writeIface (moduleIface m)
   return ()
   {-
   rm    <- rename m

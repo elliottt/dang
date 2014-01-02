@@ -194,6 +194,9 @@ infixl 5 $$
 comma :: PPDoc
 comma  = return PP.comma
 
+commas :: [PPDoc] -> PPDoc
+commas ds = fsep (punctuate comma ds)
+
 hsep :: [PPDoc] -> PPDoc
 hsep ds = fmap PP.hsep (sequence ds)
 

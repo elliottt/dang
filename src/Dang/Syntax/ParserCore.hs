@@ -6,12 +6,12 @@
 module Dang.Syntax.ParserCore where
 
 import Dang.Monad
-import Dang.Syntax.Lexeme ( Lexeme(..) )
+import Dang.Syntax.Lexeme ( Lexeme )
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 
 import Control.Applicative ( Applicative(..) )
-import Control.Monad ( unless, MonadPlus(mzero) )
+import Control.Monad ( MonadPlus(mzero) )
 import MonadLib ( BaseM(..), runM, StateT, get, set )
 
 
@@ -49,6 +49,6 @@ lexer k =
        [] -> fail "Unexpected end of input"
 
 parseError :: Lexeme -> Parser a
-parseError lex =
-  do addErrL (getLoc lex) (text "Parser error near" <+> quoted (pp (unLoc lex)))
+parseError l =
+  do addErrL (getLoc l) (text "Parser error near" <+> quoted (pp (unLoc l)))
      mzero

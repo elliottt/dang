@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Dang.ModuleSystem.Export where
 
@@ -7,14 +7,18 @@ import Dang.Traversal (Data,Typeable)
 import Dang.Utils.Location (Located,unLoc)
 import Dang.Utils.Pretty (Pretty(..),PPDoc,text,hang)
 
-import Data.Function (on)
-import Data.List (groupBy)
+import Data.Function ( on )
+import Data.List ( groupBy )
+import Data.Serialize ( Serialize )
+import GHC.Generics ( Generic )
 
 
 -- Export Specifications -------------------------------------------------------
 
 data Export = Public | Private
-    deriving (Eq,Show,Ord,Data,Typeable)
+    deriving (Eq,Show,Ord,Data,Typeable,Generic)
+
+instance Serialize Export
 
 instance Pretty Export where
   ppr Public  = text "public"

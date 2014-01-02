@@ -61,7 +61,7 @@ normal stack (l:ls)
   closeScope src scope = tok `at` src
     where
     tok = case scope of
-      Layout _ -> TVirt VClose
+      Layout _ -> TVirt Vclose
       Explicit -> TError "missing `}`"
 
 normal _ [] = eof
@@ -74,7 +74,7 @@ offsides l n stack' stack ls
 
     -- punctuate the current layout block, also detecting the start of a new
     -- layout block
-  | lexCol l == n = virt VSep : l : if startsLayout (unLoc l) 
+  | lexCol l == n = virt Vsep : l : if startsLayout (unLoc l) 
                                        then startLayout stack ls
                                        else normal stack ls
 
@@ -82,10 +82,10 @@ offsides l n stack' stack ls
     -- state, just in case it needs additional processing.  this will have the
     -- added bonus of transitioning back to the offsides state in the event that
     -- the token will close multiple levels of layout
-  | lexCol l < n = virt VClose : normal stack' (l:ls)
+  | lexCol l < n = virt Vclose : normal stack' (l:ls)
 
     -- `in` will close a layout block
-  | TKeyword Kin <- unLoc l = virt VClose : normal stack' (l:ls)
+  | TKeyword Kin <- unLoc l = virt Vclose : normal stack' (l:ls)
 
     -- the token doesn't require any special handling, emit it and continue as
     -- normal
@@ -127,7 +127,7 @@ startLayout stack (l:ls)
   | otherwise = open : l : normal (virt : stack) ls
 
   where
-  open = TVirt VOpen `at` getLoc l
+  open = TVirt Vopen `at` getLoc l
   virt = layoutScope (getLoc l)
 
 startLayout _ [] = eof

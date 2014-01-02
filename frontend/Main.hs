@@ -11,7 +11,7 @@ import Dang.Monad
 import Dang.Options
 import Dang.Syntax
 import Dang.TypeChecker
-import Dang.Utils.Pretty ( ppr )
+import Dang.Utils.Pretty ( pretty )
 
 import Control.Monad ( unless )
 import System.Environment ( getArgs )
@@ -38,7 +38,7 @@ main  =
        unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
        logStage "oh-snap"
 
-     let dump m = print (ppr m)
+     let dump m = putStrLn (pretty m)
      mapM_ dump ws
      mapM_ dump es
 

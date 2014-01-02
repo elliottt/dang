@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Dang.ModuleSystem.QualName where
 
@@ -6,18 +7,20 @@ import Dang.Traversal (Data,Typeable)
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 
-import Control.Applicative ((<$>),(<*>))
 import Data.Char (isSpace)
 import Data.Maybe ( fromMaybe )
-import Data.Serialize (Get,Putter,Serialize(get,put),getWord8,putWord8)
+import Data.Serialize ( Serialize )
 import Data.String ( IsString(..) )
-import Numeric (showHex)
+import GHC.Generics ( Generic )
+import System.FilePath ( joinPath, (<.>) )
 
 
 -- | Where a name lives.  This is to allow things at different levels
 -- (expression, type, kind) to share the same name.
 data Level = Expr | Type Int
-             deriving (Show,Eq,Ord,Data,Typeable)
+             deriving (Show,Eq,Ord,Data,Typeable,Generic)
+
+instance Serialize Level
 
 instance Pretty Level where
   ppr l =
@@ -27,49 +30,24 @@ instance Pretty Level where
                       Type i -> brackets (char 't' <> int i)
                else empty
 
-putLevel :: Putter Level
-putLevel l = case l of
-  Expr   -> putWord8 0
-  Type i -> putWord8 1 >> put i
-
-getLevel :: Get Level
-getLevel  = getWord8 >>= \ tag -> case tag of
-  0 -> return Expr
-  1 -> Type <$> get
-  _ -> fail ("unexpected tag: " ++ show tag)
-
 
 type ModName = [String]
 
-putModName :: Putter ModName
-putModName  = put
-
-getModName :: Get ModName
-getModName  = get
-
+moduleIface :: ModName -> FilePath
+moduleIface m = joinPath m <.> "di"
 
 type LName = Located Name
 
 data Name = LocalName Level String
           | QualName Level ModName String
-            deriving (Ord,Eq,Show,Data,Typeable)
+            deriving (Ord,Eq,Show,Data,Typeable,Generic)
+
+instance Serialize Name
 
 instance Pretty Name where
   ppr name = case name of
     LocalName l n   -> text n <> pp l
     QualName l ns n -> dots (map text ns ++ [text n]) <> pp l
-
-getName :: Get Name
-getName  = getWord8 >>= \tag ->
-  case tag of
-    0 -> LocalName <$> getLevel <*> get
-    1 -> QualName  <$> getLevel <*> getModName <*> get
-    _ -> fail ("QualName: unknown tag 0x" ++ showHex tag "")
-
-putName :: Putter Name
-putName name = case name of
-  LocalName l n   -> putWord8 0 >> putLevel l >> put n
-  QualName l mn n -> putWord8 0 >> putLevel l >> putModName mn >> put n
 
 mkLocal :: Level -> String -> Name
 mkLocal  = LocalName

@@ -10,7 +10,7 @@ import Dang.Utils.Pretty
 
 import Control.Monad (mplus)
 import Data.Data (Data)
-import Data.Foldable ( Foldable )
+import Data.Foldable ( Foldable, foldMap )
 import Data.Function (on)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
@@ -23,6 +23,12 @@ import Data.Typeable (Typeable)
 
 class HasLocation a where
   getLoc :: a -> SrcLoc
+
+instance HasLocation a => HasLocation [a] where
+  getLoc = foldMap getLoc
+
+instance HasLocation a => HasLocation (Maybe a) where
+  getLoc = foldMap getLoc
 
 locStart :: HasLocation a => a -> Position
 locStart a = srcStart (getLoc a)

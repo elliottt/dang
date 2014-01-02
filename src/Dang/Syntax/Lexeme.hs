@@ -2,8 +2,12 @@
 
 module Dang.Syntax.Lexeme where
 
-import Dang.Utils.Location
-import Dang.Utils.Pretty
+import           Dang.Utils.Location
+import qualified Dang.Utils.Panic as Panic
+import           Dang.Utils.Pretty
+
+panic :: PPDoc -> a
+panic  = Panic.panic "Dang.Syntax.Lexeme"
 
 
 -- Positions -------------------------------------------------------------------
@@ -48,18 +52,29 @@ data Keyword = Klet
              | KfatArrow
              | Karrow
              | Kcomma
+             | Ksemi
              | Kdot
              | Kpipe
              | Kunderscore
                deriving (Show,Eq)
 
-data Virt = VOpen | VSep | VClose
+data Virt = Vopen | Vsep | Vclose
             deriving (Show,Eq)
 
 
 isEof :: Token -> Bool
 isEof TEof = True
 isEof _    = False
+
+fromTConIdent :: Token -> String
+fromTConIdent tok = case tok of
+  TConIdent s -> s
+  _           -> panic (text "expected TConIdent")
+
+fromTIdent :: Token -> String
+fromTIdent tok = case tok of
+  TIdent s -> s
+  _        -> panic (text "expected TIdent")
 
 
 instance Pretty Token where
@@ -101,12 +116,13 @@ instance Pretty Keyword where
     KfatArrow   -> text "=>"
     Karrow      -> text "->"
     Kcomma      -> char ','
+    Ksemi       -> char ';'
     Kdot        -> char '.'
     Kpipe       -> char '|'
     Kunderscore -> char '_'
 
 instance Pretty Virt where
   ppr virt = case virt of
-    VOpen  -> text "v{"
-    VSep   -> text "v;"
-    VClose -> text "v}"
+    Vopen  -> text "v{"
+    Vsep   -> text "v;"
+    Vclose -> text "v}"

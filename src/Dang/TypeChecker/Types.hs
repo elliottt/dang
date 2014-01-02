@@ -93,7 +93,7 @@ sSet :: Sort
 sSet = TCon (mkQual (Type 2) ["Prelude"] "Set") []
 
 
--- Type Schemes ----------------------------------------------------------------
+-- Type Schemas ----------------------------------------------------------------
 
 -- | The kind of constraints/contexts
 kProp :: Kind
@@ -129,6 +129,6 @@ instance Pretty Schema where
                                              <> char '.'
 
     context | null (sProps s) = empty
-            | otherwise       = fsep (commas (map pp (sProps s))) <+> text "=>"
+            | otherwise       = fsep (tuple (map pp (sProps s))) <+> text "=>"
 
-    commas = list (char '(') comma (char ')')
+    tuple = list (char '(') comma (char ')')
