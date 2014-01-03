@@ -23,7 +23,7 @@ toolProcess :: Tool -> [String] -> CreateProcess
 toolProcess t extra = proc (toolProg t) (toolArgs t ++ extra)
 
 logTool :: DangM m => Tool -> [String] -> m ()
-logTool t extra = logInfo $ unwords $ toolProg t : toolArgs t ++ extra
+logTool t extra = logInfo (text (toolProg t) <+> hsep (map text extra))
 
 -- | Run a tool with optional extra arguments, waiting for it to exit.
 sync :: DangM m => Tool -> [String] -> m ()

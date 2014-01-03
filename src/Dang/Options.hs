@@ -1,5 +1,7 @@
 module Dang.Options where
 
+import Dang.Utils.Pretty
+
 import Control.Monad ( foldM )
 import Data.List ( partition )
 import System.Console.GetOpt
@@ -14,7 +16,7 @@ import System.FilePath ( takeExtension )
 data Options = Options
   { optKeepTempFiles :: Bool
   , optAction        :: Action
-  , optVerbosity     :: Verbosity
+  , optLogPasses     :: [String]
   , optCompileOnly   :: Bool
   , optDebugOpts     :: DebugOpts
   } deriving Show
@@ -23,7 +25,7 @@ defaultOptions :: Options
 defaultOptions  = Options
   { optKeepTempFiles = False
   , optAction        = NoAction
-  , optVerbosity     = 0
+  , optLogPasses     = []
   , optCompileOnly   = False
   , optDebugOpts      = emptyDebugOpts
   }
@@ -34,12 +36,16 @@ data Action
   | NoAction
     deriving Show
 
+instance Pretty Action where
+  ppr a = case a of
+    Compile ms -> text "compile:" <+> sep (punctuate comma (map text ms))
+    Link ss os -> text "link:" <+> sep (punctuate comma (map text (ss ++ os)))
+    NoAction   -> text "no action"
+
 actionSources :: Action -> [FilePath]
 actionSources (Compile fs) = fs
 actionSources (Link fs _)  = fs
 actionSources NoAction     = []
-
-type Verbosity = Int
 
 type Option = Options -> IO Options
 
@@ -75,8 +81,8 @@ options  =
     "Display this message"
   , Option [] ["keep-temp-files"] (NoArg setKeepTempFiles)
     "Don't remove temp files created during compilation"
-  , Option "v" ["verbosity"] (ReqArg setVerbosity "LEVEL")
-    "Set the logging verbosity"
+  , Option "d" ["dump"] (ReqArg addLogPass "PASS{,PASS}")
+    "Enable logging for PASS"
   , Option "c" [] (NoArg setCompileOnly)
     "Compile only"
   ] ++ debugOpts
@@ -89,11 +95,13 @@ handleHelp _ = do
 setKeepTempFiles :: Option
 setKeepTempFiles opts = return opts { optKeepTempFiles = True }
 
-setVerbosity :: String -> Option
-setVerbosity msg opts =
-  case reads msg of
-    [(v,[])] -> return opts { optVerbosity = v }
-    _        -> fail ("Unable to parse verbosity from: " ++ msg)
+addLogPass :: String -> Option
+addLogPass str opts = return opts { optLogPasses = optLogPasses opts ++ go str }
+  where
+  go xs = case break (== ',') xs of
+            (pass,_:rest)             -> pass : go rest
+            (pass,_     ) | null pass -> []
+                          | otherwise -> [pass]
 
 setCompileOnly :: Option
 setCompileOnly opts = return opts { optCompileOnly = True }

@@ -3,12 +3,14 @@
 
 module Dang.ModuleSystem.Interface where
 
-import Dang.IO ( withWOBinaryFile )
-import Dang.Monad ( Dang, io )
+import Dang.IO ( withWOBinaryFile, withROBinaryFile )
+import Dang.Monad
 import Dang.ModuleSystem.Export ( Export(..) )
 import Dang.ModuleSystem.QualName ( Name, ModName, moduleIface )
+import Dang.Utils.Pretty
 
 import           Control.Applicative ( (<|>) )
+import           Control.Monad ( mzero )
 import qualified Data.ByteString as B
 import           Data.Monoid ( Monoid(..) )
 import           Data.Serialize ( Serialize(..), decode, encode )
@@ -45,6 +47,15 @@ writeIface :: Iface -> Dang ()
 writeIface iface =
   withWOBinaryFile (moduleIface (ifaceModName iface))
     (\ h -> io (B.hPutStr h (encode iface)))
+
+readIface :: ModName -> Dang Iface
+readIface name =
+  withROBinaryFile (moduleIface name) $ \ h ->
+    do bytes <- io (B.hGetContents h)
+       case decode bytes of
+         Right iface -> return iface
+         Left err    -> do addErr (text err)
+                           mzero
 
 
 -- Interface Sets --------------------------------------------------------------

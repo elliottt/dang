@@ -20,6 +20,10 @@ module Dang.Monad (
     -- ** IO
   , io
 
+    -- ** Passes
+  , pass
+  , logInfo
+
     -- ** Locations
   , askLoc
   , withLoc
@@ -42,7 +46,8 @@ import Control.Applicative ( Applicative(..), (<$>) )
 import Control.Monad ( MonadPlus(..), when )
 import Control.Monad.Fix (MonadFix)
 import Data.IORef
-           ( IORef, newIORef, readIORef, modifyIORef', atomicModifyIORef' )
+           ( IORef, newIORef, readIORef, writeIORef, modifyIORef'
+           , atomicModifyIORef' )
 import Data.Typeable (Typeable)
 import MonadLib ( BaseM(..), RunM(..), ReaderT, ask )
 import qualified Control.Exception as X
@@ -56,9 +61,11 @@ instance X.Exception DangError
 
 
 data RO = RO { roOptions :: Options
+             , roPPEnv   :: PPEnv
              , roLoc     :: IORef SrcLoc
              , roErrors  :: IORef [Error]
              , roWarns   :: IORef [Warning]
+             , roLog     :: IORef Logger
              }
 
 
@@ -66,9 +73,8 @@ data RO = RO { roOptions :: Options
 type DangM m = (Functor m, MonadPlus m, BaseM m Dang)
 
 -- | The Dang monad.
-newtype Dang a = Dang
-  { getDang :: ReaderT RO IO a
-  } deriving (Functor,Applicative,MonadFix)
+newtype Dang a = Dang { getDang :: ReaderT RO IO a
+                      } deriving (Functor,Applicative,MonadFix)
 
 instance Monad Dang where
   {-# INLINE return #-}
@@ -126,7 +132,10 @@ withLoc loc m =
 
 -- | Construct a new RO, to run a Dang computation.
 newRO :: Options -> IO RO
-newRO opts = RO opts <$> newIORef NoLoc <*> newIORef [] <*> newIORef []
+newRO opts = RO opts defaultPPEnv <$> newIORef NoLoc
+                                  <*> newIORef []
+                                  <*> newIORef []
+                                  <*> newIORef logSilent
 
 askRO :: BaseM m Dang => m RO
 askRO  = inBase (Dang ask)
@@ -145,12 +154,59 @@ runDangWithArgs args m = do
   opts <- parseOptions args
   runDang opts m
 
+ppDang :: BaseM dang Dang => PPDoc -> dang Doc
+ppDang msg =
+  do ro <- inBase (Dang ask)
+     return (runPPM (roPPEnv ro) msg)
+
 -- Options ---------------------------------------------------------------------
 
 whenDebugOpt :: DangM m => (DebugOpts -> Bool) -> m () -> m ()
 whenDebugOpt p m = do
   opts <- getOptions
   when (p (optDebugOpts opts)) m
+
+
+-- Pass Logging ----------------------------------------------------------------
+
+newtype Logger = Logger { logMessage :: Doc -> IO () }
+
+chooseLogger :: Options -> String -> Logger
+chooseLogger opts name
+  | name `elem` optLogPasses opts = logAll
+  | otherwise                     = logSilent
+
+-- | Log no output.
+logSilent :: Logger
+logSilent  = Logger { logMessage  = \ _ -> return () }
+
+-- | Log all output.
+logAll :: Logger
+logAll  = Logger { logMessage = print }
+
+pass :: BaseM dang Dang => String -> dang a -> dang a
+pass name body =
+  do ro  <- inBase (Dang ask)
+     old <- io $ do old <- readIORef (roLog ro)
+                    writeIORef (roLog ro) (chooseLogger (roOptions ro) name)
+                    return old
+     logInfo (banner ("begin " ++ name))
+     a   <- body
+     logInfo (banner ("end " ++ name))
+     io (writeIORef (roLog ro) old)
+     return a
+
+banner :: String -> PPDoc
+banner msg = hcat [ text "--{", text msg, char '}'
+                  , text (replicate (76 - length msg) '-') ]
+
+logInfo :: BaseM dang Dang => PPDoc -> dang ()
+logInfo msg =
+  do doc <- ppDang msg
+     ro  <- inBase (Dang ask)
+     io $ do l <- readIORef (roLog ro)
+             logMessage l doc
+
 
 
 -- Messages --------------------------------------------------------------------

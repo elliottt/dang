@@ -5,6 +5,7 @@
 
 module Dang.Utils.Pretty (
     module Dang.Utils.Pretty
+  , PP.Doc
   ) where
 
 import           Control.Applicative ( Applicative )
