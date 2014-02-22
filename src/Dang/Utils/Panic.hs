@@ -12,16 +12,19 @@ import           Data.Typeable ( Typeable )
 
 -- | Non-recoverable exceptions.
 data DangException = Panic String
-                     deriving (Show,Typeable)
+                     deriving (Typeable)
 
 instance X.Exception DangException
 
+instance Show DangException where
+  show (Panic msg) = msg
 
 panic :: Pretty msg => String -> msg -> a
 panic m msg = X.throw (Panic (pretty doc))
   where
   doc = vcat
-    [ cutLine
+    [ text ""
+    , cutLine
     , hang (text "You have encountered a bug")
          2 (vcat [ text "Module: " <+> text m
                  , text "Message:" <+> pp msg ])

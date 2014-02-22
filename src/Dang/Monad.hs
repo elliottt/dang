@@ -140,6 +140,7 @@ newRO opts = RO opts defaultPPEnv <$> newIORef NoLoc
 askRO :: BaseM m Dang => m RO
 askRO  = inBase (Dang ask)
 
+
 -- | Turn a Dang operation into an IO operation.  This will allow exceptions to
 -- escape.
 runDang :: Options -> Dang a -> IO a
