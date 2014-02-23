@@ -39,6 +39,8 @@ data Keyword = Klet
              | Kdata
              | Kcase
              | Kof
+             | Krec
+             | Klocal
 
                -- symbols
              | Klambda
@@ -105,6 +107,8 @@ instance Pretty Keyword where
     Kdata       -> text "data"
     Kcase       -> text "case"
     Kof         -> text "of"
+    Krec        -> text "rec"
+    Klocal      -> text "local"
     Klambda     -> char '\\'
     Kassign     -> char '='
     Klparen     -> char '('

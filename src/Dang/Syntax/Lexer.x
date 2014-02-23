@@ -58,15 +58,20 @@ $white          ;
 "=>"            { keyword KfatArrow   }
 "|"             { keyword Kpipe       }
 "_"             { keyword Kunderscore }
+";"             { keyword Ksemi       }
 
--- keywords
-"let"           { keyword Klet       }
-"in"            { keyword Kin        }
-"data"          { keyword Kdata      }
-"module"        { keyword Kmodule    }
-"where"         { keyword Kwhere     }
+-- declaration-block keywords
 "open"          { keyword Kopen      }
 "as"            { keyword Kas        }
+"rec"           { keyword Krec       }
+"let"           { keyword Klet       }
+"in"            { keyword Kin        }
+"where"         { keyword Kwhere     }
+"local"         { keyword Klocal     }
+
+-- keywords
+"data"          { keyword Kdata      }
+"module"        { keyword Kmodule    }
 "hiding"        { keyword Khiding    }
 "public"        { keyword Kpublic    }
 "private"       { keyword Kprivate   }

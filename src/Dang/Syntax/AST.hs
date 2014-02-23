@@ -9,6 +9,7 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
+import           Data.Monoid ( mempty )
 import qualified Data.Set as Set
 
 
@@ -16,7 +17,6 @@ import qualified Data.Set as Set
 
 -- | A parsed program.
 data Module = Module { modName  :: Located ModName
-                     , modOpens :: [Located Open]
                      , modDecls :: Block TopDecl
                      } deriving (Show,Data,Typeable)
 
@@ -42,10 +42,28 @@ data Block a = BSingle a
                -- ^ No declarations.
                deriving (Show,Data,Typeable)
 
+elimBComb :: Block a -> [Block a]
+elimBComb b = case b of
+  BComb l r -> elimBComb l ++ elimBComb r
+  BEmpty    -> []
+  _         -> [b]
+
+elimBSeq :: Block a -> [Block a]
+elimBSeq b = case b of
+  BSeq l r -> elimBSeq l ++ elimBSeq r
+  BEmpty   -> []
+  _        -> [b]
+
 -- | Top-level declarations.
 data TopDecl = TDDecl Decl
              | TDData DataDecl
                deriving (Show,Data,Typeable)
+
+-- | Declarations that can show up anywhere.
+data Decl = DBind (Located Bind)     -- ^ Name bindings
+          | DSig (Located Signature) -- ^ Type signatures
+          | DOpen (Located Open)     -- ^ Module imports
+            deriving (Show,Data,Typeable)
 
 -- | A module import.
 data Open = Open { openMod     :: Located ModName
@@ -58,10 +76,6 @@ data Open = Open { openMod     :: Located ModName
 data OpenSymbol = OpenTerm String
                 | OpenType String [String]
                   deriving (Show,Data,Typeable)
-
-data Decl = DBind Bind
-          | DSig Signature
-            deriving (Show,Data,Typeable)
 
 -- | Function binding.
 data Bind = Bind { bindName :: Name
@@ -158,10 +172,12 @@ instance BoundVars a => BoundVars (Block a) where
     BSource _ b' -> boundVars b'
     BEmpty       -> Set.empty
 
+-- only bindings can bind variables
 instance BoundVars Decl where
   boundVars d = case d of
     DBind b -> boundVars b
-    DSig s  -> boundVars s
+    DSig _  -> Set.empty
+    DOpen _ -> Set.empty
 
 instance BoundVars Bind where
   boundVars b = Set.singleton (bindName b)
@@ -194,6 +210,7 @@ instance FreeVars Decl where
   freeVars d = case d of
     DBind b -> freeVars b
     DSig _  -> Set.empty
+    DOpen _ -> Set.empty
 
 instance FreeVars Bind where
   freeVars b = freeVars (bindBody b) Set.\\ boundVars b
@@ -220,6 +237,92 @@ instance FreeVars Term where
 
 -- Pretty Printing -------------------------------------------------------------
 
+instance Pretty Module where
+  ppr m = text "module" <+> ppModName (unLoc (modName m)) <+> text "where"
+       $$ pp (modDecls m)
+
+instance Pretty a => Pretty (Block a) where
+  ppr b = case b of
+
+    BSingle a -> ppr a
+
+    BComb{} -> layout (map pp (elimBComb b))
+
+    BExport e b' -> hang (pp e) 2 (pp b')
+
+    BRec b' -> hang (text "rec") 2 (pp b')
+
+    BSeq{} -> layout (map pp (elimBSeq b))
+
+    BLocal as bs -> hang (text "local") 2 (pp as)
+                 $$ hang (text "in") 2 (pp bs)
+
+    BEmpty -> empty
+
+    BSource _ b' -> ppr b'
+
+
+instance Pretty TopDecl where
+  ppr td = case td of
+    TDDecl d -> ppr d
+    TDData d -> ppr d
+
+instance Pretty Decl where
+  ppr d = case d of
+    DBind b -> ppr b
+    DSig s  -> ppr s
+    DOpen o -> ppr o
+
+instance Pretty DataDecl where
+  ppr d = empty
+
+instance Pretty Bind where
+  ppr b = empty
+
+instance Pretty Signature where
+  ppr s = empty
+
+instance Pretty Open where
+  ppr o = hang (text "open" <+> ppModName (unLoc (openMod o)) <+> altName)
+             5 spec
+    where
+    altName = case openAs o of
+      Nothing -> empty
+      Just ln -> text "as" <+> ppModName (unLoc ln)
+
+    spec | openHiding o = text "hiding" <+> symbols
+         | otherwise    = symbols
+
+    symbols | null (openSymbols o) = empty
+            | otherwise            = parens (commas (map pp (openSymbols o)))
+
+instance Pretty OpenSymbol where
+  ppr os = case os of
+    OpenTerm n      -> text n
+    OpenType n cons -> text n <> parens (commas (map text cons))
+
 instance Pretty Literal where
   ppr lit = case lit of
     LInt i -> integer i
+
+
+-- Location Information --------------------------------------------------------
+
+instance HasLocation a => HasLocation (Block a) where
+  getLoc b = case b of
+    BSource src _ -> src
+    _             -> mempty
+
+instance HasLocation TopDecl where
+  getLoc td = case td of
+    TDDecl d -> getLoc d
+    TDData d -> getLoc d
+
+instance HasLocation Decl where
+  getLoc d = case d of
+    DBind l -> getLoc l
+    DSig l  -> getLoc l
+    DOpen l -> getLoc l
+
+instance HasLocation DataDecl where
+  getLoc d = mempty

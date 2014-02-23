@@ -36,6 +36,9 @@ type ModName = [String]
 moduleIface :: ModName -> FilePath
 moduleIface m = joinPath m <.> "di"
 
+ppModName :: ModName -> PPDoc
+ppModName mn = hcat (punctuate (char '.') (map text mn))
+
 type LName = Located Name
 
 data Name = LocalName Level String

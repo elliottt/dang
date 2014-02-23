@@ -23,46 +23,48 @@ import MonadLib
 
 %token
 
--- reserved names
-  'let' { Located $$ (TKeyword Klet) }
-  'in'  { Located $$ (TKeyword Kin)  }
+-- modules
+  'module'    { Located $$ (TKeyword Kmodule)    }
+  'open'      { Located $$ (TKeyword Kopen)      }
+  'as'        { Located $$ (TKeyword Kas)        }
+  'hiding'    { Located $$ (TKeyword Khiding)    }
 
--- symbols
-  '\\' { Located $$ (TKeyword Klambda)     }
-  '='  { Located $$ (TKeyword Kassign)     }
-  '('  { Located $$ (TKeyword Klparen)     }
-  ')'  { Located $$ (TKeyword Krparen)     }
-  ','  { Located $$ (TKeyword Kcomma)      }
-  '.'  { Located $$ (TKeyword Kdot)        }
-  '|'  { Located $$ (TKeyword Kpipe)       }
-  '_'  { Located $$ (TKeyword Kunderscore) }
+-- declaration blocks
+  '{'       { Located $$ (TKeyword Klbrace)    }
+  ';'       { Located $$ (TKeyword Ksemi)      }
+  '}'       { Located $$ (TKeyword Krbrace)    }
+  'v{'      { Located $$ (TVirt Vopen)         }
+  'v;'      { Located $$ (TVirt Vsep)          }
+  'v}'      { Located $$ (TVirt Vclose)        }
+  'rec'     { Located $$ (TKeyword Krec)       }
+  'public'  { Located $$ (TKeyword Kpublic)    }
+  'private' { Located $$ (TKeyword Kprivate)   }
+  'local'   { Located $$ (TKeyword Klocal)     }
 
--- layout
-  '{'  { Located $$ (TKeyword Klbrace)     }
-  ';'  { Located $$ (TKeyword Ksemi)       }
-  '}'  { Located $$ (TKeyword Krbrace)     }
-  'v{' { Located $$ (TVirt Vopen)          }
-  'v;' { Located $$ (TVirt Vsep)           }
-  'v}' { Located $$ (TVirt Vclose)         }
+-- declarations
+  'primitive' { Located $$ (TKeyword Kprimitive) }
+  'type'      { Located $$ (TKeyword Ktype)      }
+  'data'      { Located $$ (TKeyword Kdata)      }
+  '='         { Located $$ (TKeyword Kassign)     }
 
 -- special operators
   '->' { Located $$ (TOperIdent "->") }
   '*'  { Located $$ (TOperIdent "*")  }
   '::' { Located $$ (TOperIdent "::") }
 
--- reserved names
-  'module'    { Located $$ (TKeyword Kmodule)    }
-  'where'     { Located $$ (TKeyword Kwhere)     }
-  'open'      { Located $$ (TKeyword Kopen)      }
-  'as'        { Located $$ (TKeyword Kas)        }
-  'hiding'    { Located $$ (TKeyword Khiding)    }
-  'public'    { Located $$ (TKeyword Kpublic)    }
-  'private'   { Located $$ (TKeyword Kprivate)   }
-  'primitive' { Located $$ (TKeyword Kprimitive) }
-  'type'      { Located $$ (TKeyword Ktype)      }
-  'data'      { Located $$ (TKeyword Kdata)      }
-  'case'      { Located $$ (TKeyword Kcase)      }
-  'of'        { Located $$ (TKeyword Kof)        }
+-- keywords
+  'where'     { Located $$ (TKeyword Kwhere)      }
+  'case'      { Located $$ (TKeyword Kcase)       }
+  'of'        { Located $$ (TKeyword Kof)         }
+  'let'       { Located $$ (TKeyword Klet)        }
+  'in'        { Located $$ (TKeyword Kin)         }
+  '\\'        { Located $$ (TKeyword Klambda)     }
+  '('         { Located $$ (TKeyword Klparen)     }
+  ')'         { Located $$ (TKeyword Krparen)     }
+  ','         { Located $$ (TKeyword Kcomma)      }
+  '.'         { Located $$ (TKeyword Kdot)        }
+  '|'         { Located $$ (TKeyword Kpipe)       }
+  '_'         { Located $$ (TKeyword Kunderscore) }
 
 -- identifiers
   CONIDENT { $$@Located { locValue = TConIdent _  }}
@@ -89,6 +91,7 @@ cident :: { Located String }
 
 ident :: { Located String }
   : IDENT { fmap fromTIdent $1 }
+  | 'as'  { "as" `at` $1 }
 
 qual_cident :: { Located [String] }
   : sep1('.', cident) { map unLoc $1 `at` foldMap getLoc $1 }
@@ -106,18 +109,15 @@ qual_ident :: { Located ([String],String) }
 -- Modules ---------------------------------------------------------------------
 
 top_module :: { Module }
-  : 'module' mod_name 'where' top_decls
+  : 'module' mod_name 'where' block(top_decl)
     { Module { modName  = $2
-             , modOpens = fst $4
-             , modDecls = snd $4 } }
+             , modDecls = $4 } }
 
-top_decls :: { ([Located Open], Block TopDecl) }
-  : '{'  top_decls_body(';')  '}'  { $2 }
-  | 'v{' top_decls_body('v;') 'v}' { $2 }
+top_decl :: { TopDecl }
+  : decl { TDDecl $1 }
 
-top_decls_body(p)
-  : sep1(p, open) { ($1, BEmpty) }
-  | {- empty -}   { ([], BEmpty) }
+decl :: { Decl }
+  : open { DOpen $1 }
 
 open :: { Located Open }
   : 'open' mod_name opt_as opt_hiding open_symbols
@@ -152,9 +152,17 @@ open_symbol :: { Located OpenSymbol }
 -- Declaration Blocks ----------------------------------------------------------
 
 block(e)
-  : e              { BSource (getLoc $1) $1                      }
-  | layout(e)      { BSource (getLoc $1) (foldr BComb BEmpty $1) }
-  | 'rec' block(e) { BSource ($1 `mappend` getLoc $2) (BRec $2)  }
+  : layout(block_stmt(e)) { BSource (getLoc $1) (foldr BComb BEmpty $1) }
+
+block_stmt(e)
+  : e
+    { BSource (getLoc $1) (BSingle $1) }
+
+  | 'rec' block(e)
+    { BSource ($1 `mappend` getLoc $2) (BRec $2) }
+
+  | 'local' block(e) 'in' block(e)
+    { BSource (mconcat [$1,$3,getLoc $4]) (BLocal $2 $4) }
 
 
 -- Combinators -----------------------------------------------------------------

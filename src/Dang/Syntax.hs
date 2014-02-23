@@ -21,6 +21,7 @@ import Dang.Syntax.Lexer (scan)
 import Dang.Syntax.Parser (parseModule)
 import Dang.Syntax.ParserCore (runParser)
 import Dang.Utils.Location (unLoc)
+import Dang.Utils.Pretty ( text, pp, ($$) )
 
 import           Control.Monad ( mzero )
 import qualified Data.Text.Lazy as L
@@ -32,7 +33,7 @@ loadModule :: FilePath -> Dang Module
 loadModule path = pass "parser" $ do
   source <- loadFile path
   m      <- parseSource path source
-  -- logInfo ("Parsed module\n" ++ pretty m)
+  logInfo (text "Parsed module" $$ pp m)
   return m
 
 parseSource :: BaseM dang Dang => FilePath -> L.Text -> dang Module

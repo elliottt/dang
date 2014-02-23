@@ -42,6 +42,9 @@ instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c) where
 class BoundVars a where
   boundVars :: a -> Set.Set Name
 
+instance BoundVars a => BoundVars (Located a) where
+  boundVars = foldMap boundVars
+
 instance BoundVars a => BoundVars (Maybe a) where
   boundVars = foldMap boundVars
 
