@@ -251,24 +251,15 @@ instance Pretty Module where
 
 instance Pretty a => Pretty (Block a) where
   ppr b = case b of
-
-    BSingle a -> ppr a
-
-    BComb{} -> layout (map pp (elimBCombs b))
-
+    BSingle a    -> ppr a
+    BComb{}      -> layout (map pp (elimBCombs b))
     BExport e b' -> hang (pp e) 2 (pp b')
-
-    BRec b' -> hang (text "rec") 2 (pp b')
-
-    BSeq{} -> layout (map pp (elimBSeqs b))
-
+    BRec b'      -> hang (text "rec") 2 (pp b')
+    BSeq{}       -> layout (map pp (elimBSeqs b))
     BLocal as bs -> hang (text "local") 2 (pp as)
                  $$ hang (text "in") 2 (pp bs)
-
-    BEmpty -> empty
-
+    BEmpty       -> empty
     BSource _ b' -> ppr b'
-
 
 instance Pretty TopDecl where
   ppr td = case td of
