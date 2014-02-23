@@ -9,7 +9,7 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import           Data.Monoid ( mempty )
+import           Data.Monoid ( mempty, mappend )
 import qualified Data.Set as Set
 
 
@@ -126,10 +126,12 @@ type Kind = Type
 
 type Prop = Type
 
-data Type = TApp Type [Type]
-          | TInfix Type Name Type
+data Type = TFun Type Type
+          | TApp Type [Type]
+          | TTuple [Type]
           | TCon Name
           | TVar Name
+          | TSource SrcLoc Type
             deriving (Show,Data,Typeable)
 
 data Match = MTerm  Term             -- ^ Body of a match
@@ -280,7 +282,8 @@ instance Pretty Bind where
   ppr b = empty
 
 instance Pretty Signature where
-  ppr s = empty
+    ppr sig = hang (commas (map pp (sigNames sig)) <+> text ":")
+                 2 (pp (sigSchema sig))
 
 instance Pretty Open where
   ppr o = hang (text "open" <+> ppModName (unLoc (openMod o)) <+> altName)
@@ -300,6 +303,25 @@ instance Pretty OpenSymbol where
   ppr os = case os of
     OpenTerm n      -> text n
     OpenType n cons -> text n <> parens (commas (map text cons))
+
+instance Pretty Schema where
+  ppr (Forall ps ty)
+    | null ps   = pp ty
+    | otherwise = sep [ props, pp ty ]
+      where
+      props = case ps of
+        []     -> empty
+        [prop] -> pp prop <+> text "=>"
+        _      -> parens (commas (map pp ps)) <+> text "=>"
+
+instance Pretty Type where
+  ppr ty = case ty of
+    TFun l r      -> optParens 9 (sep [ ppPrec 9 l <+> text "->", pp r ])
+    TApp f xs     -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
+    TTuple ts     -> parens (commas (map pp ts))
+    TCon n        -> pp n
+    TVar n        -> pp n
+    TSource _ ty' -> ppr ty'
 
 instance Pretty Literal where
   ppr lit = case lit of
@@ -326,3 +348,11 @@ instance HasLocation Decl where
 
 instance HasLocation DataDecl where
   getLoc d = mempty
+
+instance HasLocation Schema where
+  getLoc (Forall ps ty) = getLoc ps `mappend` getLoc ty
+
+instance HasLocation Type where
+  getLoc ty = case ty of
+    TSource src _ -> src
+    _             -> mempty

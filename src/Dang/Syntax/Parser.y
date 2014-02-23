@@ -45,12 +45,13 @@ import MonadLib
   'primitive' { Located $$ (TKeyword Kprimitive) }
   'type'      { Located $$ (TKeyword Ktype)      }
   'data'      { Located $$ (TKeyword Kdata)      }
-  '='         { Located $$ (TKeyword Kassign)     }
+  '='         { Located $$ (TKeyword Kassign)    }
+  ':'         { Located $$ (TKeyword Kcolon)     }
 
--- special operators
+-- type-related
   '->' { Located $$ (TOperIdent "->") }
+  '=>' { Located $$ (TOperIdent "=>") }
   '*'  { Located $$ (TOperIdent "*")  }
-  '::' { Located $$ (TOperIdent "::") }
 
 -- keywords
   'where'     { Located $$ (TKeyword Kwhere)      }
@@ -113,11 +114,34 @@ top_module :: { Module }
     { Module { modName  = $2
              , modDecls = $4 } }
 
+
+-- Declaration Blocks ----------------------------------------------------------
+
+block(e)
+  : layout(block_stmt(e)) { BSource (getLoc $1) (foldr BComb BEmpty $1) }
+
+block_stmt(e)
+  : e
+    { BSource (getLoc $1) (BSingle $1) }
+
+  | 'rec' block(e)
+    { BSource ($1 `mappend` getLoc $2) (BRec $2) }
+
+  | 'local' block(e) 'in' block(e)
+    { BSource (mconcat [$1,$3,getLoc $4]) (BLocal $2 $4) }
+
+
+-- Declarations ----------------------------------------------------------------
+
 top_decl :: { TopDecl }
   : decl { TDDecl $1 }
 
 decl :: { Decl }
-  : open { DOpen $1 }
+  : open      { DOpen $1 }
+  | signature { DSig $1 }
+
+
+-- Imports ---------------------------------------------------------------------
 
 open :: { Located Open }
   : 'open' mod_name opt_as opt_hiding open_symbols
@@ -149,20 +173,54 @@ open_symbol :: { Located OpenSymbol }
           `at` mconcat (getLoc $1 : map getLoc $3) }
 
 
--- Declaration Blocks ----------------------------------------------------------
+-- Expressions -----------------------------------------------------------------
 
-block(e)
-  : layout(block_stmt(e)) { BSource (getLoc $1) (foldr BComb BEmpty $1) }
+ename :: { Located Name }
+  : ident { fmap (mkLocal Expr) $1 }
 
-block_stmt(e)
-  : e
-    { BSource (getLoc $1) (BSingle $1) }
 
-  | 'rec' block(e)
-    { BSource ($1 `mappend` getLoc $2) (BRec $2) }
 
-  | 'local' block(e) 'in' block(e)
-    { BSource (mconcat [$1,$3,getLoc $4]) (BLocal $2 $4) }
+-- Types -----------------------------------------------------------------------
+
+signature :: { Located Signature }
+  : sep1(',', ename) ':' schema
+    { Signature { sigNames  = $1
+                , sigSchema = $3 } `at` mconcat [ getLoc $1
+                                                , $2
+                                                , getLoc $3 ] }
+
+schema :: { Schema }
+  : type '=>' type
+    { mkForall $1 $3 }
+
+  | type
+    { Forall [] $1 }
+
+type :: { Type }
+  : sep1('->', app_type)
+    { TSource (getLoc $1) (foldr1 TFun $1) }
+
+app_type :: { Type }
+  : atype
+    { $1 }
+  | atype list1(atype)
+    { TSource (getLoc $1 `mappend` getLoc $2) (TApp $1 $2) }
+
+atype :: { Type }
+  : tyvar
+    { TSource (getLoc $1) (TVar (unLoc $1)) }
+
+  | tycon
+    { TSource (getLoc $1) (TCon (unLoc $1)) }
+
+  | '(' sep(',', type) ')'
+    { TSource (getLoc $1 `mappend` getLoc $3) (mkTuple $2) }
+
+tyvar :: { Located Name }
+  : ident { fmap (mkLocal (Type 0)) $1 }
+
+tycon :: { Located Name }
+  : cident { fmap (mkLocal (Type 0)) $1 }
 
 
 -- Combinators -----------------------------------------------------------------

@@ -6,6 +6,7 @@
 module Dang.Syntax.ParserCore where
 
 import Dang.Monad
+import Dang.Syntax.AST
 import Dang.Syntax.Lexeme ( Lexeme )
 import Dang.Utils.Location
 import Dang.Utils.Pretty
@@ -52,3 +53,22 @@ parseError :: Lexeme -> Parser a
 parseError l =
   do addErrL (getLoc l) (text "Parser error near" <+> quoted (pp (unLoc l)))
      mzero
+
+
+-- Helpers ---------------------------------------------------------------------
+
+-- | Construct a Forall, using a type as the context.
+mkForall :: Type -> Type -> Schema
+mkForall cxt ty = Forall (mkProps cxt) ty
+
+-- | Parse a context-kinded type into a list of props.
+mkProps :: Type -> [Prop]
+mkProps cxt = case cxt of
+  TSource _ cxt' -> mkProps cxt'
+  TTuple tys     -> tys
+  _              -> [cxt]
+
+mkTuple :: [Type] -> Type
+mkTuple tys = case tys of
+  [ty] -> ty
+  _    -> TTuple tys

@@ -46,7 +46,6 @@ $white          ;
 
 -- reserved symbols
 \\              { keyword Klambda     }
-"="             { keyword Kassign     }
 "("             { keyword Klparen     }
 ")"             { keyword Krparen     }
 "["             { keyword Klbracket   }
@@ -55,10 +54,13 @@ $white          ;
 "}"             { keyword Krbrace     }
 ","             { keyword Kcomma      }
 "."             { keyword Kdot        }
-"=>"            { keyword KfatArrow   }
 "|"             { keyword Kpipe       }
 "_"             { keyword Kunderscore }
 ";"             { keyword Ksemi       }
+
+-- declaration-related
+"="             { keyword Kassign     }
+":"             { keyword Kcolon      }
 
 -- declaration-block keywords
 "open"          { keyword Kopen      }
@@ -84,6 +86,7 @@ $white          ;
 @conident       { emitS TConIdent     }
 @ident          { emitS TIdent        }
 @operident      { emitS TOperIdent    }
+= @operident    { emitS TOperIdent    }
 $digit+         { emitS ((`TInt` 10) . read) }
 }
 

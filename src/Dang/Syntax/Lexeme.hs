@@ -51,10 +51,9 @@ data Keyword = Klet
              | Krbracket
              | Klbrace
              | Krbrace
-             | KfatArrow
-             | Karrow
              | Kcomma
              | Ksemi
+             | Kcolon
              | Kdot
              | Kpipe
              | Kunderscore
@@ -117,10 +116,9 @@ instance Pretty Keyword where
     Krbracket   -> char ']'
     Klbrace     -> char '{'
     Krbrace     -> char '}'
-    KfatArrow   -> text "=>"
-    Karrow      -> text "->"
     Kcomma      -> char ','
     Ksemi       -> char ';'
+    Kcolon      -> char ':'
     Kdot        -> char '.'
     Kpipe       -> char '|'
     Kunderscore -> char '_'
