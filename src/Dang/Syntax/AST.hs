@@ -9,6 +9,7 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
+import           Data.List ( intersperse )
 import           Data.Monoid ( mempty, mappend )
 import qualified Data.Set as Set
 
@@ -42,15 +43,15 @@ data Block a = BSingle a
                -- ^ No declarations.
                deriving (Show,Data,Typeable)
 
-elimBComb :: Block a -> [Block a]
-elimBComb b = case b of
-  BComb l r -> elimBComb l ++ elimBComb r
+elimBCombs :: Block a -> [Block a]
+elimBCombs b = case b of
+  BComb l r -> elimBCombs l ++ elimBCombs r
   BEmpty    -> []
   _         -> [b]
 
-elimBSeq :: Block a -> [Block a]
-elimBSeq b = case b of
-  BSeq l r -> elimBSeq l ++ elimBSeq r
+elimBSeqs :: Block a -> [Block a]
+elimBSeqs b = case b of
+  BSeq l r -> elimBSeqs l ++ elimBSeqs r
   BEmpty   -> []
   _        -> [b]
 
@@ -133,6 +134,11 @@ data Type = TFun Type Type
           | TVar Name
           | TSource SrcLoc Type
             deriving (Show,Data,Typeable)
+
+elimTFuns :: Type -> [Type]
+elimTFuns ty = case ty of
+  TFun l r -> l : elimTFuns r
+  _        -> [ty]
 
 data Match = MTerm  Term             -- ^ Body of a match
            | MPat   Pat   Match      -- ^ Pattern matching
@@ -248,13 +254,13 @@ instance Pretty a => Pretty (Block a) where
 
     BSingle a -> ppr a
 
-    BComb{} -> layout (map pp (elimBComb b))
+    BComb{} -> layout (map pp (elimBCombs b))
 
     BExport e b' -> hang (pp e) 2 (pp b')
 
     BRec b' -> hang (text "rec") 2 (pp b')
 
-    BSeq{} -> layout (map pp (elimBSeq b))
+    BSeq{} -> layout (map pp (elimBSeqs b))
 
     BLocal as bs -> hang (text "local") 2 (pp as)
                  $$ hang (text "in") 2 (pp bs)
@@ -316,7 +322,9 @@ instance Pretty Schema where
 
 instance Pretty Type where
   ppr ty = case ty of
-    TFun l r      -> optParens 9 (sep [ ppPrec 9 l <+> text "->", pp r ])
+    TFun{}        -> optParens 10 $ fsep
+                                  $ intersperse (text "->")
+                                  $ map (ppPrec 10) (elimTFuns ty)
     TApp f xs     -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
     TTuple ts     -> parens (commas (map pp ts))
     TCon n        -> pp n
