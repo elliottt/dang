@@ -64,9 +64,9 @@ mkForall cxt ty = Forall (mkProps cxt) ty
 -- | Parse a context-kinded type into a list of props.
 mkProps :: Type -> [Prop]
 mkProps cxt = case cxt of
-  TSource _ cxt' -> mkProps cxt'
-  TTuple tys     -> tys
-  _              -> [cxt]
+  TLoc lt    -> mkProps (unLoc lt)
+  TTuple tys -> tys
+  _          -> [cxt]
 
 mkTuple :: [Type] -> Type
 mkTuple tys = case tys of

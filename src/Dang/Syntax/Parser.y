@@ -118,17 +118,18 @@ top_module :: { Module }
 -- Declaration Blocks ----------------------------------------------------------
 
 block(e)
-  : layout(block_stmt(e)) { BSource (getLoc $1) (foldr BComb BEmpty $1) }
+  : layout(block_stmt(e))
+    { BLoc (foldr BComb BEmpty $1 `at` getLoc $1) }
 
 block_stmt(e)
   : e
-    { BSource (getLoc $1) (BSingle $1) }
+    { BLoc (BSingle $1 `at` getLoc $1) }
 
   | 'rec' block(e)
-    { BSource ($1 `mappend` getLoc $2) (BRec $2) }
+    { BLoc (BRec $2 `at` mappend $1 (getLoc $2)) }
 
   | 'local' block(e) 'in' block(e)
-    { BSource (mconcat [$1,$3,getLoc $4]) (BLocal $2 $4) }
+    { BLoc (BLocal $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
 
 
 -- Declarations ----------------------------------------------------------------
@@ -168,6 +169,7 @@ open_symbols :: { [Located OpenSymbol] }
 open_symbol :: { Located OpenSymbol }
   : ident
     { fmap OpenTerm $1 }
+
   | cident '(' sep1(',',cident) ')'
     { OpenType (unLoc $1) (map unLoc $3)
           `at` mconcat (getLoc $1 : map getLoc $3) }
@@ -198,23 +200,24 @@ schema :: { Schema }
 
 type :: { Type }
   : sep1('->', app_type)
-    { TSource (getLoc $1) (foldr1 TFun $1) }
+    { TLoc (foldr1 TFun $1 `at` getLoc $1) }
 
 app_type :: { Type }
   : atype
     { $1 }
+
   | atype list1(atype)
-    { TSource (getLoc $1 `mappend` getLoc $2) (TApp $1 $2) }
+    { TLoc (TApp $1 $2 `at` mappend (getLoc $1) (getLoc $2)) }
 
 atype :: { Type }
   : tyvar
-    { TSource (getLoc $1) (TVar (unLoc $1)) }
+    { TLoc (TVar `fmap` $1) }
 
   | tycon
-    { TSource (getLoc $1) (TCon (unLoc $1)) }
+    { TLoc (TCon `fmap` $1) }
 
   | '(' sep(',', type) ')'
-    { TSource (getLoc $1 `mappend` getLoc $3) (mkTuple $2) }
+    { TLoc (mkTuple $2 `at` mappend (getLoc $1) (getLoc $3)) }
 
 tyvar :: { Located Name }
   : ident { fmap (mkLocal (Type 0)) $1 }

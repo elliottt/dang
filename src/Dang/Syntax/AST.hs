@@ -37,10 +37,10 @@ data Block a = BSingle a
              | BLocal (Block a) (Block a)
                -- ^ Declarations that are local to a group of other
                -- declarations.
-             | BSource SrcLoc (Block a)
-               -- ^ Source lcoations attached to a block of declaration.
              | BEmpty
                -- ^ No declarations.
+             | BLoc (Located (Block a))
+               -- ^ Source lcoations attached to a block of declaration.
                deriving (Show,Data,Typeable)
 
 elimBCombs :: Block a -> [Block a]
@@ -132,7 +132,7 @@ data Type = TFun Type Type
           | TTuple [Type]
           | TCon Name
           | TVar Name
-          | TSource SrcLoc Type
+          | TLoc (Located Type)
             deriving (Show,Data,Typeable)
 
 elimTFuns :: Type -> [Type]
@@ -140,27 +140,27 @@ elimTFuns ty = case ty of
   TFun l r -> l : elimTFuns r
   _        -> [ty]
 
-data Match = MTerm  Term             -- ^ Body of a match
-           | MPat   Pat   Match      -- ^ Pattern matching
-           | MGuard Pat   Term Match -- ^ Pattern guards
+data Match = MPat   Pat   Match      -- ^ Pattern matching
+           | MGuard Pat   Expr Match -- ^ Pattern guards
            | MSplit Match Match      -- ^ Choice
+           | MSuccess Expr           -- ^ Body of a match
            | MFail                   -- ^ Unconditional failure
-           | MSource SrcLoc Match    -- ^ Source locations
+           | MLoc (Located Match)    -- ^ Source locations
              deriving (Show,Data,Typeable)
 
 data Pat = PVar Name           -- ^ Variable introduction
          | PCon Name [Pat]     -- ^ Constructor patterns
          | PWildcard           -- ^ The wildcard pattern
-         | PSource SrcLoc Pat  -- ^ Source location
+         | PLoc (Located Pat)  -- ^ Source location
            deriving (Show,Data,Typeable)
 
-data Term = Abs Match
-          | Case Term Match
-          | Let (Block Decl) Term
-          | App Term [Term]
+data Expr = Abs Match
+          | Case Expr Match
+          | Let (Block Decl) Expr
+          | App Expr [Expr]
           | Var Name
           | Lit Literal
-          | TLoc (Located Term)
+          | ELoc (Located Expr)
             deriving (Show,Data,Typeable)
 
 data Literal = LInt Integer
@@ -177,7 +177,7 @@ instance BoundVars a => BoundVars (Block a) where
     BComb l r    -> boundVars [l,r]
     BSeq l r     -> boundVars [l,r]
     BLocal _ b'  -> boundVars b'
-    BSource _ b' -> boundVars b'
+    BLoc lb      -> boundVars lb
     BEmpty       -> Set.empty
 
 -- only bindings can bind variables
@@ -195,10 +195,10 @@ instance BoundVars Signature where
 
 instance BoundVars Pat where
   boundVars p = case p of
-    PVar n       -> Set.singleton n
-    PCon qn ps   -> Set.insert qn (boundVars ps)
-    PWildcard    -> Set.empty
-    PSource _ p' -> boundVars p'
+    PVar n     -> Set.singleton n
+    PCon qn ps -> Set.insert qn (boundVars ps)
+    PWildcard  -> Set.empty
+    PLoc lp    -> boundVars lp
 
 
 -- Free Variables --------------------------------------------------------------
@@ -211,7 +211,7 @@ instance (BoundVars a, FreeVars a) => FreeVars (Block a) where
     BComb l r    -> freeVars [l,r]  Set.\\ boundVars [l,r]
     BSeq l r     -> freeVars [l,r]  Set.\\ boundVars l
     BLocal l b'  -> freeVars [l,b'] Set.\\ boundVars l
-    BSource _ b' -> freeVars b'
+    BLoc lb      -> freeVars lb
     BEmpty       -> Set.empty
 
 instance FreeVars Decl where
@@ -225,22 +225,22 @@ instance FreeVars Bind where
 
 instance FreeVars Match where
   freeVars m = case m of
-    MTerm tm       -> freeVars tm
-    MPat p m'      -> freeVars m'      Set.\\ boundVars p
-    MGuard p tm m' -> freeVars (tm,m') Set.\\ boundVars p
-    MSplit l r     -> freeVars [l,r]
-    MFail          -> Set.empty
-    MSource _ m'   -> freeVars m'
+    MPat p m'     -> freeVars m'     Set.\\ boundVars p
+    MGuard p e m' -> freeVars (e,m') Set.\\ boundVars p
+    MSplit l r    -> freeVars [l,r]
+    MSuccess e    -> freeVars e
+    MFail         -> Set.empty
+    MLoc lm       -> freeVars lm
 
-instance FreeVars Term where
+instance FreeVars Expr where
   freeVars tm = case tm of
-    Abs m     -> freeVars m
-    Case e m  -> freeVars e `Set.union` freeVars m
-    Let b e   -> freeVars (b,e) Set.\\ boundVars b
-    App f xs  -> freeVars f `Set.union` freeVars xs
-    Var n     -> Set.singleton n
-    Lit _     -> Set.empty
-    TLoc ltm  -> freeVars ltm
+    Abs m    -> freeVars m
+    Case e m -> freeVars e `Set.union` freeVars m
+    Let b e  -> freeVars (b,e) Set.\\ boundVars b
+    App f xs -> freeVars f `Set.union` freeVars xs
+    Var n    -> Set.singleton n
+    Lit _    -> Set.empty
+    ELoc le  -> freeVars le
 
 
 -- Pretty Printing -------------------------------------------------------------
@@ -259,7 +259,7 @@ instance Pretty a => Pretty (Block a) where
     BLocal as bs -> hang (text "local") 2 (pp as)
                  $$ hang (text "in") 2 (pp bs)
     BEmpty       -> empty
-    BSource _ b' -> ppr b'
+    BLoc lb      -> ppr lb
 
 instance Pretty TopDecl where
   ppr td = case td of
@@ -313,14 +313,14 @@ instance Pretty Schema where
 
 instance Pretty Type where
   ppr ty = case ty of
-    TFun{}        -> optParens 10 $ fsep
-                                  $ intersperse (text "->")
-                                  $ map (ppPrec 10) (elimTFuns ty)
-    TApp f xs     -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
-    TTuple ts     -> parens (commas (map pp ts))
-    TCon n        -> pp n
-    TVar n        -> pp n
-    TSource _ ty' -> ppr ty'
+    TFun{}    -> optParens 10 $ fsep
+                              $ intersperse (text "->")
+                              $ map (ppPrec 10) (elimTFuns ty)
+    TApp f xs -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
+    TTuple ts -> parens (commas (map pp ts))
+    TCon n    -> pp n
+    TVar n    -> pp n
+    TLoc lt   -> ppr lt
 
 instance Pretty Literal where
   ppr lit = case lit of
@@ -331,8 +331,8 @@ instance Pretty Literal where
 
 instance HasLocation a => HasLocation (Block a) where
   getLoc b = case b of
-    BSource src _ -> src
-    _             -> mempty
+    BLoc lb -> getLoc lb
+    _       -> mempty
 
 instance HasLocation TopDecl where
   getLoc td = case td of
@@ -353,5 +353,5 @@ instance HasLocation Schema where
 
 instance HasLocation Type where
   getLoc ty = case ty of
-    TSource src _ -> src
-    _             -> mempty
+    TLoc lt -> getLoc lt
+    _       -> mempty
