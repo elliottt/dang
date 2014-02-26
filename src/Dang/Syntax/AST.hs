@@ -79,9 +79,9 @@ data OpenSymbol = OpenTerm String
                   deriving (Show,Data,Typeable)
 
 -- | Function binding.
-data Bind = Bind { bindName :: Name
-                 , bindType :: Maybe Schema
-                 , bindBody :: Match
+data Bind = Bind { bindName   :: Located Name
+                 , bindType   :: Maybe Schema
+                 , bindBody   :: Match
                  } deriving (Show,Data,Typeable)
 
 -- | A name with a signature.
@@ -148,6 +148,10 @@ data Match = MPat   Pat   Match      -- ^ Pattern matching
            | MLoc (Located Match)    -- ^ Source locations
              deriving (Show,Data,Typeable)
 
+-- | Nest a match in a sequence of patterns.
+matchPats :: [Pat] -> Match -> Match
+matchPats ps m = foldr MPat m ps
+
 data Pat = PVar Name           -- ^ Variable introduction
          | PCon Name [Pat]     -- ^ Constructor patterns
          | PWildcard           -- ^ The wildcard pattern
@@ -188,7 +192,7 @@ instance BoundVars Decl where
     DOpen _ -> Set.empty
 
 instance BoundVars Bind where
-  boundVars b = Set.singleton (bindName b)
+  boundVars b = Set.singleton (unLoc (bindName b))
 
 instance BoundVars Signature where
   boundVars sig = Set.fromList (map unLoc (sigNames sig))
@@ -276,7 +280,27 @@ instance Pretty DataDecl where
   ppr d = empty
 
 instance Pretty Bind where
-  ppr b = empty
+  ppr b = pp (bindName b) <+> pp (bindBody b)
+
+instance Pretty Match where
+  ppr m = case m of
+    MPat p m'     -> sep [ pp p <+> text "->", pp m'' ]
+    MGuard p e m' -> sep [ ppPrec 10 p <+> text "<-" <+> pp e
+                         , char ',' <+> pp m' ]
+    MSplit l r    -> ppr l $$ ppr r
+    MSuccess e    -> ppr e
+    MFail         -> text "FAIL"
+    MLoc lm       -> ppr (unLoc lm)
+
+instance Pretty Pat where
+  ppr pat = case pat of
+    PVar v    -> pp v
+    PCon c ps -> optParens 10 (fsep (pp c : map (ppPrec 10) ps))
+    PWildcard -> char '_'
+    PLoc lp   -> pp (unLoc lp)
+
+instance Pretty Expr where
+  ppr e = empty
 
 instance Pretty Signature where
     ppr sig = hang (commas (map pp (sigNames sig)) <+> text ":")
@@ -347,6 +371,16 @@ instance HasLocation Decl where
 
 instance HasLocation DataDecl where
   getLoc d = mempty
+
+instance HasLocation Expr where
+  getLoc e = case e of
+    ELoc le -> getLoc le
+    _       -> mempty
+
+instance HasLocation Pat where
+  getLoc pat = case pat of
+    PLoc lp -> getLoc lp
+    _       -> mempty
 
 instance HasLocation Schema where
   getLoc (Forall ps ty) = getLoc ps `mappend` getLoc ty

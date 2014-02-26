@@ -139,7 +139,8 @@ top_decl :: { TopDecl }
 
 decl :: { Decl }
   : open      { DOpen $1 }
-  | signature { DSig $1 }
+  | signature { DSig  $1 }
+  | bind      { DBind $1 }
 
 
 -- Imports ---------------------------------------------------------------------
@@ -175,21 +176,7 @@ open_symbol :: { Located OpenSymbol }
           `at` mconcat (getLoc $1 : map getLoc $3) }
 
 
--- Expressions -----------------------------------------------------------------
-
-ename :: { Located Name }
-  : ident { fmap (mkLocal Expr) $1 }
-
-
-
 -- Types -----------------------------------------------------------------------
-
-signature :: { Located Signature }
-  : sep1(',', ename) ':' schema
-    { Signature { sigNames  = $1
-                , sigSchema = $3 } `at` mconcat [ getLoc $1
-                                                , $2
-                                                , getLoc $3 ] }
 
 schema :: { Schema }
   : type '=>' type
@@ -224,6 +211,47 @@ tyvar :: { Located Name }
 
 tycon :: { Located Name }
   : cident { fmap (mkLocal (Type 0)) $1 }
+
+
+-- Expressions -----------------------------------------------------------------
+
+ename :: { Located Name }
+  : ident { fmap (mkLocal Expr) $1 }
+
+signature :: { Located Signature }
+  : sep1(',', ename) ':' schema
+    { Signature { sigNames  = $1
+                , sigSchema = $3 } `at` mconcat [ getLoc $1
+                                                , $2
+                                                , getLoc $3 ] }
+
+bind :: { Located Bind }
+  : ename list(pat) '=' expr
+    { Bind { bindName = $1
+           , bindType = Nothing
+           , bindBody = matchPats $2 (MSuccess $4)
+           } `at` mappend (getLoc $1) (getLoc $2) }
+
+expr :: { Expr }
+  : 'let' block(decl) 'in' expr
+     { ELoc (Let $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
+
+  | aexpr
+    { $1 }
+
+aexpr :: { Expr }
+  : ename
+    { ELoc (Var `fmap` $1) }
+
+  | '(' expr ')'
+    { ELoc ($2 `at` mappend $1 $3) }
+
+
+-- Patterns --------------------------------------------------------------------
+
+pat :: { Pat }
+  : ename
+    { PLoc (PVar `fmap` $1) }
 
 
 -- Combinators -----------------------------------------------------------------
