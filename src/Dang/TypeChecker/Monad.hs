@@ -120,7 +120,7 @@ inst tys s =
   do when (length tys /= length (sParams s)) $
        do addErr $ hang (text "invalid schema instantiation:")
                       2 (vcat [ text "       Schema:" <+> pp s
-                              , text "Instantiation:" <+> commas (map pp tys) ])
+                              , text "Instantiation:" <+> fsep (commas (map pp tys)) ])
           mzero
 
      -- XXX emit goals

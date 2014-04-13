@@ -13,6 +13,7 @@ import Dang.Utils.Pretty
 
 import Control.Applicative ( Applicative(..) )
 import Control.Monad ( MonadPlus(mzero) )
+import Data.Maybe ( fromMaybe )
 import MonadLib ( BaseM(..), runM, StateT, get, set )
 
 
@@ -72,3 +73,6 @@ mkTuple :: [Type] -> Type
 mkTuple tys = case tys of
   [ty] -> ty
   _    -> TTuple tys
+
+mkTRow :: [Labelled Type] -> Maybe Type -> Type
+mkTRow ls r = foldr TRowExt (fromMaybe TEmptyRow r) ls

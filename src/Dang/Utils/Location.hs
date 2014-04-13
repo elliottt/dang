@@ -23,12 +23,21 @@ import Data.Typeable (Typeable)
 
 class HasLocation a where
   getLoc :: a -> SrcLoc
+  stripLoc :: a -> a
 
 instance HasLocation a => HasLocation [a] where
+  {-# INLINE getLoc #-}
   getLoc = foldMap getLoc
 
+  {-# INLINE stripLoc #-}
+  stripLoc = fmap stripLoc
+
 instance HasLocation a => HasLocation (Maybe a) where
+  {-# INLINE getLoc #-}
   getLoc = foldMap getLoc
+
+  {-# INLINE stripLoc #-}
+  stripLoc = fmap stripLoc
 
 locStart :: HasLocation a => a -> Position
 locStart a = srcStart (getLoc a)
@@ -43,7 +52,11 @@ data Located a = Located
   } deriving (Show,Functor,Ord,Eq,Data,Typeable,Foldable,Traversable)
 
 instance HasLocation (Located a) where
+  {-# INLINE getLoc #-}
   getLoc = locRange
+
+  {-# INLINE stripLoc #-}
+  stripLoc l = l { locRange = NoLoc }
 
 -- | Attach no location information to a value.
 noLoc :: a -> Located a
@@ -86,7 +99,11 @@ data SrcLoc = NoLoc | SrcLoc !Range Source
     deriving (Show,Ord,Eq,Data,Typeable)
 
 instance HasLocation SrcLoc where
+  {-# INLINE getLoc #-}
   getLoc = id
+
+  {-# INLINE stripLoc #-}
+  stripLoc _ = NoLoc
 
 instance Monoid SrcLoc where
   mempty = NoLoc

@@ -195,8 +195,14 @@ infixl 5 $$
 comma :: PPDoc
 comma  = return PP.comma
 
-commas :: [PPDoc] -> PPDoc
-commas ds = fsep (punctuate comma ds)
+pipe :: PPDoc
+pipe  = char '|'
+
+commas :: [PPDoc] -> [PPDoc]
+commas  = punctuate comma
+
+pipes :: [PPDoc] -> [PPDoc]
+pipes  = punctuate pipe
 
 hsep :: [PPDoc] -> PPDoc
 hsep ds = fmap PP.hsep (sequence ds)
@@ -218,6 +224,9 @@ hcat ds = fmap PP.hcat (sequence ds)
 
 brackets :: PPDoc -> PPDoc
 brackets  = fmap PP.brackets
+
+braces :: PPDoc -> PPDoc
+braces  = fmap PP.braces
 
 nest :: Int -> PPDoc -> PPDoc
 nest n = fmap (PP.nest n)

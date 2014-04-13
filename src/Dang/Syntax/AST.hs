@@ -1,4 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Dang.Syntax.AST where
 
@@ -9,9 +12,11 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
+import           Data.Foldable ( Foldable )
 import           Data.List ( intersperse )
 import           Data.Monoid ( mempty, mappend )
 import qualified Data.Set as Set
+import           Data.Traversable ( Traversable )
 
 
 -- Parsed AST ------------------------------------------------------------------
@@ -41,7 +46,7 @@ data Block a = BSingle a
                -- ^ No declarations.
              | BLoc (Located (Block a))
                -- ^ Source lcoations attached to a block of declaration.
-               deriving (Show,Data,Typeable)
+               deriving (Show,Data,Typeable,Functor,Foldable,Traversable)
 
 elimBCombs :: Block a -> [Block a]
 elimBCombs b = case b of
@@ -132,6 +137,8 @@ data Type = TFun Type Type
           | TTuple [Type]
           | TCon Name
           | TVar Name
+          | TRowExt (Labelled Type) Type
+          | TEmptyRow
           | TLoc (Located Type)
             deriving (Show,Data,Typeable)
 
@@ -139,6 +146,17 @@ elimTFuns :: Type -> [Type]
 elimTFuns ty = case ty of
   TFun l r -> l : elimTFuns r
   _        -> [ty]
+
+elimTRowExt :: Type -> ([Labelled Type],Type)
+elimTRowExt (TRowExt l r) = let (ls,r') = elimTRowExt r
+                             in (l:ls,r')
+elimTRowExt (TLoc l)      = elimTRowExt (unLoc l)
+elimTRowExt r             = ([],r)
+
+data Labelled a = Labelled { labName  :: Located Name
+                           , labValue :: a
+                           } deriving (Show,Data,Typeable,Functor,Foldable
+                                      ,Traversable)
 
 data Match = MPat   Pat   Match      -- ^ Pattern matching
            | MGuard Pat   Expr Match -- ^ Pattern guards
@@ -284,7 +302,7 @@ instance Pretty Bind where
 
 instance Pretty Match where
   ppr m = case m of
-    MPat p m'     -> sep [ pp p <+> text "->", pp m'' ]
+    MPat p m'     -> sep [ pp p <+> text "->", pp m' ]
     MGuard p e m' -> sep [ ppPrec 10 p <+> text "<-" <+> pp e
                          , char ',' <+> pp m' ]
     MSplit l r    -> ppr l $$ ppr r
@@ -303,7 +321,7 @@ instance Pretty Expr where
   ppr e = empty
 
 instance Pretty Signature where
-    ppr sig = hang (commas (map pp (sigNames sig)) <+> text ":")
+    ppr sig = hang (fsep (commas (map pp (sigNames sig))) <+> text ":")
                  2 (pp (sigSchema sig))
 
 instance Pretty Open where
@@ -318,12 +336,12 @@ instance Pretty Open where
          | otherwise    = symbols
 
     symbols | null (openSymbols o) = empty
-            | otherwise            = parens (commas (map pp (openSymbols o)))
+            | otherwise            = parens (fsep (commas (map pp (openSymbols o))))
 
 instance Pretty OpenSymbol where
   ppr os = case os of
     OpenTerm n      -> text n
-    OpenType n cons -> text n <> parens (commas (map text cons))
+    OpenType n cons -> text n <> parens (fsep (commas (map text cons)))
 
 instance Pretty Schema where
   ppr (Forall ps ty)
@@ -333,7 +351,10 @@ instance Pretty Schema where
       props = case ps of
         []     -> empty
         [prop] -> pp prop <+> text "=>"
-        _      -> parens (commas (map pp ps)) <+> text "=>"
+        _      -> parens (fsep (commas (map pp ps))) <+> text "=>"
+
+ppLabelled :: Pretty a => PPDoc -> Labelled a -> PPDoc
+ppLabelled p l = sep [ pp (labName l) <+> p, pp (labValue l) ]
 
 instance Pretty Type where
   ppr ty = case ty of
@@ -341,10 +362,22 @@ instance Pretty Type where
                               $ intersperse (text "->")
                               $ map (ppPrec 10) (elimTFuns ty)
     TApp f xs -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
-    TTuple ts -> parens (commas (map pp ts))
+    TTuple ts -> parens (fsep (commas (map pp ts)))
     TCon n    -> pp n
     TVar n    -> pp n
+    TRowExt{} -> ppRowExt ty
+    TEmptyRow -> braces empty
     TLoc lt   -> ppr lt
+
+ppRowExt :: Type -> PPDoc
+ppRowExt ty = braces (fsep (commas (map (ppLabelled (char ':')) ls) ++ [row]))
+  where
+  (ls,r) = elimTRowExt ty
+
+  row = case stripLoc r of
+    TEmptyRow -> empty
+    _         -> pipe <+> pp r
+
 
 instance Pretty Literal where
   ppr lit = case lit of
@@ -358,34 +391,89 @@ instance HasLocation a => HasLocation (Block a) where
     BLoc lb -> getLoc lb
     _       -> mempty
 
+  stripLoc (BLoc l)      = unLoc l
+  stripLoc (BExport e b) = BExport e (stripLoc b)
+  stripLoc (BRec b)      = BRec      (stripLoc b)
+  stripLoc (BComb l r)   = BComb     (stripLoc l) (stripLoc r)
+  stripLoc (BSeq  l r)   = BSeq      (stripLoc l) (stripLoc r)
+  stripLoc (BLocal l r)  = BLocal    (stripLoc l) (stripLoc r)
+  stripLoc b             = b
+
+
 instance HasLocation TopDecl where
   getLoc td = case td of
     TDDecl d -> getLoc d
     TDData d -> getLoc d
 
+  stripLoc td = case td of
+    TDDecl d -> TDDecl (stripLoc d)
+    TDData d -> TDData (stripLoc d)
+
 instance HasLocation Decl where
   getLoc d = case d of
     DBind l -> getLoc l
-    DSig l  -> getLoc l
+    DSig  l -> getLoc l
     DOpen l -> getLoc l
 
+  stripLoc d = case d of
+    DBind l -> DBind (stripLoc l)
+    DSig  l -> DSig  (stripLoc l)
+    DOpen l -> DOpen (stripLoc l)
+
 instance HasLocation DataDecl where
-  getLoc d = mempty
+  getLoc   d = mempty
+  stripLoc d = d
 
 instance HasLocation Expr where
   getLoc e = case e of
     ELoc le -> getLoc le
     _       -> mempty
 
+  stripLoc (ELoc l)   = unLoc l
+  stripLoc (Abs m)    = Abs  (stripLoc m)
+  stripLoc (Case l r) = Case (stripLoc l) (stripLoc r)
+  stripLoc (Let b e)  = Let  (stripLoc b) (stripLoc e)
+  stripLoc (App f xs) = App  (stripLoc f) (stripLoc xs)
+  stripLoc e          = e
+
+instance HasLocation Match where
+  getLoc m = case m of
+    MLoc lm -> getLoc lm
+    _       -> mempty
+
+  stripLoc (MLoc l)       = unLoc l
+  stripLoc (MPat   p m)   = MPat     (stripLoc p) (stripLoc m)
+  stripLoc (MGuard p e m) = MGuard   (stripLoc p) (stripLoc e) (stripLoc m)
+  stripLoc (MSplit l r)   = MSplit   (stripLoc l) (stripLoc r)
+  stripLoc (MSuccess e)   = MSuccess (stripLoc e)
+  stripLoc MFail          = MFail
+
 instance HasLocation Pat where
   getLoc pat = case pat of
     PLoc lp -> getLoc lp
     _       -> mempty
 
+  stripLoc (PLoc l)    = unLoc l
+  stripLoc (PCon n ps) = PCon n (stripLoc ps)
+  stripLoc p           = p
+
 instance HasLocation Schema where
-  getLoc (Forall ps ty) = getLoc ps `mappend` getLoc ty
+  getLoc   (Forall ps ty) = getLoc ps `mappend` getLoc ty
+  stripLoc (Forall ps ty) = Forall (stripLoc ps) (stripLoc ty)
 
 instance HasLocation Type where
   getLoc ty = case ty of
     TLoc lt -> getLoc lt
     _       -> mempty
+
+  stripLoc (TLoc lt)     = unLoc lt
+  stripLoc (TFun a b)    = TFun    (stripLoc a) (stripLoc b)
+  stripLoc (TApp f xs)   = TApp    (stripLoc f) (stripLoc xs)
+  stripLoc (TTuple ts)   = TTuple  (stripLoc ts)
+  stripLoc (TRowExt l t) = TRowExt (stripLoc l) (stripLoc t)
+  stripLoc ty            = ty
+
+instance HasLocation a => HasLocation (Labelled a) where
+  getLoc   l = getLoc (labName l) `mappend` getLoc (labValue l)
+  stripLoc l = Labelled { labName  = stripLoc (labName l)
+                        , labValue = stripLoc (labValue l) }

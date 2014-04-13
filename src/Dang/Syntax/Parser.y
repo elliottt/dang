@@ -206,11 +206,28 @@ atype :: { Type }
   | '(' sep(',', type) ')'
     { TLoc (mkTuple $2 `at` mappend (getLoc $1) (getLoc $3)) }
 
+  | row
+    { $1 }
+
 tyvar :: { Located Name }
   : ident { fmap (mkLocal (Type 0)) $1 }
 
 tycon :: { Located Name }
   : cident { fmap (mkLocal (Type 0)) $1 }
+
+
+row :: { Type }
+  : '{' sep(',', ltype) opt(row_ext) '}'
+    { TLoc (mkTRow $2 $3 `at` mappend (getLoc $1) (getLoc $3)) }
+
+ltype :: { Labelled Type }
+  : ident ':' type
+    { Labelled { labName  = fmap (mkLocal (Type 0)) $1
+               , labValue = $3 } }
+
+row_ext :: { Type }
+  : '|' type { $2 }
+
 
 
 -- Expressions -----------------------------------------------------------------
@@ -263,6 +280,11 @@ layout(e)
 layout1(e)
   : '{'  sep1(';', e)  '}'  { $2 }
   | 'v{' sep1('v;', e) 'v}' { $2 }
+
+
+opt(p)
+  : p           { Just $1 }
+  | {- empty -} { Nothing }
 
 
 sep(p,q)
