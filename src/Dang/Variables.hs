@@ -15,6 +15,17 @@ import qualified Data.Set as Set
 
 -- Free Variables --------------------------------------------------------------
 
+freeVarsFrom :: FreeVars a => Level -> a -> Set.Set Name
+freeVarsFrom l a = Set.filter (\ n -> nameLevel n == l) (freeVars a)
+
+freeExprVars, freeTypeVars, freeKindVars, freeSortVars
+  :: FreeVars a => a -> Set.Set Name
+freeExprVars  = freeVarsFrom Expr
+freeTypeVars  = freeVarsFrom (Type 0)
+freeKindVars  = freeVarsFrom (Type 1)
+freeSortVars  = freeVarsFrom (Type 2)
+
+
 class FreeVars a where
   freeVars :: a -> Set.Set Name
 
@@ -38,6 +49,16 @@ instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c) where
 
 
 -- Bound Variables -------------------------------------------------------------
+
+boundVarsFrom :: BoundVars a => Level -> a -> Set.Set Name
+boundVarsFrom l a = Set.filter (\n -> nameLevel n == l) (boundVars a)
+
+boundExprVars, boundTypeVars, boundKindVars, boundSortVars
+  :: BoundVars a => a -> Set.Set Name
+boundExprVars  = boundVarsFrom Expr
+boundTypeVars  = boundVarsFrom (Type 0)
+boundKindVars  = boundVarsFrom (Type 1)
+boundSortVars  = boundVarsFrom (Type 2)
 
 class BoundVars a where
   boundVars :: a -> Set.Set Name

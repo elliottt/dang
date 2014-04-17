@@ -68,8 +68,6 @@ library
                         Data.ClashMap,
                         Dang.Options
                         Dang.Prim,
-                        Dang.ReadWrite,
-                        Dang.Traversal,
                         Dang.Utils,
                         Dang.Utils.Location,
                         Dang.Utils.Panic,

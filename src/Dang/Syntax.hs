@@ -23,7 +23,6 @@ import Dang.Syntax.ParserCore (runParser)
 import Dang.Utils.Location (unLoc)
 import Dang.Utils.Pretty ( text, pp, ($$) )
 
-import           Control.Monad ( mzero )
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L
 import           MonadLib ( BaseM(..) )

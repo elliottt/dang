@@ -5,8 +5,16 @@
 
 module Dang.Utils.Pretty (
     module Dang.Utils.Pretty
+  , C.Color()
+  , C.black, C.red, C.green, C.yellow, C.blue, C.magenta, C.cyan, C.white
+  , C.Mode()
+  , C.fg, C.bg, C.reset, C.bold, C.underscore, C.blink
+  , C.Command()
+  , C.setGraphics
   , PP.Doc
   ) where
+
+import qualified Dang.Colors as C
 
 import           Control.Applicative ( Applicative )
 import           Control.Monad ( liftM2 )
@@ -25,10 +33,13 @@ data PPEnv = PPEnv { ppePrec :: Int
                    , ppePrintLevels :: Bool
                      -- ^ Whether or not names should be annotated with their
                      -- level.
+                   , ppeColor :: Bool
+                     -- ^ Whether or not to show colors
                    } deriving (Show)
 
 defaultPPEnv :: PPEnv
 defaultPPEnv  = PPEnv { ppePrec        = 0
+                      , ppeColor       = True
                       , ppeLayout      = True
                       , ppePrintLevels = False }
 
@@ -62,6 +73,15 @@ getPrintLevels  = PPM (ppePrintLevels `fmap` ask)
 -- | Quote with backticks.
 quoted :: PPDoc -> PPDoc
 quoted doc = char '`' <> doc <> char '`'
+
+withGraphics :: [C.Mode] -> PPDoc -> PPDoc
+withGraphics mode body =
+  do env <- PPM ask
+     if ppeColor env
+        then return (PP.zeroWidthText (C.escape (C.setGraphics mode)))
+          <> body
+          <> return (PP.zeroWidthText (C.escape (C.setGraphics [C.reset])))
+        else body
 
 dot :: PPDoc
 dot  = char '.'

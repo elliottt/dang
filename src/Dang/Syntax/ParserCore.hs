@@ -6,16 +6,22 @@
 module Dang.Syntax.ParserCore where
 
 import Dang.Monad
+import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST
 import Dang.Syntax.Lexeme ( Lexeme )
 import Dang.Utils.Location
 import Dang.Utils.Pretty
+import Dang.Utils.Panic
 
-import Control.Applicative ( Applicative(..) )
+import Control.Applicative ( Applicative(..), Alternative )
 import Control.Monad ( MonadPlus(mzero) )
 import Data.Maybe ( fromMaybe )
+import Data.Monoid ( mconcat )
 import MonadLib ( BaseM(..), runM, StateT, get, set )
 
+
+pPanic :: Pretty msg => msg -> a
+pPanic  = panic "Dang.Syntax.ParserCore"
 
 -- Lexer/Parser Monad ----------------------------------------------------------
 
@@ -29,7 +35,7 @@ initParserState ls =
 
 newtype Parser a = Parser
   { unParser :: StateT ParserState Dang a
-  } deriving (Functor,Applicative,Monad,MonadPlus)
+  } deriving (Functor,Applicative,Monad,Alternative,MonadPlus)
 
 instance BaseM Parser Dang where
   {-# INLINE inBase #-}
@@ -76,3 +82,17 @@ mkTuple tys = case tys of
 
 mkTRow :: [Labelled Type] -> Maybe Type -> Type
 mkTRow ls r = foldr TRowExt (fromMaybe TEmptyRow r) ls
+
+mkName :: Level -> (ModName,String) -> Name
+mkName lev ([],n) = mkLocal lev    n
+mkName lev (ns,n) = mkQual  lev ns n
+
+mkTyCon :: [String] -> Name
+mkTyCon []  = pPanic (text "Invalid conident")
+mkTyCon [x] = mkLocal (Type 0) x
+mkTyCon xs  = mkQual  (Type 0) (init xs) (last xs)
+
+mkApp :: [Expr] -> Expr
+mkApp [e]    = e
+mkApp (f:xs) = ELoc (App f xs `at` mconcat [getLoc f, getLoc xs])
+mkApp []     = pPanic (text "Impossible happened: non-empty list")

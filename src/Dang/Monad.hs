@@ -40,9 +40,9 @@ module Dang.Monad (
 
 import Dang.Options ( Options(..), DebugOpts(..), parseOptions )
 import Dang.Utils.Location ( SrcLoc(NoLoc), ppLoc )
-import Dang.Utils.Pretty
+import Dang.Utils.Pretty hiding (empty)
 
-import Control.Applicative ( Applicative(..), (<$>) )
+import Control.Applicative ( Applicative(..), Alternative(..), (<$>) )
 import Control.Monad ( MonadPlus(..), when )
 import Control.Monad.Fix (MonadFix)
 import Data.IORef
@@ -92,16 +92,23 @@ instance BaseM Dang Dang where
   {-# INLINE inBase #-}
   inBase = id
 
-instance MonadPlus Dang where
-  {-# INLINE mzero #-}
-  mzero = Dang (inBase (X.throwIO DangError))
+instance Alternative Dang where
+  {-# INLINE empty #-}
+  empty = Dang (inBase (X.throwIO DangError))
 
-  {-# INLINE mplus #-}
-  mplus l r =
+  {-# INLINE (<|>) #-}
+  l <|> r =
     do ro <- askRO
        io (run ro l `X.catch` \ DangError -> run ro r)
     where
     run ro m = runM (getDang m) ro
+
+instance MonadPlus Dang where
+  {-# INLINE mzero #-}
+  mzero = empty
+
+  {-# INLINE mplus #-}
+  mplus = (<|>)
 
 instance RunM Dang a (Dang a) where
   {-# INLINE runM #-}

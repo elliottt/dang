@@ -3,13 +3,14 @@
 
 module Dang.ModuleSystem.Export where
 
-import Dang.Traversal (Data,Typeable)
 import Dang.Utils.Location (Located,unLoc)
 import Dang.Utils.Pretty (Pretty(..),PPDoc,text,hang)
 
+import Data.Data ( Data )
 import Data.Function ( on )
 import Data.List ( groupBy )
 import Data.Serialize ( Serialize )
+import Data.Typeable ( Typeable )
 import GHC.Generics ( Generic )
 
 

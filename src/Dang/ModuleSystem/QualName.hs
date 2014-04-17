@@ -3,14 +3,15 @@
 
 module Dang.ModuleSystem.QualName where
 
-import Dang.Traversal (Data,Typeable)
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 
 import Data.Char (isSpace)
+import Data.Data ( Data )
 import Data.Maybe ( fromMaybe )
 import Data.Serialize ( Serialize )
 import Data.String ( IsString(..) )
+import Data.Typeable ( Typeable )
 import GHC.Generics ( Generic )
 import System.FilePath ( joinPath, (<.>) )
 
@@ -57,6 +58,10 @@ mkLocal  = LocalName
 
 mkQual :: Level -> ModName -> String -> Name
 mkQual  = QualName
+
+nameLevel :: Name -> Level
+nameLevel (LocalName l _)  = l
+nameLevel (QualName l _ _) = l
 
 -- | Get the name part of a name
 qualSymbol :: Name -> String

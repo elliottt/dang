@@ -130,6 +130,7 @@ startsLayout tok = case tok of
   TKeyword Kprivate -> True
   TKeyword Kpublic  -> True
   TKeyword Krec     -> True
+  TKeyword Kof      -> True
   _                 -> False
 
 -- | The next token begins layout.  Augment the stack, and transition back to

@@ -27,7 +27,7 @@ import Dang.TypeChecker.Unify
 import Dang.Utils.Panic
 import Dang.Utils.Pretty
 
-import Control.Applicative ( Applicative )
+import Control.Applicative ( Applicative, Alternative )
 import Control.Monad ( MonadPlus, mzero, when )
 import Control.Monad.Fix ( MonadFix )
 import Data.Monoid ( Monoid(..) )
@@ -35,7 +35,7 @@ import MonadLib ( BaseM(..), runM, ReaderT, StateT, get, set )
 
 
 newtype TC a = TC { unTC :: ReaderT RO (StateT RW Dang) a }
-    deriving (Functor,Applicative,Monad,MonadFix,MonadPlus)
+    deriving (Functor,Applicative,Alternative,Monad,MonadFix,MonadPlus)
 
 runTC :: TC a -> Dang a
 runTC m =

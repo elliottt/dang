@@ -8,7 +8,6 @@ import CodeGen.Types
 import Interface
 import Pretty
 import QualName
-import ReadWrite
 import qualified Compile.LambdaLift as LL
 import qualified Syntax.AST as AST
 

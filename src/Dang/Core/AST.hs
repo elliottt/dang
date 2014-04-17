@@ -8,12 +8,13 @@ module Dang.Core.AST (
 import Dang.ModuleSystem.Export (Exported(..),Export(..))
 import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST ( Literal(..) )
-import Dang.Traversal (Data,Typeable)
 import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 import Dang.Variables (FreeVars(freeVars),BoundVars(boundVars))
 
+import           Data.Data ( Data )
 import qualified Data.Set as Set
+import           Data.Typeable ( Typeable )
 
 
 data Module = Module
@@ -41,7 +42,7 @@ ppTyApp ts = fsep (list (char '[') comma (char ']') (map pp ts))
 data Decl = Decl { declName   :: Name
                  , declExport :: Export
                  , declType   :: Schema
-                 , declBody   :: Term
+                 , declBody   :: Expr
                  } deriving (Show,Data,Typeable)
 
 instance Exported Decl where
@@ -71,7 +72,7 @@ isMono d = null (sParams (declType d))
 -- | Typed variable introduction.
 data Match = MSplit Match Match
            | MPat   Pat   Match
-           | MGuard Pat   Term  Type Match
+           | MGuard Pat   Expr  Type Match
            | MFail Type
              deriving (Show,Data,Typeable)
 
@@ -143,64 +144,56 @@ instance Pretty Pat where
     PWildcard ty  -> char '_' <+> text ":"                       <+> ppr ty
 
 
--- Terms -----------------------------------------------------------------------
+-- Expressions -----------------------------------------------------------------
 
-data Term = AbsT TParam Term
-          | Abs Name Term
-
-          | AppT Term [Type]
-          | App Term [Term]
-
-          | Case Term Match
-          | Let [Decl] Term
-          | Var Name
-          | Lit Literal
+data Expr = EAbs Name Expr
+          | EApp Expr [Expr]
+          | EType Type
+          | ECase Expr Match
+          | ELet [Decl] Expr
+          | EVar Name
+          | ELit Literal
             deriving (Show,Data,Typeable)
 
-appT :: Term -> [Type] -> Term
-appT f [] = f
-appT f ts = case f of
-  AppT f' ts' -> AppT f' (ts' ++ ts)
-  _           -> AppT f ts
+appT :: Expr -> [Type] -> Expr
+appT f ts = app f (map EType ts)
 
-app :: Term -> [Term] -> Term
+-- | Apply evidence.
+app :: Expr -> [Expr] -> Expr
 app f [] = f
-app f xs = case f of
-  App f' xs' -> App f' (xs' ++ xs)
-  _          -> App f xs
+app f es = case f of
+  EApp f' es' -> EApp f' (es' ++ es)
+  _           -> EApp f          es
 
-letIn :: [Decl] -> Term -> Term
+letIn :: [Decl] -> Expr -> Expr
 letIn [] e = e
-letIn ds e = Let ds e
+letIn ds e = ELet ds e
 
-instance FreeVars Term where
+instance FreeVars Expr where
   freeVars tm = case tm of
-    AbsT _ t' -> freeVars t'
-    AppT f _  -> freeVars f
-    Abs n t'  -> Set.delete n (freeVars t')
-    App t as  -> freeVars (t:as)
-    Case e m  -> freeVars e `Set.union` freeVars m
-    Let ds t  -> (freeVars t `Set.union` freeVars ds)
-                     Set.\\ Set.fromList (map declName ds)
-    Var n     -> Set.singleton n
-    Lit _     -> Set.empty
+    EAbs x e  -> Set.delete x (freeVars e)
+    EApp f x  -> freeVars (f,x)
+    ECase e m -> freeVars (e,m)
+    ELet ds t -> freeVars (t,ds) Set.\\ Set.fromList (map declName ds)
+    EVar n    -> Set.singleton n
+    EType ty  -> freeVars ty
+    ELit _    -> Set.empty
 
-instance Pretty Term where
+instance Pretty Expr where
   ppr tm = case tm of
-    AbsT p t' -> hang (text "/\\" <+> pp p <+> text "->")
-                    2 (pp t')
-    AppT f vs -> ppPrec 10 f <> char '@'
-                         <> fsep (list (char '[') comma (char ']') (map pp vs))
-    Abs n t'  -> hang (text "\\" <+> pp n <+> text "->")
-                    2 (pp t')
-    App f xs  -> optParens 10 (ppr f <+> fsep (map (ppPrec 10) xs))
-    Case e m  -> optParens 10 (ppCase e m)
-    Let ds e  -> optParens 10
-               $ text "let" <+> layout (concatMap (ppDecl False) ds)
-             <+> text "in"  <+> ppr e
-    Var n     -> ppr n
-    Lit l     -> ppr l
+    EAbs x e  -> hang (text "\\" <+> pp x <+> text "->")
+                    2 (pp e)
+    EApp f xs -> optParens 10 (ppr f <+> fsep (map (ppPrec 10) xs))
 
-ppCase :: Term -> Match -> PPDoc
+    ECase e m  -> optParens 10 (ppCase e m)
+    ELet ds e  -> optParens 10
+                $ text "let" <+> layout (concatMap (ppDecl False) ds)
+              <+> text "in"  <+> ppr e
+    EVar n     -> ppr n
+    ELit l     -> ppr l
+
+    EType ty   -> ppr ty
+
+ppCase :: Expr -> Match -> PPDoc
 ppCase e m = hang (text "case" <+> ppr e <+> text "of")
                 2 (pp m)

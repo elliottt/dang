@@ -213,7 +213,7 @@ tyvar :: { Located Name }
   : ident { fmap (mkLocal (Type 0)) $1 }
 
 tycon :: { Located Name }
-  : cident { fmap (mkLocal (Type 0)) $1 }
+  : qual_cident { fmap mkTyCon $1 }
 
 
 row :: { Type }
@@ -232,18 +232,21 @@ row_ext :: { Type }
 
 -- Expressions -----------------------------------------------------------------
 
-ename :: { Located Name }
+eident :: { Located Name }
   : ident { fmap (mkLocal Expr) $1 }
 
+econ :: { Located Name }
+  : cident { fmap (mkLocal Expr) $1 }
+
 signature :: { Located Signature }
-  : sep1(',', ename) ':' schema
+  : sep1(',', eident) ':' schema
     { Signature { sigNames  = $1
                 , sigSchema = $3 } `at` mconcat [ getLoc $1
                                                 , $2
                                                 , getLoc $3 ] }
 
 bind :: { Located Bind }
-  : ename list(pat) '=' expr
+  : eident list(apat) '=' expr
     { Bind { bindName = $1
            , bindType = Nothing
            , bindBody = matchPats $2 (MSuccess $4)
@@ -251,24 +254,54 @@ bind :: { Located Bind }
 
 expr :: { Expr }
   : 'let' block(decl) 'in' expr
-     { ELoc (Let $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
+    { ELoc (Let $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
 
-  | aexpr
+  | 'case' expr 'of' case_arms
+    { ELoc (Case $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
+
+  | app_expr
     { $1 }
 
+app_expr :: { Expr }
+  : list1(aexpr)
+    { mkApp $1 }
+
 aexpr :: { Expr }
-  : ename
+  : eident
+    { ELoc (Var `fmap` $1) }
+
+  | econ
     { ELoc (Var `fmap` $1) }
 
   | '(' expr ')'
     { ELoc ($2 `at` mappend $1 $3) }
 
+case_arms :: { Match }
+  : layout(case_arm) { foldr MSplit MFail $1 }
+
+case_arm :: { Match }
+  : pat '->' expr
+    { MLoc (MPat $1 (MSuccess $3) `at` mconcat [getLoc $1,$2,getLoc $3]) }
+
 
 -- Patterns --------------------------------------------------------------------
 
 pat :: { Pat }
-  : ename
-    { PLoc (PVar `fmap` $1) }
+  : econ list(apat)
+    { PLoc (PCon (unLoc $1) $2 `at` mconcat [getLoc $1, getLoc $2]) }
+
+  | apat
+    { $1 }
+
+apat :: { Pat }
+  : eident
+    { PLoc (fmap PVar $1) }
+
+  | '_'
+    { PLoc (PWildcard `at` $1) }
+
+  | '(' pat ')'
+    { PLoc ($2 `at` mconcat [$1,$3]) }
 
 
 -- Combinators -----------------------------------------------------------------

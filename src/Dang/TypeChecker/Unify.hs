@@ -8,7 +8,6 @@ module Dang.TypeChecker.Unify where
 import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 
-import           Control.Monad ( zipWithM_ )
 import           Data.Foldable ( foldMap )
 import qualified Data.Map as Map
 import           Data.Monoid ( Monoid(..) )
@@ -21,11 +20,19 @@ import           MonadLib
 
 -- | A failure during unification.
 data UnifyError = UnifyError Type Type
+                | MatchError Type Type
                   deriving (Show,Eq)
 
 instance Pretty UnifyError where
+
   ppr (UnifyError x y) =
-    hang (fsep [ text "couldn't match type", quoted (pp x)
+    hang (fsep [ text "couldn't unify", quoted (pp x)
+               , text "with", quoted (pp y) ])
+       2 (vcat [ text "Expected type:" <+> pp x
+               , text "  Actual type:" <+> pp y ])
+
+  ppr (MatchError x y) =
+    hang (fsep [ text "couldn't match", quoted (pp x)
                , text "with", quoted (pp y) ])
        2 (vcat [ text "Expected type:" <+> pp x
                , text "  Actual type:" <+> pp y ])
@@ -33,42 +40,92 @@ instance Pretty UnifyError where
 
 type MGU = StateT VarEnv (ExceptionT UnifyError Id)
 
+-- | Bind a variable to a type.
+varBind :: TParam -> Type -> MGU (Maybe Type)
+varBind p ty =
+  do u <- get
+     case lookupFree p u of
+
+       -- the variable hasn't been bound, add an entry in the map
+       Nothing -> do set (bindFree p ty `mappend` u)
+                     return Nothing
+
+       -- the variable is already bound, continue with unfication
+       res -> return res
+
+
+-- MGU Calculation -------------------------------------------------------------
+
 -- | Compute the most-general unifier for two types, given a variable
 -- environment.  Produces either an error, or an extended substitution.
 mgu :: Type -> Type -> VarEnv -> Either UnifyError VarEnv
-mgu inf sig env = case runM (go inf sig) env of
+mgu t1 t2 env = case runM (go t1 t2) env of
+                  Right (_,env') -> Right env'
+                  Left err       -> Left err
+  where
+  go :: Type -> Type -> MGU ()
+  go (TApp f x) (TApp g y) =
+    do go f g
+       go x y
+
+  -- XXX should these be annotated with kinds?
+  go (TCon n1) (TCon n2)
+    | n1 == n2 = return ()
+
+  -- resolve or bind variables
+  go (TVar p) b = bind p b
+  go a (TVar p) = bind p a
+
+  -- bound variables only unify with themselves
+  go (TGen x) (TGen y) | x == y = return()
+
+  -- unification isn't possible
+  go a b = raise (UnifyError a b)
+
+  bind p ty =
+    do mb <- varBind p ty
+       case mb of
+         Just ty' -> go ty' ty
+         Nothing  -> return ()
+
+
+-- Matching Substitution -------------------------------------------------------
+
+-- | Only allow variable bindings to variables on the lhs.  For example,
+--
+--   [| match [a] [Int] |] = { a |-> Int }
+--
+-- but
+--
+--   [| match [Int] [a] |] = error
+--
+match :: Type -> Type -> VarEnv -> Either UnifyError VarEnv
+match t1 t2 env = case runM (go t1 t2) env of
                     Right (_,env') -> Right env'
                     Left err       -> Left err
   where
   go :: Type -> Type -> MGU ()
-  go a b = case (a,b) of
+  go (TCon n1) (TCon n2)
+    | n1 == n2 = return ()
 
-    (TApp f x, TApp g y) -> do go f g
-                               go x y
+  go (TApp f x) (TApp g y) =
+    do go f g
+       go x y
 
-    -- XXX should these be annotated with kinds?
-    (TCon n1 ts1, TCon n2 ts2)
-      | n1 == n2 && length ts1 == length ts2 -> zipWithM_ go ts1 ts2
+  -- only allow variables to bind on the LHS
+  go (TVar a) b = bind a b
 
-    -- resolve or bind variables
-    (TVar p, _) -> freeVar p b
-    (_, TVar p) -> freeVar p a
+  -- generalized variables only match themselves
+  go (TGen a) (TGen b)
+    | a == b = return ()
 
-    -- bound variables only unify with themselves
-    (TGen x, TGen y) | x == y -> return()
+  go a b = raise (MatchError a b)
 
-    -- unification isn't possible
-    _ -> raise (UnifyError a b)
-
-  freeVar p ty =
-    do u <- get
-       case lookupFree p u of
-
-         -- the variable is already bound, continue with unfication
-         Just pty -> go pty ty
-
-         -- the variable hasn't been bound, add an entry in the map
-         Nothing -> set (bindFree p ty `mappend` u)
+  bind p ty =
+    do mb <- varBind p ty
+       case mb of
+         Just ty' -> go ty' ty
+         Nothing  -> return ()
 
 
 -- Type Variable Environment ---------------------------------------------------
@@ -120,10 +177,10 @@ incBinders :: Int  -- ^ Number of binders crossed
 incBinders binders = go
   where
   go ty = case ty of
-    TApp f x  -> TApp (go f) (go x)
-    TCon n ps -> TCon n (map go ps)
-    TVar _    -> ty
-    TGen p    -> TGen p { tpIndex = tpIndex p + binders }
+    TApp f x -> TApp (go f) (go x)
+    TGen p   -> TGen p { tpIndex = tpIndex p + binders }
+    TCon _   -> ty
+    TVar _   -> ty
 
 
 data ZonkError = OccursCheckFailed TParam Type
@@ -164,24 +221,25 @@ instance Types Type where
 
   typeVars u = go
     where
-    go ty = case ty of
-      TApp f x  -> foldMap go [f,x]
-      TCon _ ps -> foldMap go ps
-      TVar p    -> maybe (Set.singleton p) go (lookupFree p u)
-      TGen _    -> Set.empty
+    go (TApp f x) = foldMap go [f,x]
+    go (TVar p)   = maybe (Set.singleton p) go (lookupFree p u)
+    go (TCon _)   = Set.empty
+    go (TGen _)   = Set.empty
 
   zonkVars b = go
     where
-    go ty = case ty of
-      TApp f x -> do f' <- go f
-                     x' <- go x
-                     return (TApp f' x')
+    go (TApp f x) =
+      do f' <- go f
+         x' <- go x
+         return (TApp f' x')
 
-      TCon n ps -> do ps' <- mapM go ps
-                      return (TCon n ps')
+    go ty@(TCon _) =
+      return ty
 
-      TVar p -> do u <- ask
-                   return (maybe ty (incBinders b) (lookupFree p u))
+    go ty@(TVar p) =
+      do u <- ask
+         return (maybe ty (incBinders b) (lookupFree p u))
 
-      TGen p -> do u <- ask
-                   return (maybe ty (incBinders b) (lookupBound p u))
+    go ty@(TGen p) =
+      do u <- ask
+         return (maybe ty (incBinders b) (lookupBound p u))
