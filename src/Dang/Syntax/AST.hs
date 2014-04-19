@@ -110,7 +110,6 @@ data PrimType = PrimType { primTypeName :: Name
 data DataDecl = DataDecl { dataName   :: Name
                          , dataArity  :: !Int
                          , dataKind   :: Kind
-                         , dataExport :: Export
                          , dataGroups :: [Located ConstrGroup]
                          } deriving (Show,Data,Typeable)
 
@@ -324,7 +323,13 @@ instance Pretty Decl where
     DOpen o -> ppr o
 
 instance Pretty DataDecl where
-  ppr d = empty
+  ppr d = pp Kdata <+> vcat (map (ppConstrGroup (dataName d)) (dataGroups d))
+
+ppConstrGroup :: Name -> Located ConstrGroup -> PPDoc
+ppConstrGroup n lcg = pp n <+> hsep (map (ppPrec 10) (groupResTys cg))
+  where
+  cg = unLoc lcg
+
 
 instance Pretty Bind where
   ppr b = vcat (map ppEqn (elimMSplits (bindBody b)))
