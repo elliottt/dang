@@ -45,6 +45,8 @@ data Keyword = Klet
                -- symbols
              | Klambda
              | Kassign
+             | Krarrow | KRarrow
+             | Klarrow
              | Klparen
              | Krparen
              | Klbracket
@@ -89,38 +91,50 @@ instance Pretty Token where
     TEof         -> text "[EOF]"
     TError str   -> brackets (text "error:" <+> text str)
 
+kw :: String -> PPDoc
+kw n = withGraphics [fg green, bold, underscore] (text n)
+
+kw2 :: String -> PPDoc
+kw2 n = withGraphics [fg blue, bold, underscore] (text n)
+
+sym :: String -> PPDoc
+sym n = withGraphics [fg yellow] (text n)
+
 instance Pretty Keyword where
-  ppr kw = case kw of
-    Klet        -> text "let"
-    Kin         -> text "in"
-    Kwhere      -> text "where"
-    Kmodule     -> text "module"
-    Kopen       -> text "open"
-    Kas         -> text "as"
-    Khiding     -> text "hiding"
-    Kpublic     -> text "public"
-    Kprivate    -> text "private"
-    Kforall     -> text "forall"
-    Kprimitive  -> text "primitive"
-    Ktype       -> text "type"
-    Kdata       -> text "data"
-    Kcase       -> text "case"
-    Kof         -> text "of"
-    Krec        -> text "rec"
-    Klocal      -> text "local"
-    Klambda     -> char '\\'
-    Kassign     -> char '='
+  ppr x = case x of
+    Klet        -> kw   "let"
+    Kin         -> kw   "in"
+    Kwhere      -> kw   "where"
+    Kmodule     -> kw   "module"
+    Kopen       -> kw2  "open"
+    Kas         -> kw2  "as"
+    Khiding     -> kw2  "hiding"
+    Kpublic     -> kw2  "public"
+    Kprivate    -> kw2  "private"
+    Kforall     -> kw   "forall"
+    Kprimitive  -> kw   "primitive"
+    Ktype       -> kw   "type"
+    Kdata       -> kw2  "data"
+    Kcase       -> kw   "case"
+    Kof         -> kw   "of"
+    Krec        -> kw   "rec"
+    Klocal      -> kw   "local"
+    Klambda     -> sym  "\\"
+    Kassign     -> sym  "="
+    Klarrow     -> sym  "<-"
+    Krarrow     -> sym  "->"
+    KRarrow     -> sym  "=>"
     Klparen     -> char '('
     Krparen     -> char ')'
     Klbracket   -> char '['
     Krbracket   -> char ']'
-    Klbrace     -> char '{'
-    Krbrace     -> char '}'
+    Klbrace     -> sym  "{"
+    Krbrace     -> sym  "}"
     Kcomma      -> char ','
     Ksemi       -> char ';'
     Kcolon      -> char ':'
     Kdot        -> char '.'
-    Kpipe       -> char '|'
+    Kpipe       -> sym  "|"
     Kunderscore -> char '_'
 
 instance Pretty Virt where

@@ -5,6 +5,7 @@
 
 module Dang.Syntax.AST where
 
+import Dang.Syntax.Lexeme (Keyword(..))
 import Dang.ModuleSystem.Export ( Export(..) )
 import Dang.ModuleSystem.QualName
 import Dang.Utils.Location
@@ -189,16 +190,16 @@ data Pat = PVar Name           -- ^ Variable introduction
            deriving (Show,Data,Typeable)
 
 data Expr = Abs Match
+          | App Expr [Expr]
           | Case Expr Match
           | Let (Block Decl) Expr
-          | App Expr [Expr]
           | Var Name
           | Con Name
           | Lit Literal
           | ELoc (Located Expr)
             deriving (Show,Data,Typeable)
 
-data Literal = LInt Integer
+data Literal = LInt Integer Int
                deriving (Show,Data,Typeable)
 
 
@@ -295,18 +296,9 @@ instance FreeVars Type where
 
 -- Pretty Printing -------------------------------------------------------------
 
-kw :: String -> PPDoc
-kw n = withGraphics [fg green, bold] (text n)
-
-kw2 :: String -> PPDoc
-kw2 n = withGraphics [fg blue, bold] (text n)
-
-sym :: String -> PPDoc
-sym n = withGraphics [fg yellow] (text n)
-
 
 instance Pretty Module where
-  ppr m = kw "module" <+> ppModName (unLoc (modName m)) <+> kw "where"
+  ppr m = pp Kmodule <+> ppModName (unLoc (modName m)) <+> pp Kwhere
        $$ pp (modDecls m)
 
 instance Pretty a => Pretty (Block a) where
@@ -314,10 +306,10 @@ instance Pretty a => Pretty (Block a) where
     BSingle a    -> ppr a
     BComb{}      -> layout (map pp (elimBCombs b))
     BExport e b' -> hang (pp e) 2 (pp b')
-    BRec b'      -> hang (kw "rec") 2 (pp b')
+    BRec b'      -> hang (pp Krec) 2 (pp b')
     BSeq{}       -> layout (map pp (elimBSeqs b))
-    BLocal as bs -> hang (kw "local") 2 (pp as)
-                 $$ hang (kw "in") 2 (pp bs)
+    BLocal as bs -> hang (pp Klocal) 6 (pp as)
+                 $$ hang (nest 3 (pp Kin)) 6 (pp bs)
     BEmpty       -> empty
     BLoc lb      -> ppr lb
 
@@ -342,14 +334,14 @@ instance Pretty Bind where
 
 -- | Pretty-print a match as the body of a binding.
 ppDef :: Match -> PPDoc
-ppDef m = sep [ fsep (map (ppPrec 10) ps) <+> sym "=", pp body ]
+ppDef m = fsep (map (ppPrec 10) ps) <+> pp Kassign $$ pp body
   where
   (ps,body) = flattenMPat m
 
 instance Pretty Match where
   ppr m = case m of
-    MPat p m'     -> fsep [ pp p <+> sym "->", pp m' ]
-    MGuard p e m' -> fsep [ pp p <+> sym "<-" <+> pp e
+    MPat p m'     -> fsep [ pp p <+> pp Krarrow, pp m' ]
+    MGuard p e m' -> fsep [ pp p <+> pp Klarrow <+> pp e
                           , char ',' <+> pp m' ]
     MSplit l r    -> ppr l $$ ppr r
     MSuccess e    -> ppr e
@@ -366,27 +358,37 @@ instance Pretty Pat where
     PLoc lp   -> ppr (unLoc lp)
 
 instance Pretty Expr where
-  ppr (ELoc le)  = ppr le
-  ppr (Case e m) = hang (kw "case" <+> pp e <+> kw "of")
+  ppr (Abs m)    = optParens 1 (pp Klambda <> ppr m)
+
+  ppr (App f xs) = optParens 10 (pp f <+> nest 2 (fsep (map( ppPrec 10) xs)))
+
+  ppr (Case e m) = hang (pp Kcase <+> pp e <+> pp Kof)
                       2 (ppArms m)
-  ppr e = empty
+
+  ppr (Let b e)  = optParens 1 $ hang (pp Klet) 4 (pp b)
+                              $$ hang (nest 1 (pp Kin)) 4 (pp e)
+
+  ppr (ELoc le)  = ppr le
+  ppr (Var n)    = pp n
+  ppr (Con n)    = pp n
+  ppr (Lit l)    = pp l
 
 ppArms :: Match -> PPDoc
 ppArms m = layout (map pp (elimMSplits m))
 
 instance Pretty Signature where
-    ppr sig = hang (fsep (commas (map pp (sigNames sig))) <+> sym ":")
+    ppr sig = hang (fsep (commas (map pp (sigNames sig))) <+> pp Kcolon)
                  2 (pp (sigSchema sig))
 
 instance Pretty Open where
-  ppr o = hang (kw2 "open" <+> ppModName (unLoc (openMod o)) <+> altName)
+  ppr o = hang (pp Kopen <+> ppModName (unLoc (openMod o)) <+> altName)
              5 spec
     where
     altName = case openAs o of
       Nothing -> empty
-      Just ln -> kw2 "as" <+> ppModName (unLoc ln)
+      Just ln -> pp Kas <+> ppModName (unLoc ln)
 
-    spec | openHiding o = kw2 "hiding" <+> symbols
+    spec | openHiding o = pp Khiding <+> symbols
          | otherwise    = symbols
 
     symbols | null (openSymbols o) = empty
@@ -404,8 +406,8 @@ instance Pretty Schema where
       where
       props = case ps of
         []     -> empty
-        [prop] -> pp prop <+> sym "=>"
-        _      -> parens (fsep (commas (map pp ps))) <+> sym "=>"
+        [prop] -> pp prop <+> pp KRarrow
+        _      -> parens (fsep (commas (map pp ps))) <+> pp KRarrow
 
 ppLabelled :: Pretty a => PPDoc -> Labelled a -> PPDoc
 ppLabelled p l = sep [ pp (labName l) <+> p, pp (labValue l) ]
@@ -413,7 +415,7 @@ ppLabelled p l = sep [ pp (labName l) <+> p, pp (labValue l) ]
 instance Pretty Type where
   ppr ty = case ty of
     TFun{}    -> optParens 10 $ fsep
-                              $ intersperse (sym "->")
+                              $ intersperse (pp Krarrow)
                               $ map (ppPrec 10) (elimTFuns ty)
     TApp f xs -> optParens 10 (fsep (pp f : map (ppPrec 10) xs))
     TTuple ts -> parens (fsep (commas (map pp ts)))
@@ -424,20 +426,20 @@ instance Pretty Type where
     TLoc lt   -> ppr lt
 
 ppRowExt :: Type -> PPDoc
-ppRowExt ty = sym "{"
-           <> fsep (commas (map (ppLabelled (sym ":")) ls) ++ [row])
-           <> sym "}"
+ppRowExt ty = pp Klbrace
+           <> fsep (commas (map (ppLabelled (pp Kcolon)) ls) ++ [row])
+           <> pp Krbrace
   where
   (ls,r) = elimTRowExt ty
 
   row = case stripLoc r of
     TEmptyRow -> empty
-    _         -> sym "|" <+> pp r
+    _         -> pp Kpipe <+> pp r
 
 
 instance Pretty Literal where
   ppr lit = case lit of
-    LInt i -> integer i
+    LInt i _ -> withGraphics [fg magenta, bold] (integer i)
 
 
 -- Location Information --------------------------------------------------------

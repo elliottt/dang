@@ -49,9 +49,8 @@ import MonadLib
   ':'         { Located $$ (TKeyword Kcolon)     }
 
 -- type-related
-  '->' { Located $$ (TOperIdent "->") }
-  '=>' { Located $$ (TOperIdent "=>") }
-  '*'  { Located $$ (TOperIdent "*")  }
+  '->' { Located $$ (TKeyword Krarrow) }
+  '=>' { Located $$ (TKeyword KRarrow) }
 
 -- keywords
   'where'     { Located $$ (TKeyword Kwhere)      }
@@ -178,6 +177,13 @@ open_symbol :: { Located OpenSymbol }
 
 -- Types -----------------------------------------------------------------------
 
+signature :: { Located Signature }
+  : sep1(',', eident) ':' schema
+    { Signature { sigNames  = $1
+                , sigSchema = $3 } `at` mconcat [ getLoc $1
+                                                , $2
+                                                , getLoc $3 ] }
+
 schema :: { Schema }
   : type '=>' type
     { mkForall $1 $3 }
@@ -238,13 +244,6 @@ eident :: { Located Name }
 econ :: { Located Name }
   : cident { fmap (mkLocal Expr) $1 }
 
-signature :: { Located Signature }
-  : sep1(',', eident) ':' schema
-    { Signature { sigNames  = $1
-                , sigSchema = $3 } `at` mconcat [ getLoc $1
-                                                , $2
-                                                , getLoc $3 ] }
-
 bind :: { Located Bind }
   : eident list(apat) '=' expr
     { Bind { bindName = $1
@@ -258,6 +257,9 @@ expr :: { Expr }
 
   | 'case' expr 'of' case_arms
     { ELoc (Case $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
+
+  | '\\' case_arms
+    { ELoc (Abs $2 `at` mconcat [$1,getLoc $2]) }
 
   | app_expr
     { $1 }
@@ -273,15 +275,23 @@ aexpr :: { Expr }
   | econ
     { ELoc (Var `fmap` $1) }
 
+  | literal
+    { ELoc (Lit `fmap` $1) }
+
   | '(' expr ')'
     { ELoc ($2 `at` mappend $1 $3) }
 
 case_arms :: { Match }
-  : layout(case_arm) { foldr MSplit MFail $1 }
+  : layout1(case_arm) { foldr MSplit MFail $1 }
 
 case_arm :: { Match }
   : pat '->' expr
     { MLoc (MPat $1 (MSuccess $3) `at` mconcat [getLoc $1,$2,getLoc $3]) }
+
+literal :: { Located Literal }
+  : INT
+    { let TInt i b = unLoc $1
+       in (LInt i b `at` getLoc $1) }
 
 
 -- Patterns --------------------------------------------------------------------

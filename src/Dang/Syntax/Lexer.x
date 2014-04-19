@@ -58,6 +58,9 @@ $white          ;
 "_"             { keyword Kunderscore }
 ";"             { keyword Ksemi       }
 
+"->"            { keyword Krarrow     }
+"=>"            { keyword KRarrow     }
+
 -- declaration-related
 "="             { keyword Kassign     }
 ":"             { keyword Kcolon      }
