@@ -134,7 +134,8 @@ block_stmt(e)
 -- Declarations ----------------------------------------------------------------
 
 top_decl :: { TopDecl }
-  : decl { TDDecl $1 }
+  : decl      { TDDecl $1 }
+  | data_decl { TDData $1 }
 
 decl :: { Decl }
   : open      { DOpen $1 }
@@ -312,6 +313,19 @@ apat :: { Pat }
 
   | '(' pat ')'
     { PLoc ($2 `at` mconcat [$1,$3]) }
+
+
+-- Data ------------------------------------------------------------------------
+
+data_decl :: { Located DataDecl }
+  : 'data' layout1(constr_group)
+    {% mkData $1 $2 }
+
+constr_group :: { (Name, Located ConstrGroup) }
+  : cident list(atype) '='
+    { ( mkTyCon [unLoc $1]
+      , ConstrGroup { groupResTys  = $2
+                    , groupConstrs = [] } `at` mconcat [getLoc $1,$3]) }
 
 
 -- Combinators -----------------------------------------------------------------

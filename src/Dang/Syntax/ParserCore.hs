@@ -15,6 +15,7 @@ import Dang.Utils.Panic
 
 import Control.Applicative ( Applicative(..), Alternative )
 import Control.Monad ( MonadPlus(mzero) )
+import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import Data.Monoid ( mconcat )
 import MonadLib ( BaseM(..), runM, StateT, get, set )
@@ -43,7 +44,7 @@ instance BaseM Parser Dang where
 
 -- | Run the parser over the file given.
 runParser :: [Lexeme] -> Parser a -> Dang a
-runParser ls m = fst `fmap` runM (unParser m) (initParserState ls)
+runParser ls m = failErrs (fst `fmap` runM (unParser m) (initParserState ls))
 
 
 lexer :: (Lexeme -> Parser a) -> Parser a
@@ -96,3 +97,28 @@ mkApp :: [Expr] -> Expr
 mkApp [e]    = e
 mkApp (f:xs) = ELoc (App f xs `at` mconcat [getLoc f, getLoc xs])
 mkApp []     = pPanic (text "Impossible happened: non-empty list")
+
+mkData :: SrcLoc -> [(Name, Located ConstrGroup)] -> Parser (Located DataDecl)
+mkData src gs =
+  do n     <- checkNames
+     arity <- checkArity
+     return $ DataDecl { dataName   = n
+                       , dataArity  = arity
+                       , dataGroups = lcgs
+                       } `at` mconcat [src,getLoc lcgs]
+
+  where
+  (ns,lcgs) = unzip gs
+
+  checkNames = case nub ns of
+    [n] -> return n
+    n:_ -> do addErr namesDontAgree
+              return n
+    _   -> pPanic (text "Type name not parsed in data declaration")
+
+  namesDontAgree = text "constructor groups don't agree on a type name"
+                $$ nest 2 (vcat (map ppGroup gs))
+  ppGroup (n,lcg) = pp n <+> text "at" <+> pp (getLoc lcg)
+
+  checkArity = return 0
+

@@ -33,6 +33,7 @@ startsLayout tok = case tok of
   TKeyword Krec     -> True
   TKeyword Kof      -> True
   TKeyword Klambda  -> True
+  TKeyword Kdata    -> True
   _                 -> False
 
 eof :: Lexeme

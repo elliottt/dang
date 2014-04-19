@@ -64,7 +64,7 @@ elimBSeqs b = case b of
 
 -- | Top-level declarations.
 data TopDecl = TDDecl Decl
-             | TDData DataDecl
+             | TDData (Located DataDecl)
                deriving (Show,Data,Typeable)
 
 -- | Declarations that can show up anywhere.
@@ -111,12 +111,11 @@ data DataDecl = DataDecl { dataName   :: Name
                          , dataArity  :: !Int
                          , dataKind   :: Kind
                          , dataExport :: Export
-                         , dataParams :: [Name]
-                         , dataGroups :: [ConstrGroup]
+                         , dataGroups :: [Located ConstrGroup]
                          } deriving (Show,Data,Typeable)
 
 -- | GADT constructor groups.
-data ConstrGroup = ConstrGroup { groupArgs    :: [Type]
+data ConstrGroup = ConstrGroup { groupResTys  :: [Type]
                                , groupConstrs :: [Constr]
                                } deriving (Show,Data,Typeable)
 
@@ -330,11 +329,11 @@ instance Pretty DataDecl where
 instance Pretty Bind where
   ppr b = vcat (map ppEqn (elimMSplits (bindBody b)))
     where
-    ppEqn m = pp (bindName b) <+> ppDef m
+    ppEqn m = pp (bindName b) <+> fsep (ppDef m)
 
 -- | Pretty-print a match as the body of a binding.
-ppDef :: Match -> PPDoc
-ppDef m = fsep (map (ppPrec 10) ps) <+> pp Kassign $$ pp body
+ppDef :: Match -> [PPDoc]
+ppDef m = map (ppPrec 10) ps ++ [ pp Kassign, pp body ]
   where
   (ps,body) = flattenMPat m
 
@@ -477,10 +476,6 @@ instance HasLocation Decl where
     DBind l -> DBind (stripLoc l)
     DSig  l -> DSig  (stripLoc l)
     DOpen l -> DOpen (stripLoc l)
-
-instance HasLocation DataDecl where
-  getLoc   d = mempty
-  stripLoc d = d
 
 instance HasLocation Expr where
   getLoc e = case e of

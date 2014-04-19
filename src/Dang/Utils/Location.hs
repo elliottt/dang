@@ -113,6 +113,10 @@ instance Monoid SrcLoc where
   mappend NoLoc          r              = r
   mappend l              NoLoc          = l
 
+instance Pretty SrcLoc where
+  ppr (SrcLoc r mb) = maybe empty (\src -> text src <> char ':') mb <+> pp r
+  ppr NoLoc = empty
+
 srcRange :: SrcLoc -> Range
 srcRange loc = case loc of
   SrcLoc r _ -> r

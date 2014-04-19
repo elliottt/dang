@@ -32,6 +32,7 @@ module Dang.Monad (
   , Error(..), addErr, addErrL, putErrs
   , Warning(..), addWarn, addWarnL, putWarns
   , collectMessages
+  , failErrs
 
     -- ** Error Recovery
   , try
@@ -43,7 +44,7 @@ import Dang.Utils.Location ( SrcLoc(NoLoc), ppLoc )
 import Dang.Utils.Pretty hiding (empty)
 
 import Control.Applicative ( Applicative(..), Alternative(..), (<$>) )
-import Control.Monad ( MonadPlus(..), when )
+import Control.Monad ( MonadPlus(..), when, unless )
 import Control.Monad.Fix (MonadFix)
 import Data.IORef
            ( IORef, newIORef, readIORef, writeIORef, modifyIORef'
@@ -291,3 +292,14 @@ try m = fmap Just m `mplus` return Nothing
 -- | A combination of 'try' and 'collectMessages'.
 tryMsgs :: DangM m => m a -> m ([Error], [Warning], Maybe a)
 tryMsgs  = collectMessages . try
+
+-- | Fail if any errors are logged.
+failErrs :: DangM m => m a -> m a
+failErrs m =
+  do (es,ws,a) <- collectMessages m
+     unless (null es) $
+       do putErrs  es
+          putWarns ws
+          mzero
+     putWarns ws
+     return a
