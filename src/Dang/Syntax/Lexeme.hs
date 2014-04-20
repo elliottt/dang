@@ -132,7 +132,7 @@ instance Pretty Keyword where
     Krbrace     -> sym  "}"
     Kcomma      -> char ','
     Ksemi       -> char ';'
-    Kcolon      -> char ':'
+    Kcolon      -> sym  ":"
     Kdot        -> char '.'
     Kpipe       -> sym  "|"
     Kunderscore -> char '_'

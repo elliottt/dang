@@ -109,13 +109,12 @@ data PrimType = PrimType { primTypeName :: Name
 -- | GADT declaration.
 data DataDecl = DataDecl { dataName   :: Name
                          , dataArity  :: !Int
-                         , dataKind   :: Kind
                          , dataGroups :: [Located ConstrGroup]
                          } deriving (Show,Data,Typeable)
 
 -- | GADT constructor groups.
 data ConstrGroup = ConstrGroup { groupResTys  :: [Type]
-                               , groupConstrs :: [Constr]
+                               , groupConstrs :: [Located Constr]
                                } deriving (Show,Data,Typeable)
 
 -- | GADT constructors.
@@ -326,9 +325,16 @@ instance Pretty DataDecl where
   ppr d = pp Kdata <+> vcat (map (ppConstrGroup (dataName d)) (dataGroups d))
 
 ppConstrGroup :: Name -> Located ConstrGroup -> PPDoc
-ppConstrGroup n lcg = pp n <+> hsep (map (ppPrec 10) (groupResTys cg))
+ppConstrGroup n lcg =
+  pp n <+> hsep (map (ppPrec 10) (groupResTys cg))
+       <+> snd (foldl ppConstr (pp Kassign, empty) (groupConstrs cg))
   where
-  cg = unLoc lcg
+  cg                  = unLoc lcg
+  cp                  = pp Kpipe
+  ppConstr (p,acc) lc =
+    (cp,acc $$ hsep (p:pp (constrName c):map (ppPrec 10) (constrFields c)))
+    where
+    c = unLoc lc
 
 
 instance Pretty Bind where

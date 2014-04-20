@@ -88,10 +88,11 @@ mkName :: Level -> (ModName,String) -> Name
 mkName lev ([],n) = mkLocal lev    n
 mkName lev (ns,n) = mkQual  lev ns n
 
-mkTyCon :: [String] -> Name
-mkTyCon []  = pPanic (text "Invalid conident")
-mkTyCon [x] = mkLocal (Type 0) x
-mkTyCon xs  = mkQual  (Type 0) (init xs) (last xs)
+mkTyCon :: (ModName,String) -> Name
+mkTyCon  = mkName (Type 0)
+
+mkDataCon :: (ModName,String) -> Name
+mkDataCon  = mkName Expr
 
 mkApp :: [Expr] -> Expr
 mkApp [e]    = e

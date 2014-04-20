@@ -86,22 +86,29 @@ import MonadLib
 
 -- Names -----------------------------------------------------------------------
 
-cident :: { Located String }
-  : CONIDENT { fmap fromTConIdent $1 }
-
 ident :: { Located String }
   : IDENT { fmap fromTIdent $1 }
   | 'as'  { "as" `at` $1 }
 
-qual_cident :: { Located [String] }
-  : sep1('.', cident) { map unLoc $1 `at` foldMap getLoc $1 }
+
+cident :: { Located String }
+  : CONIDENT { fmap fromTConIdent $1 }
+
 
 mod_name :: { Located ModName }
-  : qual_cident { $1 }
+  : sep1('.', cident) { map unLoc $1 `at` getLoc $1 }
 
-qual_ident :: { Located ([String],String) }
-  : sep1('.', cident) '.' ident
-    { (map unLoc $1, unLoc $3) `at` (foldMap getLoc $1 `mappend` getLoc $3) }
+
+qual_cident :: { Located (ModName,String) }
+  : sep1('.', cident)
+    { case $1 of
+        [x] -> ([],) `fmap` x
+        xs  -> (map unLoc (init xs), unLoc (last xs)) `at` getLoc $1 }
+
+
+qual_ident :: { Located (ModName,String) }
+  : mod_name '.' ident
+    { (unLoc $1, unLoc $3) `at` mconcat [getLoc $1,getLoc $3] }
   | ident
     { fmap ([],) $1 }
 
@@ -179,8 +186,8 @@ open_symbol :: { Located OpenSymbol }
 -- Types -----------------------------------------------------------------------
 
 signature :: { Located Signature }
-  : sep1(',', eident) ':' schema
-    { Signature { sigNames  = $1
+  : sep1(',', ident) ':' schema
+    { Signature { sigNames  = fmap (fmap (mkLocal Expr)) $1
                 , sigSchema = $3 } `at` mconcat [ getLoc $1
                                                 , $2
                                                 , getLoc $3 ] }
@@ -204,24 +211,17 @@ app_type :: { Type }
     { TLoc (TApp $1 $2 `at` mappend (getLoc $1) (getLoc $2)) }
 
 atype :: { Type }
-  : tyvar
-    { TLoc (TVar `fmap` $1) }
+  : ident
+    { TLoc (fmap (TVar . mkLocal (Type 0)) $1) }
 
-  | tycon
-    { TLoc (TCon `fmap` $1) }
+  | qual_cident
+    { TLoc (fmap (TCon . mkTyCon) $1) }
 
   | '(' sep(',', type) ')'
     { TLoc (mkTuple $2 `at` mappend (getLoc $1) (getLoc $3)) }
 
   | row
     { $1 }
-
-tyvar :: { Located Name }
-  : ident { fmap (mkLocal (Type 0)) $1 }
-
-tycon :: { Located Name }
-  : qual_cident { fmap mkTyCon $1 }
-
 
 row :: { Type }
   : '{' sep(',', ltype) opt(row_ext) '}'
@@ -239,15 +239,9 @@ row_ext :: { Type }
 
 -- Expressions -----------------------------------------------------------------
 
-eident :: { Located Name }
-  : ident { fmap (mkLocal Expr) $1 }
-
-econ :: { Located Name }
-  : cident { fmap (mkLocal Expr) $1 }
-
 bind :: { Located Bind }
-  : eident list(apat) '=' expr
-    { Bind { bindName = $1
+  : ident list(apat) '=' expr
+    { Bind { bindName = mkLocal Expr `fmap` $1
            , bindType = Nothing
            , bindBody = matchPats $2 (MSuccess $4)
            } `at` mappend (getLoc $1) (getLoc $2) }
@@ -270,17 +264,29 @@ app_expr :: { Expr }
     { mkApp $1 }
 
 aexpr :: { Expr }
-  : eident
-    { ELoc (Var `fmap` $1) }
-
-  | econ
-    { ELoc (Var `fmap` $1) }
+  : evar
+    { ELoc $1 }
 
   | literal
     { ELoc (Lit `fmap` $1) }
 
   | '(' expr ')'
     { ELoc ($2 `at` mappend $1 $3) }
+
+evar :: { Located Expr }
+  : ident
+    { fmap (Var . mkLocal Expr) $1 }
+
+  | sep_body('.',cident) opt(evar_tail)
+    { case $2 of
+        Just i  -> Var (mkName Expr (reverse (map unLoc $1),unLoc i))
+                     `at` mconcat [getLoc $1, getLoc i]
+        Nothing -> let (con:pfx) = $1
+                    in Con (mkName Expr (reverse (map unLoc pfx),unLoc con))
+                         `at` getLoc $1 }
+
+evar_tail :: { Located String }
+  : '.' ident { $2 }
 
 case_arms :: { Match }
   : layout1(case_arm) { foldr MSplit MFail $1 }
@@ -298,15 +304,16 @@ literal :: { Located Literal }
 -- Patterns --------------------------------------------------------------------
 
 pat :: { Pat }
-  : econ list(apat)
-    { PLoc (PCon (unLoc $1) $2 `at` mconcat [getLoc $1, getLoc $2]) }
+  : qual_cident list(apat)
+    { PLoc (PCon (mkName Expr (unLoc $1)) $2
+        `at` mconcat [getLoc $1, getLoc $2]) }
 
   | apat
     { $1 }
 
 apat :: { Pat }
-  : eident
-    { PLoc (fmap PVar $1) }
+  : ident
+    { PLoc (fmap (PVar . mkLocal Expr) $1) }
 
   | '_'
     { PLoc (PWildcard `at` $1) }
@@ -322,10 +329,21 @@ data_decl :: { Located DataDecl }
     {% mkData $1 $2 }
 
 constr_group :: { (Name, Located ConstrGroup) }
-  : cident list(atype) '='
-    { ( mkTyCon [unLoc $1]
+  : cident list(atype) mb_constrs
+    { ( mkName (Type 0) ([], unLoc $1)
       , ConstrGroup { groupResTys  = $2
-                    , groupConstrs = [] } `at` mconcat [getLoc $1,$3]) }
+                    , groupConstrs = $3
+                    } `at` mconcat [getLoc $1,getLoc $3]) }
+
+mb_constrs :: { [Located Constr] }
+  : '=' sep1('|', constr) { $2 }
+  | {- empty -}           { [] }
+
+constr :: { Located Constr }
+  : cident list(atype)
+    { Constr { constrName   = mkDataCon ([],unLoc $1)
+             , constrFields = $2
+             } `at` mconcat [getLoc $1, getLoc $2] }
 
 
 -- Combinators -----------------------------------------------------------------
