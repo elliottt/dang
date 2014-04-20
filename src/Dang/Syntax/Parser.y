@@ -66,6 +66,8 @@ import MonadLib
   '|'         { Located $$ (TKeyword Kpipe)       }
   '_'         { Located $$ (TKeyword Kunderscore) }
 
+  '*'         { Located $$ (TOperIdent "*")       }
+
 -- identifiers
   CONIDENT { $$@Located { locValue = TConIdent _  }}
   IDENT    { $$@Located { locValue = TIdent _     }}
@@ -141,8 +143,10 @@ block_stmt(e)
 -- Declarations ----------------------------------------------------------------
 
 top_decl :: { TopDecl }
-  : decl      { TDDecl $1 }
-  | data_decl { TDData $1 }
+  : decl      { TDDecl     $1 }
+  | data_decl { TDData     $1 }
+  | prim_type { TDPrimType $1 }
+  | prim_term { TDPrimTerm $1 }
 
 decl :: { Decl }
   : open      { DOpen $1 }
@@ -182,17 +186,34 @@ open_symbol :: { Located OpenSymbol }
     { OpenType (unLoc $1) (map unLoc $3)
           `at` mconcat (getLoc $1 : map getLoc $3) }
 
+-- Kinds -----------------------------------------------------------------------
+
+prim_type :: { Located PrimType }
+  : 'primitive' cident ':' kind
+    { PrimType { primTypeName = mkLocal (Type 0) (unLoc $2)
+               , primTypeKind = $4
+               } `at` mconcat [$1, $3, getLoc $4] }
+
+kind :: { Kind }
+  : sep1('->', akind)
+    { TLoc (foldr1 TFun $1 `at` getLoc $1) }
+
+akind :: { Kind }
+  : '*'          { TLoc (TCon (mkLocal (Type 1) "*") `at` $1) }
+  | qual_cident  { TLoc ((TCon . mkName (Type 1)) `fmap` $1)  }
+  | '(' kind ')' { TLoc ($2 `at` mconcat [$1,$3])             }
+
 
 -- Types -----------------------------------------------------------------------
 
 signature :: { Located Signature }
-  : sep1(',', ident) ':' schema
+  : sep1(',', ident) ':' type_schema
     { Signature { sigNames  = fmap (fmap (mkLocal Expr)) $1
                 , sigSchema = $3 } `at` mconcat [ getLoc $1
                                                 , $2
                                                 , getLoc $3 ] }
 
-schema :: { Schema }
+type_schema :: { Schema }
   : type '=>' type
     { mkForall $1 $3 }
 
@@ -238,6 +259,12 @@ row_ext :: { Type }
 
 
 -- Expressions -----------------------------------------------------------------
+
+prim_term :: { Located PrimTerm }
+  : 'primitive' ident ':' type_schema
+    { PrimTerm { primTermName = mkLocal Expr (unLoc $2)
+               , primTermType = $4
+               } `at` mconcat [$1,$3,getLoc $4] }
 
 bind :: { Located Bind }
   : ident list(apat) '=' expr

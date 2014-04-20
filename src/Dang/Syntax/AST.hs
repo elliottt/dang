@@ -65,6 +65,8 @@ elimBSeqs b = case b of
 -- | Top-level declarations.
 data TopDecl = TDDecl Decl
              | TDData (Located DataDecl)
+             | TDPrimType (Located PrimType)
+             | TDPrimTerm (Located PrimTerm)
                deriving (Show,Data,Typeable)
 
 -- | Declarations that can show up anywhere.
@@ -97,13 +99,13 @@ data Signature = Signature { sigNames  :: [Located Name]
                            } deriving (Show,Data,Typeable)
 
 -- | A primitive term name, with a signature.
-data PrimTerm = PrimTerm { primTermName :: Located Name
+data PrimTerm = PrimTerm { primTermName :: Name
                          , primTermType :: Schema
                          } deriving (Show,Data,Typeable)
 
 -- | A primitive type, with a kind signature.
 data PrimType = PrimType { primTypeName :: Name
-                         , primTypeKind :: Schema
+                         , primTypeKind :: Kind
                          } deriving (Show,Data,Typeable)
 
 -- | GADT declaration.
@@ -312,8 +314,10 @@ instance Pretty a => Pretty (Block a) where
 
 instance Pretty TopDecl where
   ppr td = case td of
-    TDDecl d -> ppr d
-    TDData d -> ppr d
+    TDDecl d      -> ppr d
+    TDData d      -> ppr d
+    TDPrimType pt -> ppr pt
+    TDPrimTerm pt -> ppr pt
 
 instance Pretty Decl where
   ppr d = case d of
@@ -336,6 +340,15 @@ ppConstrGroup n lcg =
     where
     c = unLoc lc
 
+instance Pretty PrimType where
+  ppr pt = pp Kprimitive <+> fsep [ pp (primTypeName pt)
+                                  , pp Kcolon
+                                  , pp (primTypeKind pt) ]
+
+instance Pretty PrimTerm where
+  ppr pt = pp Kprimitive <+> fsep [ pp (primTermName pt)
+                                  , pp Kcolon
+                                  , pp (primTermType pt) ]
 
 instance Pretty Bind where
   ppr b = vcat (map ppEqn (elimMSplits (bindBody b)))
@@ -470,12 +483,16 @@ instance HasLocation a => HasLocation (Block a) where
 
 instance HasLocation TopDecl where
   getLoc td = case td of
-    TDDecl d -> getLoc d
-    TDData d -> getLoc d
+    TDDecl d      -> getLoc d
+    TDData d      -> getLoc d
+    TDPrimType pt -> getLoc pt
+    TDPrimTerm pt -> getLoc pt
 
   stripLoc td = case td of
-    TDDecl d -> TDDecl (stripLoc d)
-    TDData d -> TDData (stripLoc d)
+    TDDecl d      -> TDDecl (stripLoc d)
+    TDData d      -> TDData (stripLoc d)
+    TDPrimType pt -> TDPrimType (stripLoc pt)
+    TDPrimTerm pt -> TDPrimTerm (stripLoc pt)
 
 instance HasLocation Decl where
   getLoc d = case d of
