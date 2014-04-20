@@ -14,7 +14,7 @@ import Dang.Utils.Pretty
 import Dang.Utils.Panic
 
 import Control.Applicative ( Applicative(..), Alternative )
-import Control.Monad ( MonadPlus(mzero) )
+import Control.Monad ( MonadPlus(mzero), unless )
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import Data.Monoid ( mconcat )
@@ -117,9 +117,20 @@ mkData src gs =
               return n
     _   -> pPanic (text "Type name not parsed in data declaration")
 
-  namesDontAgree = text "constructor groups don't agree on a type name"
-                $$ nest 2 (vcat (map ppGroup gs))
-  ppGroup (n,lcg) = pp n <+> text "at" <+> pp (getLoc lcg)
+  checkArity =
+    do let (l:ls) = map (length . groupResTys . unLoc) lcgs
+       unless (all (== l) ls) (addErr arityMismatch)
+       return l
 
-  checkArity = return 0
+  namesDontAgree =
+    text "constructor groups don't agree on a type name" $$
+    nest 2 (vcat (map ppGroup gs))
 
+  arityMismatch =
+    text "constructor groups have different numbers of type arguments" $$
+    nest 2 (vcat (map ppGroup gs))
+
+  ppGroup (n,lcg) =
+    hsep [ quoted (hsep (pp n : map (ppPrec 10) (groupResTys (unLoc lcg))))
+         , text "at"
+         , pp (getLoc lcg) ]
