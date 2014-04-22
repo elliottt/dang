@@ -25,49 +25,22 @@ import           Data.Typeable ( Typeable )
 
 -- | A parsed program.
 data Module = Module { modName  :: Located ModName
-                     , modDecls :: Block TopDecl
+                     , modDecls :: [TopDecl]
                      } deriving (Show,Data,Typeable)
-
--- | Binding blocks.
-data Block a = BSingle a
-               -- ^ A single declaration.
-             | BExport Export (Block a)
-               -- ^ An export annotation on a block of declarations.
-             | BRec (Block a)
-               -- ^ A recursive block of declarations.
-             | BComb (Block a) (Block a)
-               -- ^ Non-overlapping combination of declarations.
-             | BSeq (Block a) (Block a)
-               -- ^ Left-to-right combination of declaraitons.  The resulting
-               -- binding group will prefer names from the right, shadowing
-               -- names on the left.
-             | BLocal (Block a) (Block a)
-               -- ^ Declarations that are local to a group of other
-               -- declarations.
-             | BEmpty
-               -- ^ No declarations.
-             | BLoc (Located (Block a))
-               -- ^ Source lcoations attached to a block of declaration.
-               deriving (Show,Data,Typeable,Functor,Foldable,Traversable)
-
-elimBCombs :: Block a -> [Block a]
-elimBCombs b = case b of
-  BComb l r -> elimBCombs l ++ elimBCombs r
-  BEmpty    -> []
-  _         -> [b]
-
-elimBSeqs :: Block a -> [Block a]
-elimBSeqs b = case b of
-  BSeq l r -> elimBSeqs l ++ elimBSeqs r
-  BEmpty   -> []
-  _        -> [b]
 
 -- | Top-level declarations.
 data TopDecl = TDDecl Decl
              | TDData (Located DataDecl)
              | TDPrimType (Located PrimType)
              | TDPrimTerm (Located PrimTerm)
+             | TDLocal (Located LocalDecls)
+             | TDExport Export TopDecl
                deriving (Show,Data,Typeable)
+
+-- | Declarations that are private to a group of top-declarations.
+data LocalDecls = LocalDecls { ldLocals :: [Decl]
+                             , ldDecls  :: [TopDecl]
+                             } deriving (Show,Data,Typeable)
 
 -- | Declarations that can show up anywhere.
 data Decl = DBind (Located Bind)     -- ^ Name bindings
@@ -191,7 +164,7 @@ data Pat = PVar Name           -- ^ Variable introduction
 data Expr = Abs Match
           | App Expr [Expr]
           | Case Expr Match
-          | Let (Block Decl) Expr
+          | Let [Decl] Expr
           | Var Name
           | Con Name
           | Lit Literal
@@ -203,17 +176,6 @@ data Literal = LInt Integer Int
 
 
 -- Variable Binders-------------------------------------------------------------
-
-instance BoundVars a => BoundVars (Block a) where
-  boundVars b = case b of
-    BSingle a    -> boundVars a
-    BExport _ b' -> boundVars b'
-    BRec b'      -> boundVars b'
-    BComb l r    -> boundVars [l,r]
-    BSeq l r     -> boundVars [l,r]
-    BLocal _ b'  -> boundVars b'
-    BLoc lb      -> boundVars lb
-    BEmpty       -> Set.empty
 
 -- only bindings can bind variables
 instance BoundVars Decl where
@@ -238,17 +200,6 @@ instance BoundVars Pat where
 
 
 -- Free Variables --------------------------------------------------------------
-
-instance (BoundVars a, FreeVars a) => FreeVars (Block a) where
-  freeVars b = case b of
-    BSingle a    -> freeVars a
-    BExport _ b' -> freeVars b'
-    BRec b'      -> freeVars b'
-    BComb l r    -> freeVars [l,r]  Set.\\ boundVars [l,r]
-    BSeq l r     -> freeVars [l,r]  Set.\\ boundVars l
-    BLocal l b'  -> freeVars [l,b'] Set.\\ boundVars l
-    BLoc lb      -> freeVars lb
-    BEmpty       -> Set.empty
 
 instance FreeVars Decl where
   freeVars d = case d of
@@ -297,27 +248,24 @@ instance FreeVars Type where
 
 
 instance Pretty Module where
-  ppr m = pp Kmodule <+> ppModName (unLoc (modName m)) <+> pp Kwhere
-       $$ pp (modDecls m)
-
-instance Pretty a => Pretty (Block a) where
-  ppr b = case b of
-    BSingle a    -> ppr a
-    BComb{}      -> layout (map pp (elimBCombs b))
-    BExport e b' -> hang (pp e) 2 (pp b')
-    BRec b'      -> hang (pp Krec) 2 (pp b')
-    BSeq{}       -> layout (map pp (elimBSeqs b))
-    BLocal as bs -> hang (pp Klocal) 6 (pp as)
-                 $$ hang (nest 3 (pp Kin)) 6 (pp bs)
-    BEmpty       -> empty
-    BLoc lb      -> ppr lb
+  ppr m = pp Kmodule
+      <+> ppModName (unLoc (modName m))
+      <+> pp Kwhere
+       $$ layout (map pp (modDecls m))
 
 instance Pretty TopDecl where
   ppr td = case td of
-    TDDecl d      -> ppr d
-    TDData d      -> ppr d
-    TDPrimType pt -> ppr pt
-    TDPrimTerm pt -> ppr pt
+    TDDecl d           -> ppr d
+    TDData d           -> ppr d
+    TDPrimType pt      -> ppr pt
+    TDPrimTerm pt      -> ppr pt
+    TDLocal ls         -> ppr ls
+    TDExport Public  d -> ppr Kpublic  <+> pp d
+    TDExport Private d -> ppr Kprivate <+> pp d
+
+instance Pretty LocalDecls where
+  ppr ls = hang (ppr Klocal)       6 (layout (map ppr (ldLocals ls)))
+        $$ hang (nest 3 (ppr Kin)) 6 (layout (map ppr (ldDecls  ls)))
 
 instance Pretty Decl where
   ppr d = case d of
@@ -467,32 +415,22 @@ instance Pretty Literal where
 
 -- Location Information --------------------------------------------------------
 
-instance HasLocation a => HasLocation (Block a) where
-  getLoc b = case b of
-    BLoc lb -> getLoc lb
-    _       -> mempty
-
-  stripLoc (BLoc l)      = unLoc l
-  stripLoc (BExport e b) = BExport e (stripLoc b)
-  stripLoc (BRec b)      = BRec      (stripLoc b)
-  stripLoc (BComb l r)   = BComb     (stripLoc l) (stripLoc r)
-  stripLoc (BSeq  l r)   = BSeq      (stripLoc l) (stripLoc r)
-  stripLoc (BLocal l r)  = BLocal    (stripLoc l) (stripLoc r)
-  stripLoc b             = b
-
-
 instance HasLocation TopDecl where
   getLoc td = case td of
     TDDecl d      -> getLoc d
     TDData d      -> getLoc d
     TDPrimType pt -> getLoc pt
     TDPrimTerm pt -> getLoc pt
+    TDLocal ls    -> getLoc ls
+    TDExport _ d  -> getLoc d
 
   stripLoc td = case td of
     TDDecl d      -> TDDecl (stripLoc d)
     TDData d      -> TDData (stripLoc d)
     TDPrimType pt -> TDPrimType (stripLoc pt)
     TDPrimTerm pt -> TDPrimTerm (stripLoc pt)
+    TDLocal ls    -> TDLocal (stripLoc ls)
+    TDExport e d  -> TDExport e (stripLoc d)
 
 instance HasLocation Decl where
   getLoc d = case d of

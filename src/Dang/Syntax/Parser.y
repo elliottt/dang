@@ -36,7 +36,6 @@ import MonadLib
   'v{'      { Located $$ (TVirt Vopen)         }
   'v;'      { Located $$ (TVirt Vsep)          }
   'v}'      { Located $$ (TVirt Vclose)        }
-  'rec'     { Located $$ (TKeyword Krec)       }
   'public'  { Located $$ (TKeyword Kpublic)    }
   'private' { Located $$ (TKeyword Kprivate)   }
   'local'   { Located $$ (TKeyword Klocal)     }
@@ -118,35 +117,32 @@ qual_ident :: { Located (ModName,String) }
 -- Modules ---------------------------------------------------------------------
 
 top_module :: { Module }
-  : 'module' mod_name 'where' block(top_decl)
+  : 'module' mod_name 'where' top_decls
     { Module { modName  = $2
              , modDecls = $4 } }
 
 
--- Declaration Blocks ----------------------------------------------------------
-
-block(e)
-  : layout(block_stmt(e))
-    { BLoc (foldr BComb BEmpty $1 `at` getLoc $1) }
-
-block_stmt(e)
-  : e
-    { BLoc (BSingle $1 `at` getLoc $1) }
-
-  | 'rec' block(e)
-    { BLoc (BRec $2 `at` mappend $1 (getLoc $2)) }
-
-  | 'local' block(e) 'in' block(e)
-    { BLoc (BLocal $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
-
-
 -- Declarations ----------------------------------------------------------------
 
+top_decls :: { [TopDecl] }
+  : layout(top_decl) { $1 }
+
 top_decl :: { TopDecl }
-  : decl      { TDDecl     $1 }
-  | data_decl { TDData     $1 }
-  | prim_type { TDPrimType $1 }
-  | prim_term { TDPrimTerm $1 }
+  : decl        { TDDecl     $1 }
+  | data_decl   { TDData     $1 }
+  | prim_type   { TDPrimType $1 }
+  | prim_term   { TDPrimTerm $1 }
+  | local_decls { TDLocal    $1 }
+
+local_decls :: { Located LocalDecls }
+  : 'local' decls 'in' top_decls
+    { LocalDecls { ldLocals = $2
+                 , ldDecls  = $4
+                 } `at` mconcat [$1,$3,getLoc $4] }
+
+
+decls :: { [Decl] }
+  : layout(decl) { $1 }
 
 decl :: { Decl }
   : open      { DOpen $1 }
@@ -274,7 +270,7 @@ bind :: { Located Bind }
            } `at` mappend (getLoc $1) (getLoc $2) }
 
 expr :: { Expr }
-  : 'let' block(decl) 'in' expr
+  : 'let' decls 'in' expr
     { ELoc (Let $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
 
   | 'case' expr 'of' case_arms
