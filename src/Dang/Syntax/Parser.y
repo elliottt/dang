@@ -128,11 +128,15 @@ top_decls :: { [TopDecl] }
   : layout(top_decl) { $1 }
 
 top_decl :: { TopDecl }
-  : decl        { TDDecl     $1 }
-  | data_decl   { TDData     $1 }
-  | prim_type   { TDPrimType $1 }
-  | prim_term   { TDPrimTerm $1 }
-  | local_decls { TDLocal    $1 }
+  : decl                { TDDecl          $1 }
+  | data_decl           { TDData          $1 }
+  | prim_type           { TDPrimType      $1 }
+  | prim_term           { TDPrimTerm      $1 }
+  | local_decls         { TDLocal         $1 }
+  | 'public'  top_decls
+    { TDExport (Exported Public $2 `at` mappend $1 (getLoc $2)) }
+  | 'private' top_decls
+    { TDExport (Exported Private $2 `at` mappend $1 (getLoc $2)) }
 
 local_decls :: { Located LocalDecls }
   : 'local' decls 'in' top_decls

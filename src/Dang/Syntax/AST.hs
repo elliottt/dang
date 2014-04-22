@@ -6,7 +6,7 @@
 module Dang.Syntax.AST where
 
 import Dang.Syntax.Lexeme (Keyword(..))
-import Dang.ModuleSystem.Export ( Export(..) )
+import Dang.ModuleSystem.Export
 import Dang.ModuleSystem.QualName
 import Dang.Utils.Location
 import Dang.Utils.Pretty
@@ -34,7 +34,7 @@ data TopDecl = TDDecl Decl
              | TDPrimType (Located PrimType)
              | TDPrimTerm (Located PrimTerm)
              | TDLocal (Located LocalDecls)
-             | TDExport Export TopDecl
+             | TDExport (Located (Exported [TopDecl]))
                deriving (Show,Data,Typeable)
 
 -- | Declarations that are private to a group of top-declarations.
@@ -255,17 +255,16 @@ instance Pretty Module where
 
 instance Pretty TopDecl where
   ppr td = case td of
-    TDDecl d           -> ppr d
-    TDData d           -> ppr d
-    TDPrimType pt      -> ppr pt
-    TDPrimTerm pt      -> ppr pt
-    TDLocal ls         -> ppr ls
-    TDExport Public  d -> ppr Kpublic  <+> pp d
-    TDExport Private d -> ppr Kprivate <+> pp d
+    TDDecl d      -> ppr d
+    TDData d      -> ppr d
+    TDPrimType pt -> ppr pt
+    TDPrimTerm pt -> ppr pt
+    TDLocal ls    -> ppr ls
+    TDExport ds   -> ppExported (layout . map pp) (unLoc ds)
 
 instance Pretty LocalDecls where
-  ppr ls = hang (ppr Klocal)       6 (layout (map ppr (ldLocals ls)))
-        $$ hang (nest 3 (ppr Kin)) 6 (layout (map ppr (ldDecls  ls)))
+  ppr ls = hang (ppr Klocal)       6 (layout (map pp (ldLocals ls)))
+        $$ hang (nest 3 (ppr Kin)) 6 (layout (map pp (ldDecls  ls)))
 
 instance Pretty Decl where
   ppr d = case d of
@@ -422,7 +421,7 @@ instance HasLocation TopDecl where
     TDPrimType pt -> getLoc pt
     TDPrimTerm pt -> getLoc pt
     TDLocal ls    -> getLoc ls
-    TDExport _ d  -> getLoc d
+    TDExport ds   -> getLoc ds
 
   stripLoc td = case td of
     TDDecl d      -> TDDecl (stripLoc d)
@@ -430,7 +429,7 @@ instance HasLocation TopDecl where
     TDPrimType pt -> TDPrimType (stripLoc pt)
     TDPrimTerm pt -> TDPrimTerm (stripLoc pt)
     TDLocal ls    -> TDLocal (stripLoc ls)
-    TDExport e d  -> TDExport e (stripLoc d)
+    TDExport ds   -> TDExport (stripLoc ds)
 
 instance HasLocation Decl where
   getLoc d = case d of

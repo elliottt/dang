@@ -5,7 +5,7 @@ module Dang.Core.AST (
   , Literal(..)
   ) where
 
-import Dang.ModuleSystem.Export (Exported(..),Export(..))
+import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.QualName
 import Dang.Syntax.AST ( Literal(..) )
 import Dang.TypeChecker.Types
@@ -44,9 +44,6 @@ data Decl = Decl { declName   :: Name
                  , declType   :: Schema
                  , declBody   :: Expr
                  } deriving (Show,Data,Typeable)
-
-instance Exported Decl where
-  exportSpec = declExport
 
 instance BoundVars Decl where
   boundVars d = Set.singleton (declName d)

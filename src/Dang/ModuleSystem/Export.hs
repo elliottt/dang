@@ -1,15 +1,19 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Dang.ModuleSystem.Export where
 
-import Dang.Utils.Location (Located,unLoc)
-import Dang.Utils.Pretty (Pretty(..),PPDoc,text,hang)
+import Dang.Syntax.Lexeme
+import Dang.Utils.Location
+import Dang.Utils.Pretty
 
 import Data.Data ( Data )
-import Data.Function ( on )
-import Data.List ( groupBy )
+import Data.Foldable ( Foldable )
 import Data.Serialize ( Serialize )
+import Data.Traversable ( Traversable )
 import Data.Typeable ( Typeable )
 import GHC.Generics ( Generic )
 
@@ -22,30 +26,17 @@ data Export = Public | Private
 instance Serialize Export
 
 instance Pretty Export where
-  ppr Public  = text "public"
-  ppr Private = text "private"
+  ppr Public  = pp Kpublic
+  ppr Private = pp Kprivate
 
-class Exported a where
-  exportSpec :: a -> Export
+data Exported a = Exported { exSpec  :: Export
+                           , exValue :: a
+                           } deriving (Show,Data,Typeable,Functor,Foldable
+                                      ,Traversable)
 
-instance Exported Export where
-  {-# INLINE exportSpec #-}
-  exportSpec = id
+instance HasLocation a => HasLocation (Exported a) where
+  getLoc ex = getLoc (exValue ex)
+  stripLoc  = fmap stripLoc
 
-instance Exported a => Exported (Located a) where
-  {-# INLINE exportSpec #-}
-  exportSpec loc = exportSpec (unLoc loc)
-
-isExported :: Exported a => a -> Bool
-isExported a = case exportSpec a of
-  Public -> True
-  _      -> False
-
-groupByExport :: Exported a => [a] -> [[a]]
-groupByExport  = groupBy ((==) `on` exportSpec)
-
-ppPublic :: PPDoc -> PPDoc
-ppPublic  = hang (text "public") 2
-
-ppPrivate :: PPDoc -> PPDoc
-ppPrivate  = hang (text "private") 2
+ppExported :: (a -> PPDoc) -> Exported a -> PPDoc
+ppExported ppVal ex = pp (exSpec ex) <+> ppVal (exValue ex)
