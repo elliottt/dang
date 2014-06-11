@@ -15,6 +15,7 @@ import Dang.Utils.Panic
 
 import Control.Applicative ( Applicative(..), Alternative )
 import Control.Monad ( MonadPlus(mzero), unless )
+import Data.Generics ( Data(..), extT )
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
 import Data.Monoid ( mconcat )
@@ -65,6 +66,12 @@ parseError l =
 
 -- Helpers ---------------------------------------------------------------------
 
+incLevels :: Data a => a -> a
+incLevels  = gmapT incLevels `extT` incLevel
+  where
+  incLevel Expr     = Type 0
+  incLevel (Type i) = Type (i + 1)
+
 -- | Construct a Forall, using a type as the context.
 mkForall :: Type -> Type -> Schema
 mkForall cxt ty = Forall (mkProps cxt) ty
@@ -85,7 +92,7 @@ mkTRow :: [Labelled Type] -> Maybe Type -> Type
 mkTRow ls r = foldr TRowExt (fromMaybe TEmptyRow r) ls
 
 mkName :: Level -> (ModName,String) -> Name
-mkName lev ([],n) = mkLocal lev    n
+mkName lev ([],n) = mkParam lev    n
 mkName lev (ns,n) = mkQual  lev ns n
 
 mkTyCon :: (ModName,String) -> Name

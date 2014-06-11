@@ -5,8 +5,8 @@ module Dang.Core.AST (
   , Literal(..)
   ) where
 
-import Dang.ModuleSystem.Export (Export(..))
 import Dang.ModuleSystem.QualName
+import Dang.ModuleSystem.Types (Export(..))
 import Dang.Syntax.AST ( Literal(..) )
 import Dang.TypeChecker.Types
 import Dang.Utils.Pretty

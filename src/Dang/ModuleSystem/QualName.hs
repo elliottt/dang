@@ -6,6 +6,7 @@ module Dang.ModuleSystem.QualName where
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 
+import Control.Lens ( Lens, lens, view, Getter, to )
 import Data.Char (isSpace)
 import Data.Data ( Data )
 import Data.Maybe ( fromMaybe )
@@ -15,6 +16,8 @@ import Data.Typeable ( Typeable )
 import GHC.Generics ( Generic )
 import System.FilePath ( joinPath, (<.>) )
 
+
+-- Levels ----------------------------------------------------------------------
 
 -- | Where a name lives.  This is to allow things at different levels
 -- (expression, type, kind) to share the same name.
@@ -32,6 +35,9 @@ instance Pretty Level where
                else empty
 
 
+
+-- Namespaces ------------------------------------------------------------------
+
 type ModName = [String]
 
 moduleIface :: ModName -> FilePath
@@ -40,62 +46,92 @@ moduleIface m = joinPath m <.> "di"
 ppModName :: ModName -> PPDoc
 ppModName mn = hcat (punctuate (char '.') (map text mn))
 
-type LName = Located Name
 
-data Name = LocalName Level String
-          | QualName Level ModName String
-            deriving (Ord,Eq,Show,Data,Typeable,Generic)
+-- Qualified Names -------------------------------------------------------------
 
-instance Serialize Name
+-- | A fully-qualified name, referring to either a parameter, or a declared
+-- name.
+data QualName = Param Level String
+              | Qual Level ModName String
+                deriving (Show,Eq,Ord,Data,Typeable,Generic)
 
-instance Pretty Name where
-  ppr name = case name of
-    LocalName l n   -> text n <> pp l
-    QualName l ns n -> dots (map text ns ++ [text n]) <> pp l
+instance Serialize QualName
 
-mkLocal :: Level -> String -> Name
-mkLocal  = LocalName
+instance Pretty QualName where
+  ppr (Param l n)   = text n <> pp l
+  ppr (Qual l ns n) = dots (map text (ns ++ [n])) <> pp l
 
-mkQual :: Level -> ModName -> String -> Name
-mkQual  = QualName
 
-nameLevel :: Name -> Level
-nameLevel (LocalName l _)  = l
-nameLevel (QualName l _ _) = l
+-- | The level from a qualified name.
+qualLevel :: Lens QualName QualName Level Level
+qualLevel  = lens getter setter
+  where
+  getter (Param l _)  = l
+  getter (Qual l _ _) = l
 
--- | Get the name part of a name
-qualSymbol :: Name -> String
-qualSymbol name = case name of
-  LocalName _ n  -> n
-  QualName _ _ n -> n
+  setter (Param _ n)   l = Param l n
+  setter (Qual _ ns n) l = Qual l ns n
 
--- | Modify the symbol in a name.
-mapSymbol :: (String -> String) -> (Name -> Name)
-mapSymbol f name = case name of
-  LocalName l n   -> LocalName l (f n)
-  QualName l mn n -> QualName l mn (f n)
+-- | Get the name part of the qualified name.
+qualSymbol :: Lens QualName QualName String String
+qualSymbol  = lens getter setter
+  where
+  getter (Param _ n)  = n
+  getter (Qual _ _ n) = n
+
+  setter (Param l _)   n = Param l n
+  setter (Qual l ns _) n = Qual l ns n
 
 -- | Get the module name associated with a name.
-qualModule :: Name -> Maybe ModName
-qualModule name = case name of
-  QualName _ m _ -> Just m
-  LocalName{}    -> Nothing
-
--- | Mangle a name into one that is suitable for code generation.
-mangle :: IsString string => Name -> string
-mangle name = fromString (foldr prefix (qualSymbol name) modName)
+qualModule :: Getter QualName (Maybe ModName)
+qualModule  = to getter
   where
-  modName         = fromMaybe [] (qualModule name)
-  prefix pfx rest = rename pfx ++ "_" ++ rest
-  rename          = concatMap $ \c ->
+  getter (Qual _ ns _) = Just ns
+  getter (Param _ _)   = Nothing
+
+-- | Mangle a qualified name into one that is suitable for code generation.
+mangle :: IsString string => QualName -> string
+mangle name = fromString (foldr prefix (view qualSymbol name) modName)
+  where
+  modName         = fromMaybe [] (view qualModule name)
+  prefix pfx rest = escape pfx ++ "_" ++ rest
+  escape          = concatMap $ \c ->
     case c of
       '_'           -> "__"
       '.'           -> "_"
       _ | isSpace c -> []
         | otherwise -> [c]
 
--- | Modify the namespace of a name.
-changeModule :: ModName -> Name -> Name
-changeModule m name = case name of
-  QualName l _ n -> QualName l m n
-  LocalName{}    -> name
+
+-- Names -----------------------------------------------------------------------
+
+type LName = Located Name
+
+data Name = Parsed String QualName
+          | Generated QualName
+            deriving (Ord,Eq,Show,Data,Typeable,Generic)
+
+instance Serialize Name
+
+instance Pretty Name where
+  ppr name = case name of
+    Parsed n qn  -> do printQual <- getPrintQual
+                       if printQual
+                          then text n
+                          else ppr qn
+    Generated qn -> ppr qn
+
+qualName :: Lens Name Name QualName QualName
+qualName  = lens getter setter
+  where
+  getter (Parsed _ qn)  = qn
+  getter (Generated qn) = qn
+
+  setter (Parsed n _)  qn = Parsed n qn
+  setter (Generated _) qn = Generated qn
+
+mkParam :: Level -> String -> Name
+mkParam l n = Generated (Param l n)
+
+mkQual :: Level -> ModName -> String -> Name
+mkQual l ns n = Generated (Qual l ns n)

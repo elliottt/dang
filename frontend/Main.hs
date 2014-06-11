@@ -26,12 +26,12 @@ main  =
           logInfo (pp a)
           let [file] = actionSources a
 
-          m          <- loadModule file
-          (iset,scm) <- scopeCheck m
-          kcm        <- kindCheckModule iset scm
-          tcm        <- typeCheckModule iset kcm
+          m   <- loadModule file
+          scm <- scopeCheck m
+          kcm <- kindCheckModule scm
+          tcm <- typeCheckModule kcm
 
-          compile iset tcm (ofile file)
+          compile tcm (ofile file)
           unless (optCompileOnly opts) (link [ofile file] (dropExtension file))
 
           logInfo (text "oh-snap")

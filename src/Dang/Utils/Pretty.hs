@@ -33,6 +33,9 @@ data PPEnv = PPEnv { ppePrec :: Int
                    , ppePrintLevels :: Bool
                      -- ^ Whether or not names should be annotated with their
                      -- level.
+                   , ppePrintQual :: Bool
+                     -- ^ Whether or not names should be printed
+                     -- fully-qualified, or as they were parsed in the source.
                    , ppeColor :: Bool
                      -- ^ Whether or not to show colors
                    } deriving (Show)
@@ -41,7 +44,8 @@ defaultPPEnv :: PPEnv
 defaultPPEnv  = PPEnv { ppePrec        = 0
                       , ppeColor       = True
                       , ppeLayout      = True
-                      , ppePrintLevels = False }
+                      , ppePrintLevels = False
+                      , ppePrintQual   = False }
 
 newtype PPM a = PPM { getPPM :: ReaderT PPEnv Id a
                     } deriving (Functor,Applicative,Monad)
@@ -67,6 +71,9 @@ getPrec  = PPM (ppePrec `fmap` ask)
 
 getPrintLevels :: PPM Bool
 getPrintLevels  = PPM (ppePrintLevels `fmap` ask)
+
+getPrintQual :: PPM Bool
+getPrintQual  = PPM (ppePrintQual `fmap` ask)
 
 -- Utility ---------------------------------------------------------------------
 

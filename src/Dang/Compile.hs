@@ -5,12 +5,12 @@ module Dang.Compile where
 import Dang.Compile.LambdaLift ( lambdaLift )
 import Dang.Core.AST ( Module )
 import Dang.Core.Interface ( moduleIface )
-import Dang.ModuleSystem.Interface (IfaceSet,Iface,writeIface)
+import Dang.ModuleSystem.Interface ( writeIface )
 import Dang.Monad
 
 
-compile :: IfaceSet -> Module -> FilePath -> Dang ()
-compile iset m out = do
+compile :: Module -> FilePath -> Dang ()
+compile m out = do
   lambdaLift m
   writeIface (moduleIface m)
   return ()

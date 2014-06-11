@@ -140,10 +140,10 @@ withLoc loc m =
 
 -- | Construct a new RO, to run a Dang computation.
 newRO :: Options -> IO RO
-newRO opts = RO opts defaultPPEnv <$> newIORef NoLoc
-                                  <*> newIORef []
-                                  <*> newIORef []
-                                  <*> newIORef logSilent
+newRO opts = RO opts (optPPEnv opts) <$> newIORef NoLoc
+                                     <*> newIORef []
+                                     <*> newIORef []
+                                     <*> newIORef logSilent
 
 askRO :: BaseM m Dang => m RO
 askRO  = inBase (Dang ask)

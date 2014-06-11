@@ -91,8 +91,8 @@ typeArity ty = length (elimArrows ty)
 type Kind = Type
 
 -- | The kind of types.
-kStar :: Kind
-kStar  = TCon (mkQual (Type 1) ["Prelude"] "*")
+kSet :: Kind
+kSet  = TCon (mkQual (Type 1) ["Prelude"] "Set")
 
 kArrowCon :: Name
 kArrowCon  = mkQual (Type 1) ["Prelude"] "->"

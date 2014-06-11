@@ -6,8 +6,8 @@
 module Dang.Syntax.AST where
 
 import Dang.Syntax.Lexeme (Keyword(..))
-import Dang.ModuleSystem.Export
 import Dang.ModuleSystem.QualName
+import Dang.ModuleSystem.Types
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
@@ -335,7 +335,7 @@ instance Pretty Expr where
   ppr (Case e m) = hang (pp Kcase <+> pp e <+> pp Kof)
                       2 (ppArms m)
 
-  ppr (Let b e)  = optParens 1 $ hang (pp Klet) 4 (pp b)
+  ppr (Let bs e) = optParens 1 $ hang (pp Klet) 4 (layout (map pp bs))
                               $$ hang (nest 1 (pp Kin)) 4 (pp e)
 
   ppr (ELoc le)  = ppr le

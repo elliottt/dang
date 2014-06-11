@@ -7,6 +7,7 @@ module Dang.Variables where
 import Dang.ModuleSystem.QualName
 import Dang.Utils.Location
 
+import Control.Lens ( view )
 import Data.Foldable ( foldMap )
 import Data.Graph (SCC(..))
 import Data.Graph.SCC (stronglyConnComp)
@@ -16,7 +17,8 @@ import qualified Data.Set as Set
 -- Free Variables --------------------------------------------------------------
 
 freeVarsFrom :: FreeVars a => Level -> a -> Set.Set Name
-freeVarsFrom l a = Set.filter (\ n -> nameLevel n == l) (freeVars a)
+freeVarsFrom l a =
+  Set.filter (\ n -> view (qualName . qualLevel) n == l) (freeVars a)
 
 freeExprVars, freeTypeVars, freeKindVars, freeSortVars
   :: FreeVars a => a -> Set.Set Name
@@ -51,7 +53,8 @@ instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c) where
 -- Bound Variables -------------------------------------------------------------
 
 boundVarsFrom :: BoundVars a => Level -> a -> Set.Set Name
-boundVarsFrom l a = Set.filter (\n -> nameLevel n == l) (boundVars a)
+boundVarsFrom l a =
+  Set.filter (\n -> view (qualName . qualLevel) n == l) (boundVars a)
 
 boundExprVars, boundTypeVars, boundKindVars, boundSortVars
   :: BoundVars a => a -> Set.Set Name

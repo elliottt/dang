@@ -1,12 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-
 module Dang.ModuleSystem.Interface where
 
 import Dang.IO ( withWOBinaryFile, withROBinaryFile )
 import Dang.Monad
-import Dang.ModuleSystem.Export ( Export(..) )
 import Dang.ModuleSystem.QualName ( Name, ModName, moduleIface )
+import Dang.ModuleSystem.Types ( Export(..) )
 import Dang.Utils.Pretty
 
 import           Control.Applicative ( (<|>) )

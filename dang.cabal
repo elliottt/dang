@@ -27,11 +27,8 @@ library
 
                         -- module system
                         Dang.ModuleSystem,
-                        Dang.ModuleSystem.Export,
-                        Dang.ModuleSystem.Imports,
                         Dang.ModuleSystem.Interface,
                         Dang.ModuleSystem.QualName,
-                        Dang.ModuleSystem.Resolve,
                         Dang.ModuleSystem.ScopeCheck,
                         Dang.ModuleSystem.Types,
 
@@ -88,7 +85,8 @@ library
                         process          >= 1.1,
                         syb              >= 0.3,
                         template-haskell >= 2.7,
-                        text             >= 0.11
+                        text             >= 0.11,
+                        lens             >= 4.2
 
 executable dang
   main-is:              Main.hs
@@ -109,6 +107,7 @@ executable dang
                         syb              >= 0.3,
                         template-haskell >= 2.7,
                         text             >= 0.11,
+                        lens             >= 4.2,
                         dang
 
 test-suite dang-tests
@@ -135,4 +134,5 @@ test-suite dang-tests
                         test-framework             >= 0.6,
                         test-framework-quickcheck2 >= 0.2,
                         text                       >= 0.11,
+                        lens                       >= 4.2,
                         dang

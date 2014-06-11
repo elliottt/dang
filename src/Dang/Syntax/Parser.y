@@ -7,7 +7,6 @@
 
 module Dang.Syntax.Parser where
 
-import Dang.ModuleSystem.Export
 import Dang.ModuleSystem.QualName
 import Dang.ModuleSystem.Types
 import Dang.Syntax.AST
@@ -64,8 +63,6 @@ import MonadLib
   '.'         { Located $$ (TKeyword Kdot)        }
   '|'         { Located $$ (TKeyword Kpipe)       }
   '_'         { Located $$ (TKeyword Kunderscore) }
-
-  '*'         { Located $$ (TOperIdent "*")       }
 
 -- identifiers
   CONIDENT { $$@Located { locValue = TConIdent _  }}
@@ -190,25 +187,20 @@ open_symbol :: { Located OpenSymbol }
 
 prim_type :: { Located PrimType }
   : 'primitive' cident ':' kind
-    { PrimType { primTypeName = mkLocal (Type 0) (unLoc $2)
+    { PrimType { primTypeName = mkParam (Type 0) (unLoc $2)
                , primTypeKind = $4
                } `at` mconcat [$1, $3, getLoc $4] }
 
+-- Just an alias for type
 kind :: { Kind }
-  : sep1('->', akind)
-    { TLoc (foldr1 TFun $1 `at` getLoc $1) }
-
-akind :: { Kind }
-  : '*'          { TLoc (TCon (mkLocal (Type 1) "*") `at` $1) }
-  | qual_cident  { TLoc ((TCon . mkName (Type 1)) `fmap` $1)  }
-  | '(' kind ')' { TLoc ($2 `at` mconcat [$1,$3])             }
+  : type { incLevels $1 }
 
 
 -- Types -----------------------------------------------------------------------
 
 signature :: { Located Signature }
   : sep1(',', ident) ':' type_schema
-    { Signature { sigNames  = fmap (fmap (mkLocal Expr)) $1
+    { Signature { sigNames  = fmap (fmap (mkParam Expr)) $1
                 , sigSchema = $3 } `at` mconcat [ getLoc $1
                                                 , $2
                                                 , getLoc $3 ] }
@@ -233,7 +225,7 @@ app_type :: { Type }
 
 atype :: { Type }
   : ident
-    { TLoc (fmap (TVar . mkLocal (Type 0)) $1) }
+    { TLoc (fmap (TVar . mkParam (Type 0)) $1) }
 
   | qual_cident
     { TLoc (fmap (TCon . mkTyCon) $1) }
@@ -250,7 +242,7 @@ row :: { Type }
 
 ltype :: { Labelled Type }
   : ident ':' type
-    { Labelled { labName  = fmap (mkLocal (Type 0)) $1
+    { Labelled { labName  = fmap (mkParam (Type 0)) $1
                , labValue = $3 } }
 
 row_ext :: { Type }
@@ -262,13 +254,13 @@ row_ext :: { Type }
 
 prim_term :: { Located PrimTerm }
   : 'primitive' ident ':' type_schema
-    { PrimTerm { primTermName = mkLocal Expr (unLoc $2)
+    { PrimTerm { primTermName = mkParam Expr (unLoc $2)
                , primTermType = $4
                } `at` mconcat [$1,$3,getLoc $4] }
 
 bind :: { Located Bind }
   : ident list(apat) '=' expr
-    { Bind { bindName = mkLocal Expr `fmap` $1
+    { Bind { bindName = mkParam Expr `fmap` $1
            , bindType = Nothing
            , bindBody = matchPats $2 (MSuccess $4)
            } `at` mappend (getLoc $1) (getLoc $2) }
@@ -302,7 +294,7 @@ aexpr :: { Expr }
 
 evar :: { Located Expr }
   : ident
-    { fmap (Var . mkLocal Expr) $1 }
+    { fmap (Var . mkParam Expr) $1 }
 
   | sep_body('.',cident) opt(evar_tail)
     { case $2 of
@@ -340,7 +332,7 @@ pat :: { Pat }
 
 apat :: { Pat }
   : ident
-    { PLoc (fmap (PVar . mkLocal Expr) $1) }
+    { PLoc (fmap (PVar . mkParam Expr) $1) }
 
   | '_'
     { PLoc (PWildcard `at` $1) }

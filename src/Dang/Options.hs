@@ -19,6 +19,7 @@ data Options = Options
   , optLogPasses     :: [String]
   , optCompileOnly   :: Bool
   , optDebugOpts     :: DebugOpts
+  , optPPEnv         :: PPEnv
   } deriving Show
 
 defaultOptions :: Options
@@ -27,8 +28,12 @@ defaultOptions  = Options
   , optAction        = NoAction
   , optLogPasses     = []
   , optCompileOnly   = False
-  , optDebugOpts      = emptyDebugOpts
+  , optDebugOpts     = emptyDebugOpts
+  , optPPEnv         = defaultPPEnv
   }
+
+modifyPPEnv :: (PPEnv -> PPEnv) -> (Options -> Options)
+modifyPPEnv f opts = opts { optPPEnv = f (optPPEnv opts) }
 
 data Action
   = Compile [FilePath]
@@ -81,10 +86,16 @@ options  =
     "Display this message"
   , Option [] ["keep-temp-files"] (NoArg setKeepTempFiles)
     "Don't remove temp files created during compilation"
-  , Option "d" ["dump"] (ReqArg addLogPass "PASS{,PASS}")
+  , Option "D" ["dump"] (ReqArg addLogPass "PASS{,PASS}")
     "Enable logging for PASS"
   , Option "c" [] (NoArg setCompileOnly)
     "Compile only"
+  , Option "" ["Plevels"] (NoArg setPrintLevels)
+    "Print name levels"
+  , Option "" ["Pno-layout"] (NoArg setPrintNoLayout)
+    "Print with explicit curly-braces"
+  , Option "" ["Pqual-names"] (NoArg setPrintQual)
+    "Print resolved names only"
   ] ++ debugOpts
 
 handleHelp :: Option
@@ -105,6 +116,18 @@ addLogPass str opts = return opts { optLogPasses = optLogPasses opts ++ go str }
 
 setCompileOnly :: Option
 setCompileOnly opts = return opts { optCompileOnly = True }
+
+setPrintLevels :: Option
+setPrintLevels opts =
+  return (modifyPPEnv (\env -> env { ppePrintLevels = True }) opts)
+
+setPrintNoLayout :: Option
+setPrintNoLayout opts =
+  return (modifyPPEnv (\env -> env { ppeLayout = False }) opts)
+
+setPrintQual :: Option
+setPrintQual opts =
+  return (modifyPPEnv (\env -> env { ppePrintQual = True }) opts)
 
 updateDebugOpts :: (DebugOpts -> IO DebugOpts) -> Option
 updateDebugOpts k opts = do
