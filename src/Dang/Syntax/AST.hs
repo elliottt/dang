@@ -2,6 +2,8 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Dang.Syntax.AST where
 
@@ -12,6 +14,8 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
+import           Control.Applicative ( pure, (<$>)  )
+import           Control.Lens ( ignored )
 import           Data.Data ( Data )
 import           Data.Foldable ( Foldable )
 import           Data.List ( intersperse )
@@ -19,6 +23,7 @@ import           Data.Monoid ( mempty, mappend )
 import qualified Data.Set as Set
 import           Data.Traversable ( Traversable )
 import           Data.Typeable ( Typeable )
+import           GHC.Generics ( Generic )
 
 
 -- Parsed AST ------------------------------------------------------------------
@@ -26,7 +31,7 @@ import           Data.Typeable ( Typeable )
 -- | A parsed program.
 data Module = Module { modName  :: Located ModName
                      , modDecls :: [TopDecl]
-                     } deriving (Show,Data,Typeable)
+                     } deriving (Show,Generic,Data,Typeable)
 
 -- | Top-level declarations.
 data TopDecl = TDDecl Decl
@@ -35,71 +40,71 @@ data TopDecl = TDDecl Decl
              | TDPrimTerm (Located PrimTerm)
              | TDLocal (Located LocalDecls)
              | TDExport (Located (Exported [TopDecl]))
-               deriving (Show,Data,Typeable)
+               deriving (Show,Generic,Data,Typeable)
 
 -- | Declarations that are private to a group of top-declarations.
 data LocalDecls = LocalDecls { ldLocals :: [Decl]
                              , ldDecls  :: [TopDecl]
-                             } deriving (Show,Data,Typeable)
+                             } deriving (Show,Generic,Data,Typeable)
 
 -- | Declarations that can show up anywhere.
 data Decl = DBind (Located Bind)     -- ^ Name bindings
           | DSig (Located Signature) -- ^ Type signatures
           | DOpen (Located Open)     -- ^ Module imports
-            deriving (Show,Data,Typeable)
+            deriving (Show,Generic,Data,Typeable)
 
 -- | A module import.
 data Open = Open { openMod     :: Located ModName
                  , openAs      :: Maybe (Located ModName)
                  , openHiding  :: Bool
                  , openSymbols :: [Located OpenSymbol]
-                 } deriving (Show,Data,Typeable)
+                 } deriving (Show,Generic,Data,Typeable)
 
 -- | Symbols that can be imported.
 data OpenSymbol = OpenTerm String
                 | OpenType String [String]
-                  deriving (Show,Data,Typeable)
+                  deriving (Show,Generic,Data,Typeable)
 
 -- | Function binding.
 data Bind = Bind { bindName   :: Located Name
                  , bindType   :: Maybe Schema
                  , bindBody   :: Match
-                 } deriving (Show,Data,Typeable)
+                 } deriving (Show,Generic,Data,Typeable)
 
 -- | A name with a signature.
 data Signature = Signature { sigNames  :: [Located Name]
                            , sigSchema :: Schema
-                           } deriving (Show,Data,Typeable)
+                           } deriving (Show,Generic,Data,Typeable)
 
 -- | A primitive term name, with a signature.
 data PrimTerm = PrimTerm { primTermName :: Name
                          , primTermType :: Schema
-                         } deriving (Show,Data,Typeable)
+                         } deriving (Show,Generic,Data,Typeable)
 
 -- | A primitive type, with a kind signature.
 data PrimType = PrimType { primTypeName :: Name
                          , primTypeKind :: Kind
-                         } deriving (Show,Data,Typeable)
+                         } deriving (Show,Generic,Data,Typeable)
 
 -- | GADT declaration.
 data DataDecl = DataDecl { dataName   :: Name
                          , dataArity  :: !Int
                          , dataGroups :: [Located ConstrGroup]
-                         } deriving (Show,Data,Typeable)
+                         } deriving (Show,Generic,Data,Typeable)
 
 -- | GADT constructor groups.
 data ConstrGroup = ConstrGroup { groupResTys  :: [Type]
                                , groupConstrs :: [Located Constr]
-                               } deriving (Show,Data,Typeable)
+                               } deriving (Show,Generic,Data,Typeable)
 
 -- | GADT constructors.
 data Constr = Constr { constrName   :: Name
                      , constrFields :: [Type]
-                     } deriving (Show,Data,Typeable)
+                     } deriving (Show,Generic,Data,Typeable)
 
 -- | Type schemas, with constraints.
 data Schema = Forall [Prop] Type
-              deriving (Show,Data,Typeable)
+              deriving (Show,Generic,Data,Typeable)
 
 -- | Kinds and types use the same surface syntax.
 type Kind = Type
@@ -114,7 +119,7 @@ data Type = TFun Type Type
           | TRowExt (Labelled Type) Type
           | TEmptyRow
           | TLoc (Located Type)
-            deriving (Show,Data,Typeable)
+            deriving (Show,Generic,Data,Typeable)
 
 elimTFuns :: Type -> [Type]
 elimTFuns ty = case ty of
@@ -129,8 +134,8 @@ elimTRowExt r             = ([],r)
 
 data Labelled a = Labelled { labName  :: Located Name
                            , labValue :: a
-                           } deriving (Show,Data,Typeable,Functor,Foldable
-                                      ,Traversable)
+                           } deriving (Show,Generic,Data,Typeable,Functor
+                                      ,Foldable,Traversable)
 
 data Match = MPat   Pat   Match      -- ^ Pattern matching
            | MGuard Pat   Expr Match -- ^ Pattern guards
@@ -138,7 +143,7 @@ data Match = MPat   Pat   Match      -- ^ Pattern matching
            | MSuccess Expr           -- ^ Body of a match
            | MFail                   -- ^ Unconditional failure
            | MLoc (Located Match)    -- ^ Source locations
-             deriving (Show,Data,Typeable)
+             deriving (Show,Generic,Data,Typeable)
 
 elimMSplits :: Match -> [Match]
 elimMSplits (MSplit l r) = elimMSplits l ++ elimMSplits r
@@ -159,7 +164,7 @@ data Pat = PVar Name           -- ^ Variable introduction
          | PLit Literal        -- ^ Literal patterns
          | PWildcard           -- ^ The wildcard pattern
          | PLoc (Located Pat)  -- ^ Source location
-           deriving (Show,Data,Typeable)
+           deriving (Show,Generic,Data,Typeable)
 
 data Expr = Abs Match
           | App Expr [Expr]
@@ -169,79 +174,152 @@ data Expr = Abs Match
           | Con Name
           | Lit Literal
           | ELoc (Located Expr)
-            deriving (Show,Data,Typeable)
+            deriving (Show,Generic,Data,Typeable)
 
 data Literal = LInt Integer Int
-               deriving (Show,Data,Typeable)
+               deriving (Show,Generic,Data,Typeable)
+
+
+-- Names -----------------------------------------------------------------------
+
+instance Names Module where
+  names f Module { .. } = Module modName <$> names f modDecls
+
+instance Names Decl where
+  names f (DBind lb) = DBind <$> names f lb
+  names f (DSig ls)  = DSig  <$> names f ls
+  names _ d@DOpen{}  = pure d
+
+instance Names Literal where
+  names = ignored
+
+instance Names TopDecl
+instance Names DataDecl
+instance Names ConstrGroup
+instance Names Constr
+instance Names LocalDecls
+instance Names Bind
+instance Names Signature
+instance Names PrimTerm
+instance Names PrimType
+
+instance Names Match
+instance Names Pat
+instance Names Expr
+
+instance Names Schema
+instance Names Type
+instance Names a => Names (Labelled a)
+
 
 
 -- Variable Binders-------------------------------------------------------------
 
+instance BoundVars TopDecl
+
+instance BoundVars DataDecl where
+  boundVars DataDecl { .. } = Set.insert dataName (boundVars dataGroups)
+
+instance BoundVars ConstrGroup where
+  boundVars ConstrGroup { .. } = boundVars groupConstrs
+
+instance BoundVars Constr where
+  boundVars Constr { .. } = Set.singleton constrName
+
+-- XXX this is a little strange
+instance BoundVars LocalDecls where
+  boundVars LocalDecls { .. } = boundVars ldDecls
+
+instance BoundVars PrimTerm where
+  boundVars PrimTerm { .. } = Set.singleton primTermName
+
+instance BoundVars PrimType where
+  boundVars PrimType { .. } = Set.singleton primTypeName
+
 -- only bindings can bind variables
 instance BoundVars Decl where
-  boundVars d = case d of
-    DBind b -> boundVars b
-    DSig _  -> Set.empty
-    DOpen _ -> Set.empty
+  boundVars (DBind lb) = boundVars lb
+  boundVars (DSig ls)  = boundVars ls
+  boundVars DOpen{}    = Set.empty
 
 instance BoundVars Bind where
-  boundVars b = Set.singleton (unLoc (bindName b))
+  boundVars Bind { .. } = Set.singleton (unLoc bindName)
 
 instance BoundVars Signature where
-  boundVars sig = Set.fromList (map unLoc (sigNames sig))
+  boundVars Signature { .. } = Set.fromList [ unLoc ln | ln <- sigNames ]
 
 instance BoundVars Pat where
-  boundVars p = case p of
-    PVar n     -> Set.singleton n
-    PCon qn ps -> Set.insert qn (boundVars ps)
-    PWildcard  -> Set.empty
-    PLit _     -> Set.empty
-    PLoc lp    -> boundVars lp
+  boundVars (PVar n)    = Set.singleton n
+  boundVars (PCon _ ps) = boundVars ps
+  boundVars PWildcard   = Set.empty
+  boundVars PLit{}      = Set.empty
+  boundVars (PLoc lp)   = boundVars lp
 
 
 -- Free Variables --------------------------------------------------------------
 
+instance FreeVars Signature
+instance FreeVars a => FreeVars (Labelled a)
+instance FreeVars Schema
+
+instance FreeVars Module where
+  freeVars Module { .. } = freeVars modDecls Set.\\ boundVars modDecls
+
+instance FreeVars TopDecl
+
+-- XXX not really sure how this should be dealt with...
+instance FreeVars LocalDecls where
+  freeVars LocalDecls { .. } =
+    freeVars (ldLocals,ldDecls) Set.\\ boundVars (ldLocals,ldDecls)
+
+instance FreeVars DataDecl where
+  freeVars DataDecl { .. } = Set.delete dataName (freeVars dataGroups)
+
+instance FreeVars ConstrGroup
+
+instance FreeVars Constr where
+  freeVars Constr { .. } = Set.delete constrName (freeVars constrFields)
+
+instance FreeVars PrimTerm where
+  freeVars PrimTerm { .. } = freeVars primTermType
+
+instance FreeVars PrimType where
+  freeVars PrimType { .. } = freeVars primTypeKind
+
 instance FreeVars Decl where
-  freeVars d = case d of
-    DBind b -> freeVars b
-    DSig _  -> Set.empty
-    DOpen _ -> Set.empty
+  freeVars (DBind lb) = freeVars lb
+  freeVars (DSig ls)  = freeVars ls
+  freeVars DOpen{}    = Set.empty
 
 instance FreeVars Bind where
-  freeVars b = freeVars (bindBody b) Set.\\ boundVars b
+  freeVars Bind { .. } = freeVars (bindBody,bindType)
+
+instance FreeVars Pat where
+  freeVars (PCon c ps) = Set.insert c (freeVars ps)
+  freeVars (PVar _)    = Set.empty
+  freeVars PWildcard   = Set.empty
+  freeVars PLit{}      = Set.empty
+  freeVars (PLoc lp)   = boundVars lp
 
 instance FreeVars Match where
-  freeVars m = case m of
-    MPat p m'     -> freeVars m'     Set.\\ boundVars p
-    MGuard p e m' -> freeVars (e,m') Set.\\ boundVars p
-    MSplit l r    -> freeVars [l,r]
-    MSuccess e    -> freeVars e
-    MFail         -> Set.empty
-    MLoc lm       -> freeVars lm
+  freeVars (MPat p m')     = freeVars (p,m')   Set.\\ boundVars p
+  freeVars (MGuard p e m') = freeVars (p,e,m') Set.\\ boundVars p
+  freeVars (MSplit l r)    = freeVars (l,r)
+  freeVars (MSuccess e)    = freeVars e
+  freeVars MFail           = Set.empty
+  freeVars (MLoc lm)       = freeVars lm
 
 instance FreeVars Expr where
-  freeVars tm = case tm of
-    Abs m    -> freeVars m
-    Case e m -> freeVars e `Set.union` freeVars m
-    Let b e  -> freeVars (b,e) Set.\\ boundVars b
-    App f xs -> freeVars f `Set.union` freeVars xs
-    Var n    -> Set.singleton n
-    Con n    -> Set.singleton n
-    Lit _    -> Set.empty
-    ELoc le  -> freeVars le
+  freeVars (Abs m)    = freeVars m
+  freeVars (Case e m) = freeVars (e,m)
+  freeVars (Let ds e) = freeVars (ds,e) Set.\\ boundVars ds
+  freeVars (App e es) = freeVars (e,es)
+  freeVars (Var n)    = Set.singleton n
+  freeVars (Con n)    = Set.singleton n
+  freeVars Lit{}      = Set.empty
+  freeVars (ELoc le)  = freeVars le
 
-instance FreeVars a => FreeVars (Labelled a) where
-  freeVars a = freeVars (labValue a)
-
-instance FreeVars Type where
-  freeVars (TFun a b)     = freeVars (a,b)
-  freeVars (TApp f xs)    = freeVars (f,xs)
-  freeVars (TTuple ts)    = freeVars ts
-  freeVars (TCon c)       = Set.singleton c
-  freeVars (TVar _)       = Set.empty
-  freeVars (TRowExt ls r) = freeVars (ls,r)
-  freeVars TEmptyRow      = Set.empty
-  freeVars (TLoc lt)      = freeVars lt
+instance FreeVars Type
 
 
 -- Pretty Printing -------------------------------------------------------------

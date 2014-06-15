@@ -3,7 +3,6 @@
 
 module Dang.ModuleSystem.QualName where
 
-import Dang.Utils.Location
 import Dang.Utils.Pretty
 
 import Control.Lens ( Lens, lens, view, Getter, to )
@@ -104,8 +103,6 @@ mangle name = fromString (foldr prefix (view qualSymbol name) modName)
 
 
 -- Names -----------------------------------------------------------------------
-
-type LName = Located Name
 
 data Name = Parsed String QualName
           | Generated QualName

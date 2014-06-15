@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Dang.TypeChecker.Types where
 
@@ -6,11 +7,13 @@ import Dang.ModuleSystem.QualName
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import Control.Monad (guard)
-import Data.Data ( Data )
-import Data.Maybe (fromMaybe)
-import Data.Typeable ( Typeable )
+import           Control.Lens ( ignored )
+import           Control.Monad (guard)
+import           Data.Data ( Data )
+import           Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
+import           Data.Typeable ( Typeable )
+import           GHC.Generics ( Generic )
 
 
 -- Types -----------------------------------------------------------------------
@@ -20,7 +23,7 @@ data Type
   | TCon Name
   | TVar TParam
   | TGen TParam
-    deriving (Eq,Show,Ord,Data,Typeable)
+    deriving (Eq,Show,Ord,Generic,Data,Typeable)
 
 instance Pretty Type where
   ppr (TApp l r) = optParens 10 (pp   l <+> ppPrec 10 r)
@@ -28,16 +31,16 @@ instance Pretty Type where
   ppr (TVar tp)  = pp tp
   ppr (TGen tp)  = pp tp
 
-instance FreeVars Type where
-  freeVars (TApp l r) = freeVars (l,r)
-  freeVars (TCon n)   = Set.singleton n
-  freeVars (TVar _)   = Set.empty
-  freeVars (TGen _)   = Set.empty
+instance Names    Type
+instance FreeVars Type
 
 data TParam = TParam { tpName  :: Maybe String
                      , tpIndex :: Int
                      , tpKind  :: Kind
-                     } deriving (Show,Eq,Ord,Data,Typeable)
+                     } deriving (Show,Eq,Ord,Generic,Data,Typeable)
+
+instance Names    TParam where names      = ignored
+instance FreeVars TParam where freeVars _ = Set.empty
 
 instance Pretty TParam where
   ppr tp = maybe iname text (tpName tp)

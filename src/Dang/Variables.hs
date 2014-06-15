@@ -1,102 +1,179 @@
-{-# LANGUAGE Trustworthy #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
 
-module Dang.Variables where
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
+
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+
+module Dang.Variables (
+    Names(..)
+  , FreeVars(..)
+  , BoundVars(..)
+
+  , Group(..)
+  , scc
+  ) where
 
 import Dang.ModuleSystem.QualName
-import Dang.Utils.Location
+import Dang.Utils.Location ( Located(..) )
 
-import Control.Lens ( view )
-import Data.Foldable ( foldMap )
+import Control.Applicative ( (<$>), (<*>) )
+import Control.Lens ( ignored, Traversal' )
+import Data.Foldable ( Foldable )
+import Data.Generics ( Data, Typeable )
 import Data.Graph (SCC(..))
-import Data.Graph.SCC (stronglyConnComp)
+import Data.Graph.SCC ( stronglyConnComp )
+import Data.Traversable ( Traversable )
+import GHC.Generics ( Rep, Generic, M1(..), K1(..), U1, (:*:)(..), (:+:)(..)
+                    , from )
+import GHC.Generics.Lens ( generic, _M1, _K1 )
 import qualified Data.Set as Set
+
+
+-- All Names -------------------------------------------------------------------
+
+-- | A traversal for all names.
+class Names a where
+  names :: Traversal' a Name
+
+  default names :: (GNames (Rep a), Generic a) => Traversal' a Name
+  names = generic . gnames
+
+instance Names Name where
+  names = id
+
+instance Names Int
+instance Names Char
+
+instance Names a => Names [a]
+instance Names a => Names (Maybe a)
+
+instance Names String where names = ignored
+
+instance Names a => Names (Located a) where
+  names f Located { .. } = Located locRange <$> names f locValue
+
+
+class GNames f where
+  gnames :: Traversal' (f a) Name
+
+instance GNames f => GNames (M1 i c f) where
+  gnames = _M1 . gnames
+
+instance Names c => GNames (K1 i c) where
+  gnames = _K1 . names
+
+instance GNames U1 where
+  gnames = ignored
+
+instance (GNames f, GNames g) => GNames (f :*: g) where
+  gnames t (f :*: g) = (:*:) <$> gnames t f <*> gnames t g
+
+instance (GNames f, GNames g) => GNames (f :+: g) where
+  gnames t (L1 f) = L1 <$> gnames t f
+  gnames t (R1 g) = R1 <$> gnames t g
 
 
 -- Free Variables --------------------------------------------------------------
 
-freeVarsFrom :: FreeVars a => Level -> a -> Set.Set Name
-freeVarsFrom l a =
-  Set.filter (\ n -> view (qualName . qualLevel) n == l) (freeVars a)
-
-freeExprVars, freeTypeVars, freeKindVars, freeSortVars
-  :: FreeVars a => a -> Set.Set Name
-freeExprVars  = freeVarsFrom Expr
-freeTypeVars  = freeVarsFrom (Type 0)
-freeKindVars  = freeVarsFrom (Type 1)
-freeSortVars  = freeVarsFrom (Type 2)
-
-
 class FreeVars a where
   freeVars :: a -> Set.Set Name
 
+  default freeVars :: (GFreeVars (Rep a), Generic a) => a -> Set.Set Name
+  freeVars a = gfreeVars (from a)
+
+instance FreeVars Name where
+  freeVars = Set.singleton
+
 instance FreeVars a => FreeVars (Located a) where
-  freeVars = foldMap freeVars
+  freeVars Located { .. } = freeVars locValue
 
-instance FreeVars a => FreeVars (Maybe a) where
-  freeVars = foldMap freeVars
+instance FreeVars a => FreeVars [a]
+instance FreeVars a => FreeVars (Maybe a)
+instance FreeVars a => FreeVars (Group a)
+instance (FreeVars a, FreeVars b) => FreeVars (a,b)
+instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c)
 
-instance FreeVars a => FreeVars [a] where
-  freeVars = foldMap freeVars
 
-instance FreeVars a => FreeVars (Set.Set a) where
-  freeVars = foldMap freeVars
+class GFreeVars f where
+  gfreeVars :: f a -> Set.Set Name
 
-instance (FreeVars a, FreeVars b) => FreeVars (a,b) where
-  freeVars (a,b) = freeVars a `Set.union` freeVars b
+instance GFreeVars f => GFreeVars (M1 i c f) where
+  gfreeVars (M1 f) = gfreeVars f
 
-instance (FreeVars a, FreeVars b, FreeVars c) => FreeVars (a,b,c) where
-  freeVars (a,b,c) = freeVars a `Set.union` freeVars b `Set.union` freeVars c
+instance FreeVars c => GFreeVars (K1 i c) where
+  gfreeVars (K1 f) = freeVars f
+
+instance GFreeVars U1 where
+  gfreeVars _ = Set.empty
+
+instance (GFreeVars f, GFreeVars g) => GFreeVars (f :*: g) where
+  gfreeVars (f :*: g) = gfreeVars f `Set.union` gfreeVars g
+
+instance (GFreeVars f, GFreeVars g) => GFreeVars (f :+: g) where
+  gfreeVars (L1 f) = gfreeVars f
+  gfreeVars (R1 g) = gfreeVars g
 
 
 -- Bound Variables -------------------------------------------------------------
 
-boundVarsFrom :: BoundVars a => Level -> a -> Set.Set Name
-boundVarsFrom l a =
-  Set.filter (\n -> view (qualName . qualLevel) n == l) (boundVars a)
-
-boundExprVars, boundTypeVars, boundKindVars, boundSortVars
-  :: BoundVars a => a -> Set.Set Name
-boundExprVars  = boundVarsFrom Expr
-boundTypeVars  = boundVarsFrom (Type 0)
-boundKindVars  = boundVarsFrom (Type 1)
-boundSortVars  = boundVarsFrom (Type 2)
-
 class BoundVars a where
   boundVars :: a -> Set.Set Name
 
+  default boundVars :: (GBoundVars (Rep a), Generic a) => a -> Set.Set Name
+  boundVars a = gboundVars (from a)
+
+instance BoundVars a => BoundVars [a]
+instance BoundVars a => BoundVars (Maybe a)
+instance BoundVars a => BoundVars (Group a)
+instance (BoundVars a, BoundVars b) => BoundVars (a,b)
+instance (BoundVars a, BoundVars b, BoundVars c) => BoundVars (a,b,c)
+
 instance BoundVars a => BoundVars (Located a) where
-  boundVars = foldMap boundVars
+  boundVars Located { .. } = boundVars locValue
 
-instance BoundVars a => BoundVars (Maybe a) where
-  boundVars = foldMap boundVars
 
-instance BoundVars a => BoundVars [a] where
-  boundVars = foldMap boundVars
+class GBoundVars f where
+  gboundVars :: f a -> Set.Set Name
 
-instance BoundVars a => BoundVars (Set.Set a) where
-  boundVars = foldMap boundVars
+instance GBoundVars f => GBoundVars (M1 i c f) where
+  gboundVars (M1 f) = gboundVars f
+
+instance BoundVars c => GBoundVars (K1 i c) where
+  gboundVars (K1 f) = boundVars f
+
+instance GBoundVars U1 where
+  gboundVars _ = Set.empty
+
+instance (GBoundVars f, GBoundVars g) => GBoundVars (f :*: g) where
+  gboundVars (f :*: g) = gboundVars f `Set.union` gboundVars g
+
+instance (GBoundVars f, GBoundVars g) => GBoundVars (f :+: g) where
+  gboundVars (L1 f) = gboundVars f
+  gboundVars (R1 g) = gboundVars g
 
 
 -- Strongly Connected Components -----------------------------------------------
 
 data Group a = NonRecursive a
              | Recursive [a]
-               deriving (Show,Eq,Ord)
-
-flattenGroup :: Group a -> [a]
-flattenGroup g = case g of
-  NonRecursive a -> [a]
-  Recursive as   -> as
+               deriving (Show,Eq,Ord,Functor,Foldable,Traversable
+                        ,Generic,Data,Typeable)
 
 toGroup :: SCC a -> Group a
 toGroup s = case s of
   AcyclicSCC a -> NonRecursive a
   CyclicSCC as -> Recursive as
 
-sccFreeNames :: (FreeVars a, BoundVars a) => [a] -> [Group a]
-sccFreeNames as = map toGroup (stronglyConnComp graph)
+scc :: (FreeVars a, BoundVars a) => [a] -> [Group a]
+scc as = map toGroup (stronglyConnComp graph)
   where
   graph = [ (a, n, Set.toList fvs) | a <- as
                                    , let fvs = freeVars a

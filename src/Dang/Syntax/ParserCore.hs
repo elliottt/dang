@@ -12,8 +12,10 @@ import Dang.Syntax.Lexeme ( Lexeme )
 import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Utils.Panic
+import Dang.Variables ( Names(..) )
 
 import Control.Applicative ( Applicative(..), Alternative )
+import Control.Lens ( over )
 import Control.Monad ( MonadPlus(mzero), unless )
 import Data.Generics ( Data(..), extT )
 import Data.List ( nub )
@@ -66,8 +68,8 @@ parseError l =
 
 -- Helpers ---------------------------------------------------------------------
 
-incLevels :: Data a => a -> a
-incLevels  = gmapT incLevels `extT` incLevel
+incLevels :: Names a => a -> a
+incLevels  = over (names . qualName . qualLevel) incLevel
   where
   incLevel Expr     = Type 0
   incLevel (Type i) = Type (i + 1)

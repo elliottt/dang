@@ -3,6 +3,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Dang.Utils.Location where
 
@@ -17,6 +19,7 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(..))
 import Data.Traversable ( Traversable )
 import Data.Typeable (Typeable)
+import GHC.Generics ( Generic )
 
 
 -- Located Things --------------------------------------------------------------
@@ -49,7 +52,7 @@ locEnd a = srcEnd (getLoc a)
 data Located a = Located
   { locRange :: !SrcLoc
   , locValue ::  a
-  } deriving (Show,Functor,Ord,Eq,Data,Typeable,Foldable,Traversable)
+  } deriving (Show,Functor,Ord,Eq,Generic,Data,Typeable,Foldable,Traversable)
 
 instance HasLocation (Located a) where
   {-# INLINE getLoc #-}
@@ -96,7 +99,7 @@ ppSource src = text (fromMaybe "<unknown>" src)
 
 -- | A range in the program source.
 data SrcLoc = NoLoc | SrcLoc !Range Source
-    deriving (Show,Ord,Eq,Data,Typeable)
+    deriving (Show,Ord,Eq,Generic,Data,Typeable)
 
 instance HasLocation SrcLoc where
   {-# INLINE getLoc #-}
