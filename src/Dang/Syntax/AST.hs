@@ -14,7 +14,7 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import           Control.Applicative ( pure, (<$>)  )
+import           Control.Applicative ( pure, (<$>) )
 import           Control.Lens ( ignored )
 import           Data.Data ( Data )
 import           Data.Foldable ( Foldable )
@@ -210,7 +210,6 @@ instance Names Expr
 instance Names Schema
 instance Names Type
 instance Names a => Names (Labelled a)
-
 
 
 -- Variable Binders-------------------------------------------------------------
