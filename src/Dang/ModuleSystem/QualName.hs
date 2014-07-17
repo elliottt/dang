@@ -5,7 +5,7 @@ module Dang.ModuleSystem.QualName where
 
 import Dang.Utils.Pretty
 
-import Control.Lens ( Lens, lens, view, Getter, to )
+import Control.Lens ( Lens', lens, view, Prism', prism, _2, Traversal', preview )
 import Data.Char (isSpace)
 import Data.Data ( Data )
 import Data.Maybe ( fromMaybe )
@@ -62,7 +62,7 @@ instance Pretty QualName where
 
 
 -- | The level from a qualified name.
-qualLevel :: Lens QualName QualName Level Level
+qualLevel :: Lens' QualName Level
 qualLevel  = lens getter setter
   where
   getter (Param l _)  = l
@@ -72,7 +72,7 @@ qualLevel  = lens getter setter
   setter (Qual _ ns n) l = Qual l ns n
 
 -- | Get the name part of the qualified name.
-qualSymbol :: Lens QualName QualName String String
+qualSymbol :: Lens' QualName String
 qualSymbol  = lens getter setter
   where
   getter (Param _ n)  = n
@@ -81,18 +81,31 @@ qualSymbol  = lens getter setter
   setter (Param l _)   n = Param l n
   setter (Qual l ns _) n = Qual l ns n
 
--- | Get the module name associated with a name.
-qualModule :: Getter QualName (Maybe ModName)
-qualModule  = to getter
+_qual :: Prism' QualName (Level,ModName,String)
+_qual  = prism mk prj
   where
-  getter (Qual _ ns _) = Just ns
-  getter (Param _ _)   = Nothing
+  mk (l,ns,n) = Qual l ns n
+
+  prj (Qual l ns n) = Right (l,ns,n)
+  prj qn            = Left qn
+
+_param :: Prism' QualName (Level,String)
+_param  = prism mk prj
+  where
+  mk (l,n)        = Param l n
+
+  prj (Param l n) = Right (l,n)
+  prj qn          = Left qn
+
+-- | Get the module name associated with a name.
+qualModule :: Traversal' QualName ModName
+qualModule  = _qual . _2
 
 -- | Mangle a qualified name into one that is suitable for code generation.
 mangle :: IsString string => QualName -> string
 mangle name = fromString (foldr prefix (view qualSymbol name) modName)
   where
-  modName         = fromMaybe [] (view qualModule name)
+  modName         = fromMaybe [] (preview qualModule name)
   prefix pfx rest = escape pfx ++ "_" ++ rest
   escape          = concatMap $ \c ->
     case c of
@@ -114,11 +127,11 @@ instance Pretty Name where
   ppr name = case name of
     Parsed n qn  -> do printQual <- getPrintQual
                        if printQual
-                          then text n
-                          else ppr qn
+                          then ppr qn
+                          else text n
     Generated qn -> ppr qn
 
-qualName :: Lens Name Name QualName QualName
+qualName :: Lens' Name QualName
 qualName  = lens getter setter
   where
   getter (Parsed _ qn)  = qn

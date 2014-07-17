@@ -40,7 +40,7 @@ module Dang.Monad (
   ) where
 
 import Dang.Options ( Options(..), DebugOpts(..), parseOptions )
-import Dang.Utils.Location ( SrcLoc(NoLoc), ppLoc )
+import Dang.Utils.Location ( HasLocation(..), SrcLoc(NoLoc) )
 import Dang.Utils.Pretty hiding (empty)
 
 import Control.Applicative ( Applicative(..), Alternative(..), (<$>) )
@@ -130,10 +130,10 @@ askLoc  =
      io (readIORef (roLoc ro))
 
 -- | Run a computation with a different location.
-withLoc :: BaseM m Dang => SrcLoc -> m a -> m a
+withLoc :: (HasLocation loc, BaseM m Dang) => loc -> m a -> m a
 withLoc loc m =
   do ro   <- askRO
-     loc' <- io (atomicModifyIORef' (roLoc ro) (\loc' -> (loc,loc')))
+     loc' <- io (atomicModifyIORef' (roLoc ro) (\loc' -> (getLoc loc,loc')))
      a    <- m
      io (modifyIORef' (roLoc ro) (const loc'))
      return a
@@ -239,7 +239,7 @@ collectMessages m =
 data Error = Error SrcLoc PPDoc
 
 instance Pretty Error where
-  ppr (Error loc msg) = hang (text "[error]" <+> ppLoc loc)
+  ppr (Error loc msg) = hang (text "[error]" <+> pp loc)
                            2 (msg $$ text "")
 
 -- | Record an error with the current source location.
@@ -263,7 +263,7 @@ putErrs errs =
 data Warning = Warning SrcLoc PPDoc
 
 instance Pretty Warning where
-  ppr (Warning loc msg) = hang (text "[warning]" <+> ppLoc loc)
+  ppr (Warning loc msg) = hang (text "[warning]" <+> pp loc)
                              2 (msg $$ text "")
 
 -- | Add a warning with no location information.

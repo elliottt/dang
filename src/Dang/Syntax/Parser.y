@@ -12,7 +12,7 @@ import Dang.ModuleSystem.Types
 import Dang.Syntax.AST
 import Dang.Syntax.Lexeme
 import Dang.Syntax.ParserCore
-import Dang.Utils.Location (Located(..),unLoc,getLoc,at,ppLoc,extendLoc)
+import Dang.Utils.Location (Located(..),unLoc,getLoc,at,extendLoc)
 import Dang.Utils.Pretty
 
 import Data.Foldable ( foldMap )
@@ -187,7 +187,7 @@ open_symbol :: { Located OpenSymbol }
 
 prim_type :: { Located PrimType }
   : 'primitive' cident ':' kind
-    { PrimType { primTypeName = mkParam (Type 0) (unLoc $2)
+    { PrimType { primTypeName = mkName (Type 0) [] (unLoc $2)
                , primTypeKind = $4
                } `at` mconcat [$1, $3, getLoc $4] }
 
@@ -200,7 +200,7 @@ kind :: { Kind }
 
 signature :: { Located Signature }
   : sep1(',', ident) ':' type_schema
-    { Signature { sigNames  = fmap (fmap (mkParam Expr)) $1
+    { Signature { sigNames  = fmap (fmap (mkName Expr [])) $1
                 , sigSchema = $3 } `at` mconcat [ getLoc $1
                                                 , $2
                                                 , getLoc $3 ] }
@@ -225,7 +225,7 @@ app_type :: { Type }
 
 atype :: { Type }
   : ident
-    { TLoc (fmap (TVar . mkParam (Type 0)) $1) }
+    { TLoc (fmap (TVar . mkName (Type 0) []) $1) }
 
   | qual_cident
     { TLoc (fmap (TCon . mkTyCon) $1) }
@@ -242,7 +242,7 @@ row :: { Type }
 
 ltype :: { Labelled Type }
   : ident ':' type
-    { Labelled { labName  = fmap (mkParam (Type 0)) $1
+    { Labelled { labName  = fmap (mkName (Type 0) []) $1
                , labValue = $3 } }
 
 row_ext :: { Type }
@@ -254,13 +254,13 @@ row_ext :: { Type }
 
 prim_term :: { Located PrimTerm }
   : 'primitive' ident ':' type_schema
-    { PrimTerm { primTermName = mkParam Expr (unLoc $2)
+    { PrimTerm { primTermName = mkName Expr [] (unLoc $2)
                , primTermType = $4
                } `at` mconcat [$1,$3,getLoc $4] }
 
 bind :: { Located Bind }
   : ident list(apat) '=' expr
-    { Bind { bindName = mkParam Expr `fmap` $1
+    { Bind { bindName = mkName Expr [] `fmap` $1
            , bindType = Nothing
            , bindBody = matchPats $2 (MSuccess $4)
            } `at` mappend (getLoc $1) (getLoc $2) }
@@ -294,14 +294,14 @@ aexpr :: { Expr }
 
 evar :: { Located Expr }
   : ident
-    { fmap (Var . mkParam Expr) $1 }
+    { fmap (Var . mkName Expr []) $1 }
 
   | sep_body('.',cident) opt(evar_tail)
     { case $2 of
-        Just i  -> Var (mkName Expr (reverse (map unLoc $1),unLoc i))
+        Just i  -> Var (mkName Expr (reverse (map unLoc $1)) (unLoc i))
                      `at` mconcat [getLoc $1, getLoc i]
         Nothing -> let (con:pfx) = $1
-                    in Con (mkName Expr (reverse (map unLoc pfx),unLoc con))
+                    in Con (mkName Expr (reverse (map unLoc pfx)) (unLoc con))
                          `at` getLoc $1 }
 
 evar_tail :: { Located String }
@@ -324,15 +324,16 @@ literal :: { Located Literal }
 
 pat :: { Pat }
   : qual_cident list(apat)
-    { PLoc (PCon (mkName Expr (unLoc $1)) $2
-        `at` mconcat [getLoc $1, getLoc $2]) }
+    { let (ns,n) = unLoc $1
+       in PLoc (PCon (mkName Expr ns n) $2
+                `at` mconcat [getLoc $1, getLoc $2]) }
 
   | apat
     { $1 }
 
 apat :: { Pat }
   : ident
-    { PLoc (fmap (PVar . mkParam Expr) $1) }
+    { PLoc (fmap (PVar . mkName Expr []) $1) }
 
   | '_'
     { PLoc (PWildcard `at` $1) }
@@ -349,7 +350,7 @@ data_decl :: { Located DataDecl }
 
 constr_group :: { (Name, Located ConstrGroup) }
   : cident list(atype) mb_constrs
-    { ( mkName (Type 0) ([], unLoc $1)
+    { ( mkTyCon ([],unLoc $1)
       , ConstrGroup { groupResTys  = $2
                     , groupConstrs = $3
                     } `at` mconcat [getLoc $1,getLoc $3]) }

@@ -92,15 +92,14 @@ mkTuple tys = case tys of
 mkTRow :: [Labelled Type] -> Maybe Type -> Type
 mkTRow ls r = foldr TRowExt (fromMaybe TEmptyRow r) ls
 
-mkName :: Level -> (ModName,String) -> Name
-mkName lev ([],n) = mkParam lev    n
-mkName lev (ns,n) = mkQual  lev ns n
+mkName :: Level -> ModName -> String -> Name
+mkName lev ns n = Parsed n (Qual lev ns n)
 
 mkTyCon :: (ModName,String) -> Name
-mkTyCon  = mkName (Type 0)
+mkTyCon (mn,n) = mkName (Type 0) mn n
 
 mkDataCon :: (ModName,String) -> Name
-mkDataCon  = mkName Expr
+mkDataCon (mn,n) = mkName Expr mn n
 
 mkApp :: [Expr] -> Expr
 mkApp [e]    = e

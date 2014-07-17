@@ -58,12 +58,12 @@ data Open = Open { openMod     :: Located ModName
                  , openAs      :: Maybe (Located ModName)
                  , openHiding  :: Bool
                  , openSymbols :: [Located OpenSymbol]
-                 } deriving (Show,Generic,Data,Typeable)
+                 } deriving (Show,Generic,Data,Typeable,Eq,Ord)
 
 -- | Symbols that can be imported.
 data OpenSymbol = OpenTerm String
                 | OpenType String [String]
-                  deriving (Show,Generic,Data,Typeable)
+                  deriving (Show,Generic,Data,Typeable,Eq,Ord)
 
 -- | Function binding.
 data Bind = Bind { bindName   :: Located Name

@@ -90,12 +90,8 @@ options  =
     "Enable logging for PASS"
   , Option "c" [] (NoArg setCompileOnly)
     "Compile only"
-  , Option "" ["Plevels"] (NoArg setPrintLevels)
-    "Print name levels"
-  , Option "" ["Pno-layout"] (NoArg setPrintNoLayout)
-    "Print with explicit curly-braces"
-  , Option "" ["Pqual-names"] (NoArg setPrintQual)
-    "Print resolved names only"
+  , Option "P" [] (ReqArg configPPEnv "OPT")
+    "Enable options to the pretty-printer"
   ] ++ debugOpts
 
 handleHelp :: Option
@@ -116,6 +112,12 @@ addLogPass str opts = return opts { optLogPasses = optLogPasses opts ++ go str }
 
 setCompileOnly :: Option
 setCompileOnly opts = return opts { optCompileOnly = True }
+
+configPPEnv :: String -> Option
+configPPEnv "levels"     o = setPrintLevels o
+configPPEnv "no-layout"  o = setPrintNoLayout o
+configPPEnv "qual-names" o = setPrintQual o
+configPPEnv opt          _ = fail ("Invald pretty-printer option: " ++ opt)
 
 setPrintLevels :: Option
 setPrintLevels opts =
