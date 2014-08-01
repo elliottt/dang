@@ -78,7 +78,6 @@ withNames names m = Scope $
 extNames :: Names -> Scope a -> Scope a
 extNames names m =
   do names' <- freshen names
-     logInfo (text (show names'))
      Scope $ do ro <- ask
                 local ro { roNames = names' `shadowing` roNames ro } (unScope m)
 
