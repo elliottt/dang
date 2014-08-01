@@ -65,12 +65,18 @@ withModName ns m = Scope $
 getModName :: Scope ModName
 getModName  = Scope (roModName `fmap` ask)
 
+-- | Reset the naming environment.
+withNames :: Names -> Scope a -> Scope a
+withNames names m = Scope $
+  do ro <- ask
+     local ro { roNames = names } (unScope m)
+
 -- | Introduce a group of names in a scope, shadowing existing names that would
 -- have overlapped.
 --
 -- XXX this needs to emit warnings when shadowing occurs.
-withNames :: Names -> Scope a -> Scope a
-withNames names m =
+extNames :: Names -> Scope a -> Scope a
+extNames names m =
   do names' <- freshen names
      logInfo (text (show names'))
      Scope $ do ro <- ask
@@ -172,8 +178,12 @@ qualify ns Names { .. } =
 --
 -- > fromDef [| f |] [| A.f |]
 --
-fromDef :: QualName -> Located QualName -> Names
-fromDef n ln = Names { nDefs = Map.singleton n [FromBind ln] }
+fromDef :: ModName -> Located Name -> Names
+fromDef ns ln =
+  Names { nDefs = Map.singleton sourceName [FromBind (realName `at` ln)] }
+  where
+  sourceName = view qualName (unLoc ln)
+  realName   = Qual (view qualLevel sourceName) ns (view qualSymbol sourceName)
 
 -- | Generate a naming environment from a parameter.  From the declaration
 --
@@ -256,6 +266,7 @@ scPass  = gmapM scPass
    `extM` scLocalDecls
    `extM` scBind
    `extM` scMatch
+   `extM` scExpr
    `extM` scName
 
 
@@ -263,7 +274,6 @@ scPass  = gmapM scPass
 scModule :: Module -> Scope Module
 scModule m = withModName (unLoc (modName m)) $
   do names <- fullNames (modNames m)
-     -- XXX import the environment described by the Open declarations
      withNames names (scPass m)
 
 
@@ -303,7 +313,7 @@ scLocalDecls :: LocalDecls -> Scope LocalDecls
 scLocalDecls LocalDecls { .. } =
   do ns     <- getModName
      lNames <- fullNames (foldMap (declNames ns) ldLocals)
-     withNames lNames $
+     extNames lNames $
        do ldLocals <- scPass ldLocals
           ldDecls <- scPass ldDecls
           return LocalDecls { .. }
@@ -316,7 +326,7 @@ scMatch :: Match -> Scope Match
 scMatch (MPat p m) =
   do loc   <- askLoc
      names <- fullNames (patNames loc p)
-     withNames names $
+     extNames names $
        do p'    <- scPass p
           m'    <- scMatch m
           return (MPat p' m')
@@ -324,13 +334,28 @@ scMatch (MPat p m) =
 scMatch (MGuard p e m) =
   do loc   <- askLoc
      names <- fullNames (patNames loc p)
-     withNames names $
+     extNames names $
        do p'    <- scPass p
           e'    <- scPass e
           m'    <- scMatch m
           return (MGuard p' e' m')
 
 scMatch m = gmapM scPass m
+
+
+-- | The only interesting case for name introduction in expressions is Let, as
+-- it can define new names, as well as import other modules.
+scExpr :: Expr -> Scope Expr
+
+scExpr (Let ds e) =
+  do ns    <- getModName
+     names <- fullNames (foldMap (declNames ns) ds)
+     extNames names $
+       do ds' <- mapM scPass ds
+          e'  <- scPass e
+          return (Let ds' e')
+
+scExpr e = gmapM scPass e
 
 
 -- | Resolve names.
@@ -371,42 +396,39 @@ modNames m = PartialNames { pNames = pNames `mappend` qualify namespace pNames
 -- | Generates unqualified to qualified mappings for all names in the TopDecl.
 topDeclNames :: ModName -> TopDecl -> PartialNames
 topDeclNames ns (TDDecl d)      = declNames ns d
-topDeclNames ns (TDData d)      = dataNames ns (unLoc d)
-topDeclNames ns (TDPrimType pt) = primTypeNames ns pt
-topDeclNames ns (TDPrimTerm pt) = primTermNames ns pt
+topDeclNames ns (TDData d)      = mempty { pNames = dataNames     ns d  }
+topDeclNames ns (TDPrimType pt) = mempty { pNames = primTypeNames ns pt }
+topDeclNames ns (TDPrimTerm pt) = mempty { pNames = primTermNames ns pt }
 topDeclNames ns (TDLocal ld)    = localNames ns (unLoc ld)
 topDeclNames ns (TDExport e)    = foldMap (topDeclNames ns) (exValue (unLoc e))
 
 declNames :: ModName -> Decl -> PartialNames
-declNames ns (DBind b) = bindNames ns (unLoc b)
+declNames ns (DBind b) = mempty { pNames = bindNames ns (unLoc b) }
 declNames _  (DSig _)  = mempty
 declNames _  (DOpen o) = mempty { pOpens = Set.singleton o }
 
-bindNames :: ModName -> Bind -> PartialNames
-bindNames ns Bind { .. } = mempty { pNames = fromDef qn (resolved `at` loc) }
-  where
-  loc      = getLoc bindName
-  qn       = view qualName (unLoc bindName)
-  resolved = Qual Expr ns (view qualSymbol qn)
+bindNames :: ModName -> Bind -> Names
+bindNames ns Bind { .. } = fromDef ns bindName
 
-dataNames :: ModName -> DataDecl -> PartialNames
-dataNames ns d = mempty
 
-primTypeNames :: ModName -> Located PrimType -> PartialNames
-primTypeNames ns lpt =
-  mempty { pNames = fromDef qname (lpt {locValue = resolved }) }
+dataNames :: ModName -> Located DataDecl -> Names
+dataNames ns ld = tyName `mappend` groupNames
   where
-  qname    = view qualName (primTypeName (unLoc lpt))
-  sym      = view qualSymbol qname
-  resolved = Qual (Type 0) ns sym
+  tyName     = fromDef ns (dataName `fmap` ld)
+  groupNames = foldMap (constrGroupNames ns) (dataGroups (unLoc ld))
 
-primTermNames :: ModName -> Located PrimTerm -> PartialNames
-primTermNames ns lpt =
-  mempty { pNames = fromDef qname (lpt { locValue = resolved }) }
-  where
-  qname    = view qualName (primTermName (unLoc lpt))
-  sym      = view qualSymbol qname
-  resolved = Qual Expr ns sym
+constrGroupNames :: ModName -> Located ConstrGroup -> Names
+constrGroupNames ns lcg = foldMap (constrNames ns) (groupConstrs (unLoc lcg))
+
+constrNames :: ModName -> Located Constr -> Names
+constrNames ns lc = fromDef ns (constrName `fmap` lc)
+
+
+primTypeNames :: ModName -> Located PrimType -> Names
+primTypeNames ns lpt = fromDef ns (primTypeName `fmap` lpt)
+
+primTermNames :: ModName -> Located PrimTerm -> Names
+primTermNames ns lpt = fromDef ns (primTermName `fmap` lpt)
 
 -- | Gather the names that will be exported by the LocalDecls node.
 localNames :: ModName -> LocalDecls -> PartialNames

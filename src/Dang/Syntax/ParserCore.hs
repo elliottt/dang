@@ -106,7 +106,8 @@ mkApp [e]    = e
 mkApp (f:xs) = ELoc (App f xs `at` mconcat [getLoc f, getLoc xs])
 mkApp []     = pPanic (text "Impossible happened: non-empty list")
 
-mkData :: SrcLoc -> [(Name, Located ConstrGroup)] -> Parser (Located DataDecl)
+mkData :: SrcLoc -> [(Name, Located ConstrGroup)]
+       -> Parser (Located DataDecl)
 mkData src gs =
   do n     <- checkNames
      arity <- checkArity

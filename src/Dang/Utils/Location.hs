@@ -69,15 +69,19 @@ noLoc a = Located
   }
 
 -- | Attach location information to a value.
-at :: a -> SrcLoc -> Located a
+at :: HasLocation loc => a -> loc -> Located a
 at a loc = Located
-  { locRange = loc
+  { locRange = getLoc loc
   , locValue = a
   }
 
 -- Drop the location information from a Pretty-printend thing.
 instance Pretty a => Pretty (Located a) where
   ppr loc = ppr (unLoc loc)
+
+ppWithLoc :: Pretty a => Located a -> PPDoc
+ppWithLoc Located { .. } = pp locValue <+> text "at" <+> pp locRange
+
 
 -- | Strip off location information.
 unLoc :: Located a -> a
@@ -117,7 +121,7 @@ instance Monoid SrcLoc where
   mappend l              NoLoc          = l
 
 instance Pretty SrcLoc where
-  ppr (SrcLoc r mb) = maybe empty (\src -> text src <> char ':') mb <+> pp r
+  ppr (SrcLoc r mb) = ppSource mb <> char ':' <> pp r
   ppr NoLoc = empty
 
 srcRange :: SrcLoc -> Range
@@ -136,11 +140,6 @@ srcEnd :: SrcLoc -> Position
 srcEnd loc = case loc of
   SrcLoc r _ -> rangeStart r
   NoLoc      -> zeroPosition
-
-ppLoc :: SrcLoc -> PPDoc
-ppLoc loc = case loc of
-  NoLoc      -> empty
-  SrcLoc r s -> ppSource s <> char ':' <> ppr r
 
 
 -- Ranges ----------------------------------------------------------------------

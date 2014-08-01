@@ -350,7 +350,8 @@ instance Pretty Decl where
     DOpen o -> ppr o
 
 instance Pretty DataDecl where
-  ppr d = pp Kdata <+> vcat (map (ppConstrGroup (dataName d)) (dataGroups d))
+  ppr DataDecl { .. } = pp Kdata
+                    <+> vcat (map (ppConstrGroup dataName) dataGroups)
 
 ppConstrGroup :: Name -> Located ConstrGroup -> PPDoc
 ppConstrGroup n lcg =
