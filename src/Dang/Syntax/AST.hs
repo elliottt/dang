@@ -14,14 +14,10 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import           Control.Applicative ( pure, (<$>) )
 import           Control.Lens ( ignored )
 import           Data.Data ( Data )
-import           Data.Foldable ( Foldable )
 import           Data.List ( intersperse )
-import           Data.Monoid ( mempty, mappend )
 import qualified Data.Set as Set
-import           Data.Traversable ( Traversable )
 import           Data.Typeable ( Typeable )
 import           GHC.Generics ( Generic )
 

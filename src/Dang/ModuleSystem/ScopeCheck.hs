@@ -13,14 +13,11 @@ import Dang.Utils.Location
 import Dang.Utils.Panic ( panic )
 import Dang.Utils.Pretty
 
-import           Control.Applicative ( Applicative )
 import           Control.Lens as Lens ( view, set, traverseOf )
-import           Data.Foldable ( foldMap )
 import           Data.Generics ( Data, gmapM, extM, ext1M )
 import qualified Data.Map.Strict as Map
 import           Data.Monoid ( Monoid(..) )
 import qualified Data.Set as Set
-import           Data.Traversable ( traverse )
 import           MonadLib
                      ( BaseM(..), runM, Id, ReaderT, ask, local, StateT, get
                      , set )
@@ -36,7 +33,8 @@ scPanic  = panic "Dang.ModuleSystem.ScopeCheck"
 
 -- Scope Checking Monad --------------------------------------------------------
 
-data RW = RW { rwNext :: Map.Map String Int
+data RW = RW { rwNext   :: Map.Map String Int
+             , rwIfaces :: Map.Map ModName Iface
              }
 
 data RO = RO { roNames   :: Names
@@ -52,7 +50,7 @@ instance BaseM Scope Dang where
 runScope :: Scope a -> Dang a
 runScope m =
   do (a,_) <- runM (unScope m) RO { roNames = mempty, roModName = [] }
-                               RW { rwNext  = mempty }
+                               RW { rwNext  = mempty, rwIfaces  = Map.empty }
      return a
 
 
@@ -199,17 +197,12 @@ fromParam loc n = Names { nDefs = Map.singleton qn [FromParam (p `at` loc)] }
   qn = view qualName n
   p  = Param (view qualLevel qn) (view qualSymbol qn)
 
--- | Generate a naming environment from an import declaration.  From the
--- renaming import of the module A that defines f:
---
--- > open A as A'
---
--- The enviroment would be generated like this:
---
--- > fromImport [| A'.f |] [| open A as A' |] [| A.f |]
---
-fromImport :: QualName -> Located Open -> QualName -> Names
-fromImport n lo qn = Names { nDefs = Map.singleton n [FromIface lo qn] }
+-- | Generate a naming environment from an import declaration.
+fromImport :: Located Open -> Name -> Names
+fromImport lo n = Names { nDefs = Map.singleton sym [FromIface lo qn] }
+  where
+  qn  = view qualName n
+  sym = view qualSymbol qn
 
 
 -- | Pick fresh variations of the names present in the range of the name map.
@@ -364,13 +357,60 @@ scName n =
      return (Lens.set qualName qn' n)
 
 
+-- Interface Files -------------------------------------------------------------
+
+-- | Load, and cache an interface file.
+loadIface :: ModName -> Scope Iface
+loadIface name = Scope $
+  do rw <- get
+     case Map.lookup name (rwIfaces rw) of
+       Just iface -> return iface
+       Nothing    -> do iface <- inBase (readIface name)
+                        MonadLib.set rw { rwIfaces = Map.insert name iface (rwIfaces rw) }
+                        return iface
+
+openNames :: Located Open -> Scope Names
+openNames lo =
+  do iface <- loadIface (unLoc openMod)
+     return (Map.filterWithKey adjust (ifaceNames iface))
+  where
+  Open { .. } = unLoc lo
+
+  syms = map unLoc openSymbols
+
+  -- This predicate handles four cases:
+  --
+  --  1. open Foo hiding ()   - import everything
+  --  2. open Foo        ()   - import nothing
+  --  3. open Foo hiding (..) - don't import (..)
+  --  4. open Foo        (..) - only import (..)
+  --
+  adjust | null syms  = \ _  _ -> openHiding
+         | openHiding = \ qn _ -> view qualSymbol qn `notElem` syms
+         | otherwise  = \ qn _ -> view qualSymbol qn `elem`    syms
+
+  rename | Just ln <- openAs = qualify (unLoc ln)
+         | otherwise         = id
+
+
+-- | All names defined by an interface.
+ifaceNames :: Located Open -> Iface -> Names
+ifaceNames lo Iface { .. } = foldMap (ifaceDefNames lo) ifaceDefs
+
+ifaceDefNames :: Located Open -> IfaceDef -> Names
+ifaceDefNames lo (IfaceDefBind b) = ifaceBindNames lo b
+
+ifaceBindNames :: Located Open -> IfaceBind -> Names
+ifaceBindNames lo IfaceBind { .. } = fromImport lo ibName
+
+
 -- Name Gathering --------------------------------------------------------------
 
 -- | Produce the final name map, including any opened modules.
 fullNames :: PartialNames -> Scope Names
 fullNames (PartialNames ns os) =
-  do -- XXX actually import the interfaces here
-     return ns
+  do namess <- mapM openNames (Set.toList os)
+     return (mconcat (ns:namess))
 
 -- | Names and opens defined by a block of declarations.
 data PartialNames = PartialNames { pNames :: Names

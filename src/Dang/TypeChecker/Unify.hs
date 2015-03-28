@@ -8,11 +8,9 @@ module Dang.TypeChecker.Unify where
 import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 
-import           Data.Foldable ( foldMap )
 import qualified Data.Map as Map
 import           Data.Monoid ( Monoid(..) )
 import qualified Data.Set as Set
-import qualified Data.Traversable as T
 import           MonadLib
                     ( runM, Id, StateT, get, set, ReaderT, ask, ExceptionT
                     , raise )
@@ -210,11 +208,11 @@ class Types a where
 
 instance Types a => Types [a] where
   typeVars u = foldMap (typeVars u)
-  zonkVars b = T.mapM (zonkVars b)
+  zonkVars b = mapM (zonkVars b)
 
 instance Types a => Types (Maybe a) where
   typeVars u = foldMap (typeVars u)
-  zonkVars b = T.mapM (zonkVars b)
+  zonkVars b = mapM (zonkVars b)
 
 
 instance Types Type where

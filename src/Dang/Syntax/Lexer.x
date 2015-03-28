@@ -165,7 +165,7 @@ utf8Encode = map fromIntegral . go . ord
 
 newtype Lexer a = Lexer
   { unLexer :: StateT LexerState Id a
-  } deriving (Functor,Monad)
+  } deriving (Functor,Applicative,Monad)
 
 instance StateM Lexer LexerState where
   get = Lexer   get

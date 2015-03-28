@@ -14,12 +14,11 @@ import Dang.Utils.Pretty
 import Dang.Utils.Panic
 import Dang.Variables ( Names(..) )
 
-import Control.Applicative ( Applicative(..), Alternative )
+import Control.Applicative ( Alternative(..) )
 import Control.Lens ( over )
 import Control.Monad ( MonadPlus(mzero), unless )
 import Data.List ( nub )
 import Data.Maybe ( fromMaybe )
-import Data.Monoid ( mconcat )
 import MonadLib ( BaseM(..), runM, StateT, get, set )
 
 

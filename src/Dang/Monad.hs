@@ -43,7 +43,7 @@ import Dang.Options ( Options(..), DebugOpts(..), parseOptions )
 import Dang.Utils.Location ( HasLocation(..), SrcLoc(NoLoc) )
 import Dang.Utils.Pretty hiding (empty)
 
-import Control.Applicative ( Applicative(..), Alternative(..), (<$>) )
+import Control.Applicative ( Alternative(..) )
 import Control.Monad ( MonadPlus(..), when, unless )
 import Control.Monad.Fix (MonadFix)
 import Data.IORef

@@ -24,13 +24,10 @@ module Dang.Variables (
 import Dang.ModuleSystem.QualName
 import Dang.Utils.Location ( Located(..) )
 
-import Control.Applicative ( (<$>), (<*>) )
 import Control.Lens ( ignored, Traversal' )
-import Data.Foldable ( Foldable )
 import Data.Generics ( Data, Typeable )
 import Data.Graph (SCC(..))
 import Data.Graph.SCC ( stronglyConnComp )
-import Data.Traversable ( Traversable )
 import GHC.Generics ( Rep, Generic, M1(..), K1(..), U1, (:*:)(..), (:+:)(..)
                     , from )
 import GHC.Generics.Lens ( generic, _M1, _K1 )

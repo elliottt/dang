@@ -16,7 +16,6 @@ module Dang.Utils.Pretty (
 
 import qualified Dang.Colors as C
 
-import           Control.Applicative ( Applicative )
 import           Control.Monad ( liftM2 )
 import           Data.Int (Int8,Int16,Int32,Int64)
 import           Data.List (intersperse)

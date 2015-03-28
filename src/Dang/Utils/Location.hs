@@ -12,12 +12,9 @@ import Dang.Utils.Pretty
 
 import Control.Monad (mplus)
 import Data.Data (Data)
-import Data.Foldable ( Foldable, foldMap )
 import Data.Function (on)
 import Data.List (foldl')
 import Data.Maybe (fromMaybe)
-import Data.Monoid (Monoid(..))
-import Data.Traversable ( Traversable )
 import Data.Typeable (Typeable)
 import GHC.Generics ( Generic )
 

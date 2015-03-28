@@ -12,11 +12,8 @@ import Dang.Utils.Location
 import Dang.Utils.Pretty
 import Dang.Variables
 
-import Control.Applicative ( (<$>) )
-import Data.Foldable ( Foldable )
 import Data.Generics ( Data, Typeable )
 import Data.Serialize ( Serialize )
-import Data.Traversable ( Traversable )
 import GHC.Generics ( Generic )
 
 

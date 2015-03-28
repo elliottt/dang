@@ -11,7 +11,6 @@ import Dang.Utils.Pretty
 import           Control.Applicative ( (<|>) )
 import           Control.Monad ( mzero )
 import qualified Data.ByteString as B
-import           Data.Monoid ( Monoid(..) )
 import           Data.Serialize ( Serialize(..), decode, encode )
 import           GHC.Generics ( Generic )
 import qualified Data.Map as Map
