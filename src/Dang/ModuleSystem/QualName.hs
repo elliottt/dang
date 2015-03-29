@@ -27,7 +27,7 @@ data Level = Expr | Type Int
 
 instance Serialize Level
 
-instance Pretty Level i where
+instance Pretty Level where
   ppr l =
     do cond <- getPrintLevels
        if cond then case l of
@@ -44,7 +44,7 @@ type ModName = [String]
 moduleIface :: ModName -> FilePath
 moduleIface m = joinPath m <.> "di"
 
-ppModName :: ModName -> PPDoc i
+ppModName :: ModName -> PPDoc
 ppModName mn = hcat (punctuate (char '.') (map text mn))
 
 
@@ -58,7 +58,7 @@ data QualName = Param Level String
 
 instance Serialize QualName
 
-instance Pretty QualName i where
+instance Pretty QualName where
   ppr (Param l n)   = text n <> pp l
   ppr (Qual l ns n) = dots (map text (ns ++ [n])) <> pp l
 
@@ -125,7 +125,7 @@ data Name = Parsed String QualName
 
 instance Serialize Name
 
-instance Pretty Name i where
+instance Pretty Name where
   ppr name = case name of
     Parsed n qn  -> do printQual <- getPrintQual
                        if printQual

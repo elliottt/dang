@@ -9,7 +9,6 @@
 
 module Dang.ModuleSystem.Types where
 
-import Dang.Syntax.Ann
 import Dang.Syntax.Lexeme
 import Dang.Utils.Location
 import Dang.Utils.Pretty
@@ -27,7 +26,7 @@ data Export = Public | Private
 
 instance Serialize Export
 
-instance Pretty Export SynAnn where
+instance Pretty Export where
   ppr Public  = pp Kpublic
   ppr Private = pp Kprivate
 
@@ -49,5 +48,5 @@ instance FreeVars a => FreeVars (Exported a) where
 instance BoundVars a => BoundVars (Exported a) where
   boundVars Exported { .. } = boundVars exValue
 
-ppExported :: (a -> PPDoc SynAnn) -> Exported a -> PPDoc SynAnn
+ppExported :: (a -> PPDoc) -> Exported a -> PPDoc
 ppExported ppVal ex = pp (exSpec ex) <+> ppVal (exValue ex)

@@ -4,6 +4,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE Trustworthy #-}
 
 module Dang.Monad (
@@ -51,6 +53,7 @@ import Data.IORef
            , atomicModifyIORef' )
 import Data.Typeable (Typeable)
 import MonadLib ( BaseM(..), RunM(..), ReaderT, ask )
+import System.IO (stdout)
 import qualified Control.Exception as X
 
 
@@ -163,7 +166,7 @@ runDangWithArgs args m = do
   opts <- parseOptions args
   runDang opts m
 
-ppDang :: BaseM dang Dang => PPDoc -> dang Doc
+ppDang :: BaseM dang Dang => PPDoc -> dang (Doc Ann)
 ppDang msg =
   do ro <- inBase (Dang ask)
      return (runPPM (roPPEnv ro) msg)
@@ -178,20 +181,20 @@ whenDebugOpt p m = do
 
 -- Pass Logging ----------------------------------------------------------------
 
-newtype Logger = Logger { logMessage :: Doc -> IO () }
+newtype Logger = Logger { logMessage :: PPEnv -> PPDoc -> IO () }
 
 chooseLogger :: Options -> String -> Logger
 chooseLogger opts name
-  | name `elem` optLogPasses opts = logAll
+  | name `elem` optLogPasses opts = logStdout
   | otherwise                     = logSilent
 
 -- | Log no output.
 logSilent :: Logger
-logSilent  = Logger { logMessage  = \ _ -> return () }
+logSilent  = Logger { logMessage  = \ _ _ -> return () }
 
--- | Log all output.
-logAll :: Logger
-logAll  = Logger { logMessage = print }
+-- | Log output to stdout.
+logStdout :: Logger
+logStdout  = Logger { logMessage = renderIO stdout }
 
 pass :: BaseM dang Dang => String -> dang a -> dang a
 pass name body =
@@ -211,10 +214,9 @@ banner msg = hcat [ text "--{", text msg, char '}'
 
 logInfo :: BaseM dang Dang => PPDoc -> dang ()
 logInfo msg =
-  do doc <- ppDang msg
-     ro  <- inBase (Dang ask)
+  do ro  <- inBase (Dang ask)
      io $ do l <- readIORef (roLog ro)
-             logMessage l doc
+             logMessage l (roPPEnv ro) msg
 
 
 

@@ -2,16 +2,47 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
-module Dang.Utils.Pretty where
+module Dang.Utils.Pretty (
+
+  -- * Pretty Printing Monad
+  PPM(), runPPM,
+
+  -- ** Environment
+  PPEnv(..), defaultPPEnv,
+  getPrec,
+  getPrintQual,
+  getPrintLevels,
+
+  -- ** Documents
+  PPDoc, renderSpans, renderIO,
+
+  -- ** Annotations
+  Ann(..), KeywordAnn(..),
+  annotate,
+
+  -- ** Pretty Printing Class
+  Pretty(..), pretty, pp, ppPrec,
+
+  -- ** Combinators
+  empty, int, char, integer, text, dots, commas,
+  sep, hsep, cat, hcat, vcat, fsep,
+  punctuate, comma, nest, hang, brackets, braces,
+  optParens, parens, list,
+  layout, quoted, pipe, pipes, space,
+  (<>), (<+>), ($$),
+
+  -- * Re-exported
+  PP.Doc
+  ) where
 
 import           Control.Monad ( liftM2 )
 import           Data.Int (Int8,Int16,Int32,Int64)
 import           Data.List (intersperse)
 import qualified Data.Set as Set
 import           MonadLib ( runM, ReaderT, ask, local, Id )
-import           System.IO (Handle)
+import qualified System.Console.ANSI as ANSI
+import           System.IO (Handle,hPutStrLn,hPutStr)
 import           Text.PrettyPrint.Annotated.HughesPJ (Span(..))
 import qualified Text.PrettyPrint.Annotated.HughesPJ as PP
 
@@ -41,38 +72,15 @@ defaultPPEnv  = PPEnv { ppePrec        = 0
 newtype PPM a = PPM { getPPM :: ReaderT PPEnv Id a
                     } deriving (Functor,Applicative,Monad)
 
-type PPDoc a = PPM (PP.Doc a)
+type PPDoc = PPM (PP.Doc Ann)
 
 runPPM :: PPEnv -> PPM a -> a
 runPPM env m = runM (getPPM m) env
 
-renderSpans :: PPEnv -> PPDoc i -> (String,[Span i])
-renderSpans env m = PP.renderSpans (runPPM env m)
-
-renderIO :: Handle
-         -> PPEnv
-         -> (Handle -> i -> IO ())
-         -> (Handle -> i -> IO ())
-         -> IO ()
-         -> PPDoc i
-         -> IO ()
-renderIO h env start end done m =
-  PP.renderDecoratedM (start h) (end h) putStr done (runPPM env m)
-
-pretty :: PPDoc i -> String
+pretty :: PPDoc -> String
 pretty m = show (runPPM defaultPPEnv m)
 
-dropAnnots :: PPDoc i -> PPDoc ()
-dropAnnots m =
-  do doc <- m
-     return (const () `fmap` doc)
-
-withPrec :: Int -> PPDoc i -> PPDoc i
-withPrec p m = PPM $
-  do env <- ask
-     local env { ppePrec = p } (getPPM m)
-
-ppPrec :: Pretty a i => Int -> a -> PPDoc i
+ppPrec :: Pretty a => Int -> a -> PPDoc
 ppPrec p a = PPM $
   do env <- ask
      local env { ppePrec = p } (getPPM (ppr a))
@@ -86,122 +94,164 @@ getPrintLevels  = PPM (ppePrintLevels `fmap` ask)
 getPrintQual :: PPM Bool
 getPrintQual  = PPM (ppePrintQual `fmap` ask)
 
+
+-- Annotations -----------------------------------------------------------------
+
+data Ann = Keyword KeywordAnn
+         | Literal
+           deriving (Show)
+
+data KeywordAnn = ExprKw
+                | DeclKw
+                | SymKw
+                  deriving (Show)
+
+renderSpans :: PPEnv -> PPDoc -> (String,[Span Ann])
+renderSpans env m = PP.renderSpans (runPPM env m)
+
+renderIO :: Handle -> PPEnv -> PPDoc -> IO ()
+renderIO h env doc =
+  do ansiOK <- ANSI.hSupportsANSI h
+
+     let (start,end) | ansiOK    = (startAnn h,endAnn h)
+                     | otherwise = (ignore,ignore)
+
+     PP.renderDecoratedM start end (hPutStr h) done (runPPM env doc)
+  where
+  ignore _ = return ()
+  done     = hPutStrLn h ""
+
+startAnn :: Handle -> Ann -> IO ()
+startAnn h ann = ANSI.hSetSGR h $ case ann of
+  Keyword DeclKw -> [ fg ANSI.Blue,  underline, bold ]
+  Keyword ExprKw -> [ fg ANSI.Green, underline, bold ]
+  Keyword SymKw  -> [ fg ANSI.Yellow                 ]
+  Literal        -> [ fg ANSI.Magenta,          bold ]
+  where
+  fg        = ANSI.SetColor ANSI.Foreground ANSI.Vivid
+  underline = ANSI.SetUnderlining ANSI.SingleUnderline
+  bold      = ANSI.SetConsoleIntensity ANSI.BoldIntensity
+
+endAnn :: Handle -> Ann -> IO ()
+endAnn h _ = ANSI.hSetSGR h []
+
+
 -- Utility ---------------------------------------------------------------------
 
 -- | Quote with backticks.
-quoted :: PPDoc i -> PPDoc i
+quoted :: PPDoc -> PPDoc
 quoted doc = char '`' <> doc <> char '`'
 
-dot :: PPDoc i
+dot :: PPDoc
 dot  = char '.'
 
-dots :: [PPDoc i] -> PPDoc i
+dots :: [PPDoc] -> PPDoc
 dots  = hcat . intersperse dot
 
-optParens :: Int -> PPDoc i -> PPDoc i
+optParens :: Int -> PPDoc -> PPDoc
 optParens p d =
   do env <- PPM ask
      if ppePrec env >= p
         then parens d
         else        d
 
-layout :: [PPDoc i] -> PPDoc i
+layout :: [PPDoc] -> PPDoc
 layout ds =
   do env <- PPM ask
      vcat $ if ppeLayout env
                then ds
                else list (char '{') (char ';') (char '}') ds
 
-list :: PPDoc i -> PPDoc i -> PPDoc i -> [PPDoc i] -> [PPDoc i]
+list :: PPDoc -> PPDoc -> PPDoc -> [PPDoc] -> [PPDoc]
 list open _ close []     = [open, close]
 list open p close (d:ds) = open <+> d : foldr step [close] ds
   where
   step x rest = p <+> x : rest
 
-pp :: Pretty a i => a -> PPDoc i
-pp a = withPrec 0 (ppr a)
+pp :: Pretty a => a -> PPDoc
+pp  = ppPrec 0
 
-class Pretty a i where
-  ppr :: a -> PPDoc i
+class Pretty a where
+  ppr :: a -> PPDoc
 
-instance Pretty (PP.Doc i) i where
+instance Pretty (PP.Doc Ann) where
   {-# INLINE ppr #-}
   ppr = return
 
-instance Pretty (PPDoc i) i where
+instance Pretty PPDoc where
   {-# INLINE ppr #-}
   ppr = id
 
-instance Pretty Char i where
-  ppr = char
-
-instance Pretty a i => Pretty [a] i where
+instance Pretty a => Pretty [a] where
   ppr as = fsep (list (char '[') comma (char ']') (map pp as))
 
-instance Pretty a i => Pretty (Set.Set a) i where
+instance Pretty a => Pretty (Set.Set a) where
   ppr = ppr . Set.toList
 
-instance Pretty Int i where
+instance Pretty Char where
+  ppr = char
+
+instance Pretty Int where
   ppr i = int i
 
-instance Pretty Int8 i where
+instance Pretty Int8 where
   ppr i = integer (fromIntegral i)
 
-instance Pretty Int16 i where
+instance Pretty Int16 where
   ppr i = integer (fromIntegral i)
 
-instance Pretty Int32 i where
+instance Pretty Int32 where
   ppr i = integer (fromIntegral i)
 
-instance Pretty Int64 i where
+instance Pretty Int64 where
   ppr i = integer (fromIntegral i)
 
-instance Pretty Integer i where
+instance Pretty Integer where
   ppr = integer
 
-instance Pretty Float i where
+instance Pretty Float where
   ppr = float
 
-instance Pretty Double i where
+instance Pretty Double where
   ppr = double
 
-instance (Pretty a i, Pretty b i) => Pretty (a,b) i where
+instance (Pretty a, Pretty b) => Pretty (a,b) where
   ppr (a,b) = fsep (list (char '(') comma (char ')') [pp a, pp b])
 
-instance (Pretty a i, Pretty b i, Pretty c i) => Pretty (a,b,c) i where
+instance (Pretty a, Pretty b, Pretty c) => Pretty (a,b,c) where
   ppr (a,b,c) = fsep (list (char '(') comma (char ')') [pp a, pp b, pp c])
 
 
 -- Wrapper ---------------------------------------------------------------------
 
-annotate :: i -> PPDoc i -> PPDoc i
+annotate :: Ann -> PPDoc -> PPDoc
 annotate i = fmap (PP.annotate i)
 
-empty :: PPDoc i
+empty :: PPDoc
 empty  = return PP.empty
 
-text :: String -> PPDoc i
+text :: String -> PPDoc
 text str = return (PP.text str)
 
-char :: Char -> PPDoc i
+char :: Char -> PPDoc
 char c = return (PP.char c)
 
-space :: PPDoc i
+space :: PPDoc
 space  = return PP.space
 
-int :: Int -> PPDoc i
+int :: Int -> PPDoc
 int i = return (PP.int i)
 
-integer :: Integer -> PPDoc i
+integer :: Integer -> PPDoc
 integer i = return (PP.integer i)
 
-float :: Float -> PPDoc i
+float :: Float -> PPDoc
 float f = return (PP.float f)
 
-double :: Double -> PPDoc i
+double :: Double -> PPDoc
 double d = return (PP.double d)
 
-punctuate :: PPDoc i -> [PPDoc i] -> [PPDoc i]
+punctuate :: PPDoc -> [PPDoc] -> [PPDoc]
 punctuate _ [] = []
 punctuate p xs = go xs
   where
@@ -209,61 +259,61 @@ punctuate p xs = go xs
               | otherwise = x <> p : go rest
   go []                   = [] -- not possible
 
-parens :: PPDoc i -> PPDoc i
+parens :: PPDoc -> PPDoc
 parens = fmap PP.parens
 
 infixl 6 <+>
-(<+>) :: PPDoc i -> PPDoc i -> PPDoc i
+(<+>) :: PPDoc -> PPDoc -> PPDoc
 (<+>)  = liftM2 (PP.<+>)
 
 infixl 6 <>
-(<>) :: PPDoc i -> PPDoc i -> PPDoc i
+(<>) :: PPDoc -> PPDoc -> PPDoc
 (<>)  = liftM2 (PP.<>)
 
 infixl 5 $$
-($$) :: PPDoc i -> PPDoc i -> PPDoc i
+($$) :: PPDoc -> PPDoc -> PPDoc
 ($$)  = liftM2 (PP.$$)
 
-comma :: PPDoc i
+comma :: PPDoc
 comma  = return PP.comma
 
-pipe :: PPDoc i
+pipe :: PPDoc
 pipe  = char '|'
 
-commas :: [PPDoc i] -> [PPDoc i]
+commas :: [PPDoc] -> [PPDoc]
 commas  = punctuate comma
 
-pipes :: [PPDoc i] -> [PPDoc i]
+pipes :: [PPDoc] -> [PPDoc]
 pipes  = punctuate pipe
 
-hsep :: [PPDoc i] -> PPDoc i
+hsep :: [PPDoc] -> PPDoc
 hsep ds = fmap PP.hsep (sequence ds)
 
-sep :: [PPDoc i] -> PPDoc i
+sep :: [PPDoc] -> PPDoc
 sep ds = fmap PP.sep (sequence ds)
 
-fsep :: [PPDoc i] -> PPDoc i
+fsep :: [PPDoc] -> PPDoc
 fsep ds = fmap PP.fsep (sequence ds)
 
-cat :: [PPDoc i] -> PPDoc i
+cat :: [PPDoc] -> PPDoc
 cat ds = fmap PP.cat (sequence ds)
 
-vcat :: [PPDoc i] -> PPDoc i
+vcat :: [PPDoc] -> PPDoc
 vcat ds = fmap PP.vcat (sequence ds)
 
-hcat :: [PPDoc i] -> PPDoc i
+hcat :: [PPDoc] -> PPDoc
 hcat ds = fmap PP.hcat (sequence ds)
 
-brackets :: PPDoc i -> PPDoc i
+brackets :: PPDoc -> PPDoc
 brackets  = fmap PP.brackets
 
-braces :: PPDoc i -> PPDoc i
+braces :: PPDoc -> PPDoc
 braces  = fmap PP.braces
 
-nest :: Int -> PPDoc i -> PPDoc i
+nest :: Int -> PPDoc -> PPDoc
 nest n = fmap (PP.nest n)
 
-hang :: PPDoc i -> Int -> PPDoc i -> PPDoc i
+hang :: PPDoc -> Int -> PPDoc -> PPDoc
 hang p n q =
   do p' <- p
      q' <- q

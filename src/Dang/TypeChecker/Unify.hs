@@ -9,7 +9,6 @@ import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 
 import qualified Data.Map as Map
-import           Data.Monoid ( Monoid(..) )
 import qualified Data.Set as Set
 import           MonadLib
                     ( runM, Id, StateT, get, set, ReaderT, ask, ExceptionT

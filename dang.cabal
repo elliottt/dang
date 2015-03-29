@@ -19,7 +19,6 @@ library
                         -- parsing
                         Dang.Syntax,
                         Dang.Syntax.AST,
-                        Dang.Syntax.Ann,
                         Dang.Syntax.Layout,
                         Dang.Syntax.Lexeme,
                         Dang.Syntax.Lexer,
@@ -58,7 +57,6 @@ library
                         --Dang.Desugar,
 
                         -- utility
-                        Dang.Colors
                         Dang.FileName,
                         Dang.IO,
                         Dang.Monad,

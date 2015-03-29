@@ -27,10 +27,9 @@ import Dang.TypeChecker.Unify
 import Dang.Utils.Panic
 import Dang.Utils.Pretty
 
-import Control.Applicative ( Applicative, Alternative )
+import Control.Applicative ( Alternative )
 import Control.Monad ( MonadPlus, mzero, when )
 import Control.Monad.Fix ( MonadFix )
-import Data.Monoid ( Monoid(..) )
 import MonadLib ( BaseM(..), runM, ReaderT, StateT, get, set )
 
 

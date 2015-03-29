@@ -4,13 +4,11 @@
 
 module Dang.Syntax.Lexeme where
 
-import           Dang.Syntax.Ann (SynAnn)
-import qualified Dang.Syntax.Ann as Ann
 import           Dang.Utils.Location
 import qualified Dang.Utils.Panic as Panic
 import           Dang.Utils.Pretty
 
-panic :: PPDoc i -> a
+panic :: PPDoc -> a
 panic  = Panic.panic "Dang.Syntax.Lexeme"
 
 
@@ -84,7 +82,7 @@ fromTIdent tok = case tok of
   _        -> panic (text "expected TIdent")
 
 
-instance Pretty Token SynAnn where
+instance Pretty Token where
   ppr tok = case tok of
     TVirt v      -> ppr v
     TKeyword k   -> ppr k
@@ -96,7 +94,7 @@ instance Pretty Token SynAnn where
     TError str   -> brackets (text "error:" <+> text str)
 
 
-instance Pretty Keyword SynAnn where
+instance Pretty Keyword where
   ppr x = case x of
     Klet        -> exprKw "let"
     Kin         -> exprKw "in"
@@ -137,11 +135,11 @@ instance Pretty Keyword SynAnn where
     Kunderscore -> char '_'
 
     where
-    exprKw n = annotate Ann.Expr   (text n)
-    declKw n = annotate Ann.Decl   (text n)
-    sym    n = annotate Ann.Symbol (text n)
+    exprKw n = annotate (Keyword ExprKw) (text n)
+    declKw n = annotate (Keyword DeclKw) (text n)
+    sym    n = annotate (Keyword SymKw)  (text n)
 
-instance Pretty Virt SynAnn where
+instance Pretty Virt where
   ppr virt = case virt of
     Vopen  -> text "v{"
     Vsep   -> text "v;"

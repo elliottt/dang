@@ -5,8 +5,6 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
 
 module Dang.Utils.Location where
 
@@ -75,10 +73,10 @@ at a loc = Located
   }
 
 -- Drop the location information from a Pretty-printend thing.
-instance Pretty a i => Pretty (Located a) i where
+instance Pretty a => Pretty (Located a) where
   ppr loc = ppr (unLoc loc)
 
-ppWithLoc :: Pretty a i => Located a -> PPDoc i
+ppWithLoc :: Pretty a => Located a -> PPDoc
 ppWithLoc Located { .. } = pp locValue <+> text "at" <+> pp locRange
 
 
@@ -97,7 +95,7 @@ extendLoc r loc = loc { locRange = locRange loc `mappend` r }
 type Source = Maybe String
 
 -- | Pretty-print a source.
-ppSource :: Source -> PPDoc i
+ppSource :: Source -> PPDoc
 ppSource src = text (fromMaybe "<unknown>" src)
 
 -- | A range in the program source.
@@ -119,7 +117,7 @@ instance Monoid SrcLoc where
   mappend NoLoc          r              = r
   mappend l              NoLoc          = l
 
-instance Pretty SrcLoc i where
+instance Pretty SrcLoc where
   ppr (SrcLoc r mb) = ppSource mb <> char ':' <> pp r
   ppr NoLoc = empty
 
@@ -155,7 +153,7 @@ instance Monoid Range where
   -- widen the range
   mappend (Range ls le) (Range rs re) = Range (smallerOf ls rs) (largerOf le re)
 
-instance Pretty Range i where
+instance Pretty Range where
   ppr (Range s e) = ppr s <> char '-' <> ppr e
 
 
@@ -168,7 +166,7 @@ data Position = Position
   , posCol  :: !Int
   } deriving (Show,Eq,Data,Typeable)
 
-instance Pretty Position i where
+instance Pretty Position where
   ppr pos = int (posLine pos) <> char ':' <> int (posCol pos)
 
 -- | This only compares offset, assuming that the positions come from the same
