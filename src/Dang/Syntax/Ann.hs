@@ -13,16 +13,18 @@ data SynAnn = Decl
             | Literal
               deriving (Show)
 
-renderSymAnnot :: Handle -> PPEnv -> PPDoc SynAnn -> IO ()
-renderSymAnnot h env doc =
+renderSymAnn :: Handle -> PPEnv -> PPDoc SynAnn -> IO ()
+renderSymAnn h env doc =
   do ansiOK <- ANSI.hSupportsANSI h
-     renderIO h env (startSynAnn ansiOK) (endSynAnn ansiOK) done doc
+     if ansiOK
+        then renderIO h env startSynAnn endSynAnn done doc
+        else renderIO h env ignore      ignore    done doc
   where
-  done = putStrLn ""
+  done       = putStrLn ""
+  ignore _ _ = return ()
 
-startSynAnn :: Bool -> Handle -> SynAnn -> IO ()
-startSynAnn False _ _   = return ()
-startSynAnn True  h ann = ANSI.hSetSGR h $ case ann of
+startSynAnn :: Handle -> SynAnn -> IO ()
+startSynAnn h ann = ANSI.hSetSGR h $ case ann of
   Decl    -> [ fg ANSI.Blue,  underline, bold ]
   Expr    -> [ fg ANSI.Green, underline, bold ]
   Symbol  -> [ fg ANSI.Yellow                 ]
@@ -32,6 +34,5 @@ startSynAnn True  h ann = ANSI.hSetSGR h $ case ann of
   underline = ANSI.SetUnderlining ANSI.SingleUnderline
   bold      = ANSI.SetConsoleIntensity ANSI.BoldIntensity
 
-endSynAnn :: Bool -> Handle -> SynAnn -> IO ()
-endSynAnn False _ _ = return ()
-endSynAnn True  h _ = ANSI.hSetSGR h []
+endSynAnn :: Handle -> SynAnn -> IO ()
+endSynAnn h _ = ANSI.hSetSGR h []
