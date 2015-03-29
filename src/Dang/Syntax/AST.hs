@@ -4,15 +4,20 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Dang.Syntax.AST where
 
-import Dang.Syntax.Lexeme (Keyword(..))
-import Dang.ModuleSystem.QualName
-import Dang.ModuleSystem.Types
-import Dang.Utils.Location
-import Dang.Utils.Pretty
-import Dang.Variables
+import           Dang.Syntax.Ann (SynAnn)
+import qualified Dang.Syntax.Ann as Ann
+import           Dang.Syntax.Lexeme (Keyword(..))
+import           Dang.ModuleSystem.QualName
+import           Dang.ModuleSystem.Types
+import           Dang.Utils.Location
+import           Dang.Utils.Pretty
+import           Dang.Variables
 
 import           Control.Lens ( ignored )
 import           Data.Data ( Data )
@@ -320,13 +325,13 @@ instance FreeVars Type
 -- Pretty Printing -------------------------------------------------------------
 
 
-instance Pretty Module where
+instance Pretty Module SynAnn where
   ppr m = pp Kmodule
       <+> ppModName (unLoc (modName m))
       <+> pp Kwhere
        $$ layout (map pp (modDecls m))
 
-instance Pretty TopDecl where
+instance Pretty TopDecl SynAnn where
   ppr td = case td of
     TDDecl d      -> ppr d
     TDData d      -> ppr d
@@ -335,21 +340,21 @@ instance Pretty TopDecl where
     TDLocal ls    -> ppr ls
     TDExport ds   -> ppExported (layout . map pp) (unLoc ds)
 
-instance Pretty LocalDecls where
+instance Pretty LocalDecls SynAnn where
   ppr ls = hang (ppr Klocal)       6 (layout (map pp (ldLocals ls)))
         $$ hang (nest 3 (ppr Kin)) 6 (layout (map pp (ldDecls  ls)))
 
-instance Pretty Decl where
+instance Pretty Decl SynAnn where
   ppr d = case d of
     DBind b -> ppr b
     DSig s  -> ppr s
     DOpen o -> ppr o
 
-instance Pretty DataDecl where
+instance Pretty DataDecl SynAnn where
   ppr DataDecl { .. } = pp Kdata
                     <+> vcat (map (ppConstrGroup dataName) dataGroups)
 
-ppConstrGroup :: Name -> Located ConstrGroup -> PPDoc
+ppConstrGroup :: Name -> Located ConstrGroup -> PPDoc SynAnn
 ppConstrGroup n lcg =
   pp n <+> hsep (map (ppPrec 10) (groupResTys cg))
        <+> snd (foldl ppConstr (pp Kassign, empty) (groupConstrs cg))
@@ -361,28 +366,28 @@ ppConstrGroup n lcg =
     where
     c = unLoc lc
 
-instance Pretty PrimType where
+instance Pretty PrimType SynAnn where
   ppr pt = pp Kprimitive <+> fsep [ pp (primTypeName pt)
                                   , pp Kcolon
                                   , pp (primTypeKind pt) ]
 
-instance Pretty PrimTerm where
+instance Pretty PrimTerm SynAnn where
   ppr pt = pp Kprimitive <+> fsep [ pp (primTermName pt)
                                   , pp Kcolon
                                   , pp (primTermType pt) ]
 
-instance Pretty Bind where
+instance Pretty Bind SynAnn where
   ppr b = vcat (map ppEqn (elimMSplits (bindBody b)))
     where
     ppEqn m = pp (bindName b) <+> fsep (ppDef m)
 
 -- | Pretty-print a match as the body of a binding.
-ppDef :: Match -> [PPDoc]
+ppDef :: Match -> [PPDoc SynAnn]
 ppDef m = map (ppPrec 10) ps ++ [ pp Kassign, pp body ]
   where
   (ps,body) = flattenMPat m
 
-instance Pretty Match where
+instance Pretty Match SynAnn where
   ppr m = case m of
     MPat p m'     -> fsep [ pp p <+> pp Krarrow, pp m' ]
     MGuard p e m' -> fsep [ pp p <+> pp Klarrow <+> pp e
@@ -392,7 +397,7 @@ instance Pretty Match where
     MFail         -> empty
     MLoc lm       -> ppr (unLoc lm)
 
-instance Pretty Pat where
+instance Pretty Pat SynAnn where
   ppr pat = case pat of
     PVar v    -> pp v
     PCon c [] -> pp c
@@ -401,7 +406,7 @@ instance Pretty Pat where
     PLit l    -> ppr l
     PLoc lp   -> ppr (unLoc lp)
 
-instance Pretty Expr where
+instance Pretty Expr SynAnn where
   ppr (Abs m)    = optParens 1 (pp Klambda <> ppr m)
 
   ppr (App f xs) = optParens 10 (pp f <+> nest 2 (fsep (map( ppPrec 10) xs)))
@@ -417,14 +422,14 @@ instance Pretty Expr where
   ppr (Con n)    = pp n
   ppr (Lit l)    = pp l
 
-ppArms :: Match -> PPDoc
+ppArms :: Match -> PPDoc SynAnn
 ppArms m = layout (map pp (elimMSplits m))
 
-instance Pretty Signature where
+instance Pretty Signature SynAnn where
     ppr sig = hang (fsep (commas (map pp (sigNames sig))) <+> pp Kcolon)
                  2 (pp (sigSchema sig))
 
-instance Pretty Open where
+instance Pretty Open SynAnn where
   ppr o = hang (pp Kopen <+> ppModName (unLoc (openMod o)) <+> altName)
              5 spec
     where
@@ -438,12 +443,12 @@ instance Pretty Open where
     symbols | null (openSymbols o) = empty
             | otherwise            = parens (fsep (commas (map pp (openSymbols o))))
 
-instance Pretty OpenSymbol where
+instance Pretty OpenSymbol SynAnn where
   ppr os = case os of
     OpenTerm n      -> text n
     OpenType n cons -> text n <> parens (fsep (commas (map text cons)))
 
-instance Pretty Schema where
+instance Pretty Schema SynAnn where
   ppr (Forall ps ty)
     | null ps   = pp ty
     | otherwise = sep [ props, pp ty ]
@@ -453,10 +458,10 @@ instance Pretty Schema where
         [prop] -> pp prop <+> pp KRarrow
         _      -> parens (fsep (commas (map pp ps))) <+> pp KRarrow
 
-ppLabelled :: Pretty a => PPDoc -> Labelled a -> PPDoc
+ppLabelled :: Pretty a i => PPDoc i -> Labelled a -> PPDoc i
 ppLabelled p l = sep [ pp (labName l) <+> p, pp (labValue l) ]
 
-instance Pretty Type where
+instance Pretty Type SynAnn where
   ppr ty = case ty of
     TFun{}    -> optParens 10 $ fsep
                               $ intersperse (pp Krarrow)
@@ -469,7 +474,7 @@ instance Pretty Type where
     TEmptyRow -> braces empty
     TLoc lt   -> ppr lt
 
-ppRowExt :: Type -> PPDoc
+ppRowExt :: Type -> PPDoc SynAnn
 ppRowExt ty = pp Klbrace
            <> fsep (commas (map (ppLabelled (pp Kcolon)) ls) ++ [row])
            <> pp Krbrace
@@ -481,9 +486,9 @@ ppRowExt ty = pp Klbrace
     _         -> pp Kpipe <+> pp r
 
 
-instance Pretty Literal where
+instance Pretty Literal SynAnn where
   ppr lit = case lit of
-    LInt i _ -> withGraphics [fg magenta, bold] (integer i)
+    LInt i _ -> annotate Ann.Literal (integer i)
 
 
 -- Location Information --------------------------------------------------------

@@ -362,12 +362,13 @@ scName n =
 -- | Load, and cache an interface file.
 loadIface :: ModName -> Scope Iface
 loadIface name = Scope $
-  do rw <- get
-     case Map.lookup name (rwIfaces rw) of
-       Just iface -> return iface
-       Nothing    -> do iface <- inBase (readIface name)
-                        MonadLib.set rw { rwIfaces = Map.insert name iface (rwIfaces rw) }
-                        return iface
+  fail "loadIface"
+  -- do rw <- get
+  --    case Map.lookup name (rwIfaces rw) of
+  --      Just iface -> return iface
+  --      Nothing    -> do iface <- inBase (readIface name)
+  --                       MonadLib.set rw { rwIfaces = Map.insert name iface (rwIfaces rw) }
+  --                       return iface
 
 openNames :: Located Open -> Scope Names
 openNames lo =
