@@ -77,8 +77,8 @@ type PPDoc = PPM (PP.Doc Ann)
 runPPM :: PPEnv -> PPM a -> a
 runPPM env m = runM (getPPM m) env
 
-pretty :: PPDoc -> String
-pretty m = show (runPPM defaultPPEnv m)
+pretty :: Pretty a => a -> String
+pretty m = show (runPPM defaultPPEnv (pp m))
 
 ppPrec :: Pretty a => Int -> a -> PPDoc
 ppPrec p a = PPM $

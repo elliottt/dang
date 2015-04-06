@@ -31,7 +31,6 @@ instance Pretty Type where
   ppr (TVar tp)  = pp tp
   ppr (TGen tp)  = pp tp
 
-instance Names    Type
 instance FreeVars Type
 
 data TParam = TParam { tpName  :: Maybe String

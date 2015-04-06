@@ -16,6 +16,7 @@ import Control.Monad ( unless )
 import System.Environment ( getArgs )
 import System.Exit ( exitSuccess, exitFailure )
 import System.FilePath ( dropExtension )
+import System.IO (stderr)
 
 
 main :: IO ()
@@ -36,7 +37,7 @@ main  =
 
           logInfo (text "oh-snap")
 
-     let dump m = putStrLn (pretty m)
+     let dump m = renderIO stderr (optPPEnv opts) (pp m)
      mapM_ dump ws
      mapM_ dump es
 

@@ -16,7 +16,6 @@ import Dang.Utils.Pretty
 import           Control.Lens as Lens ( view, set, traverseOf )
 import           Data.Generics ( Data, gmapM, extM, ext1M )
 import qualified Data.Map.Strict as Map
-import           Data.Monoid ( Monoid(..) )
 import qualified Data.Set as Set
 import           MonadLib
                      ( BaseM(..), runM, Id, ReaderT, ask, local, StateT, get
@@ -164,7 +163,6 @@ qualify ns Names { .. } =
   where
   update (Qual l [] sym) = Qual l ns sym
   update q@Qual{}        = q
-  update (Param l sym)   = Qual l ns sym
 
 -- | Generate a naming environment from a declaration.  From the module:
 --
@@ -190,19 +188,21 @@ fromDef ns ln =
 --
 -- > fromParam [| x |]
 --
--- `x` is assumed to have no namespace associated with it.
+-- `x` is assumed to be unqualified.
 fromParam :: SrcLoc -> Name -> Names
-fromParam loc n = Names { nDefs = Map.singleton qn [FromParam (p `at` loc)] }
+fromParam loc n = Names { nDefs = Map.singleton qn [FromParam (qn `at` loc)] }
   where
-  qn = view qualName n
-  p  = Param (view qualLevel qn) (view qualSymbol qn)
+  qn = unqual (view qualName n)
 
--- | Generate a naming environment from an import declaration.
+-- | Generate a naming environment from an import declaration.  The name will be
+-- qualified according to the `as` clause of the declaration, with no
+-- qualification if the `as` clause is missing.
 fromImport :: Located Open -> Name -> Names
-fromImport lo n = Names { nDefs = Map.singleton sym [FromIface lo qn] }
+fromImport lo n = Names { nDefs = Map.singleton key [FromIface lo qn] }
   where
   qn  = view qualName n
-  sym = view qualSymbol qn
+  ns  = maybe [] unLoc (openAs (unLoc lo))
+  key = Lens.set qualModule ns qn
 
 
 -- | Pick fresh variations of the names present in the range of the name map.
@@ -373,11 +373,15 @@ loadIface name = Scope $
 openNames :: Located Open -> Scope Names
 openNames lo =
   do iface <- loadIface (unLoc openMod)
-     return (Map.filterWithKey adjust (ifaceNames iface))
+     let Names ns = ifaceNames lo iface
+     return (Names (Map.filterWithKey adjust ns))
   where
   Open { .. } = unLoc lo
 
-  syms = map unLoc openSymbols
+  syms = concatMap (openedSyms . unLoc) openSymbols
+
+  openedSyms (OpenTerm s)    = [s]
+  openedSyms (OpenType t cs) = t:cs
 
   -- This predicate handles four cases:
   --

@@ -1,16 +1,14 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Dang.ModuleSystem.QualName where
 
 import Dang.Utils.Pretty
 
-import Control.Lens ( Lens', lens, view, Prism', prism, _2, Traversal', preview )
+import Control.Lens ( Lens', lens, view, set )
 import Data.Char (isSpace)
 import Data.Data ( Data )
-import Data.Maybe ( fromMaybe )
+import Data.Function (on)
 import Data.Serialize ( Serialize )
 import Data.String ( IsString(..) )
 import Data.Typeable ( Typeable )
@@ -52,14 +50,15 @@ ppModName mn = hcat (punctuate (char '.') (map text mn))
 
 -- | A fully-qualified name, referring to either a parameter, or a declared
 -- name.
-data QualName = Param Level String
-              | Qual Level ModName String
+data QualName = Qual Level ModName String
                 deriving (Show,Eq,Ord,Data,Typeable,Generic)
+
+unqual :: QualName -> QualName
+unqual  = set qualModule []
 
 instance Serialize QualName
 
 instance Pretty QualName where
-  ppr (Param l n)   = text n <> pp l
   ppr (Qual l ns n) = dots (map text (ns ++ [n])) <> pp l
 
 
@@ -67,47 +66,28 @@ instance Pretty QualName where
 qualLevel :: Lens' QualName Level
 qualLevel  = lens getter setter
   where
-  getter (Param l _)  = l
-  getter (Qual l _ _) = l
-
-  setter (Param _ n)   l = Param l n
+  getter (Qual l _ _)    = l
   setter (Qual _ ns n) l = Qual l ns n
+
+-- | Get the module name associated with a name.
+qualModule :: Lens' QualName ModName
+qualModule  = lens getter setter
+  where
+  getter (Qual _ m _)   = m
+  setter (Qual l _ n) m = Qual l m n
 
 -- | Get the name part of the qualified name.
 qualSymbol :: Lens' QualName String
 qualSymbol  = lens getter setter
   where
-  getter (Param _ n)  = n
-  getter (Qual _ _ n) = n
-
-  setter (Param l _)   n = Param l n
+  getter (Qual _ _ n)    = n
   setter (Qual l ns _) n = Qual l ns n
-
-_qual :: Prism' QualName (Level,ModName,String)
-_qual  = prism mk prj
-  where
-  mk (l,ns,n) = Qual l ns n
-
-  prj (Qual l ns n) = Right (l,ns,n)
-  prj qn            = Left qn
-
-_param :: Prism' QualName (Level,String)
-_param  = prism mk prj
-  where
-  mk (l,n)        = Param l n
-
-  prj (Param l n) = Right (l,n)
-  prj qn          = Left qn
-
--- | Get the module name associated with a name.
-qualModule :: Traversal' QualName ModName
-qualModule  = _qual . _2
 
 -- | Mangle a qualified name into one that is suitable for code generation.
 mangle :: IsString string => QualName -> string
 mangle name = fromString (foldr prefix (view qualSymbol name) modName)
   where
-  modName         = fromMaybe [] (preview qualModule name)
+  modName         = view qualModule name
   prefix pfx rest = escape pfx ++ "_" ++ rest
   escape          = concatMap $ \c ->
     case c of
@@ -121,7 +101,14 @@ mangle name = fromString (foldr prefix (view qualSymbol name) modName)
 
 data Name = Parsed String QualName
           | Generated QualName
-            deriving (Ord,Eq,Show,Data,Typeable,Generic)
+            deriving (Show,Data,Typeable,Generic)
+
+instance Eq Name where
+  (==) = (==) `on` view qualName
+  (/=) = (/=) `on` view qualName
+
+instance Ord Name where
+  compare = compare `on` view qualName
 
 instance Serialize Name
 
@@ -141,9 +128,6 @@ qualName  = lens getter setter
 
   setter (Parsed n _)  qn = Parsed n qn
   setter (Generated _) qn = Generated qn
-
-mkParam :: Level -> String -> Name
-mkParam l n = Generated (Param l n)
 
 mkQual :: Level -> ModName -> String -> Name
 mkQual l ns n = Generated (Qual l ns n)
