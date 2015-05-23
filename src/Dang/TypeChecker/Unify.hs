@@ -5,19 +5,20 @@
 
 module Dang.TypeChecker.Unify where
 
+import Dang.TypeChecker.Subst
 import Dang.TypeChecker.Types
 import Dang.Utils.Pretty
 
-import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           MonadLib
-                    ( runM, Id, StateT, get, set, ReaderT, ask, ExceptionT
-                    , raise )
+import           MonadLib (runM,Id,ExceptionT,raise)
 
+
+-- Errors ----------------------------------------------------------------------
 
 -- | A failure during unification.
 data UnifyError = UnifyError Type Type
                 | MatchError Type Type
+                | OccursCheckError TParam Type
                   deriving (Show,Eq)
 
 instance Pretty UnifyError where
@@ -34,209 +35,80 @@ instance Pretty UnifyError where
        2 (vcat [ text "Expected type:" <+> pp x
                , text "  Actual type:" <+> pp y ])
 
-
-type MGU = StateT VarEnv (ExceptionT UnifyError Id)
-
--- | Bind a variable to a type.
-varBind :: TParam -> Type -> MGU (Maybe Type)
-varBind p ty =
-  do u <- get
-     case lookupFree p u of
-
-       -- the variable hasn't been bound, add an entry in the map
-       Nothing -> do set (bindFree p ty `mappend` u)
-                     return Nothing
-
-       -- the variable is already bound, continue with unfication
-       res -> return res
+  ppr (OccursCheckError p ty) =
+    hang (text "couldn't construct the infinite type:")
+       2 (sep [pp p, char '=', pp ty])
 
 
--- MGU Calculation -------------------------------------------------------------
+-- Unification -----------------------------------------------------------------
 
--- | Compute the most-general unifier for two types, given a variable
--- environment.  Produces either an error, or an extended substitution.
-mgu :: Type -> Type -> VarEnv -> Either UnifyError VarEnv
-mgu t1 t2 env = case runM (go t1 t2) env of
-                  Right (_,env') -> Right env'
-                  Left err       -> Left err
+type MGU = ExceptionT UnifyError Id
+
+-- | Compute the most-general unifier between t1 and t2.
+mgu :: Type -> Type -> Either UnifyError Subst
+mgu t1 t2 = runM (go t1 t2)
   where
-  go :: Type -> Type -> MGU ()
+
   go (TApp f x) (TApp g y) =
-    do go f g
-       go x y
+    do s1 <- go f g
+       s2 <- go (apply s1 x) (apply s1 y)
+       return (s2 @@ s1)
 
-  -- XXX should these be annotated with kinds?
-  go (TCon n1) (TCon n2)
-    | n1 == n2 = return ()
-
-  -- resolve or bind variables
-  go (TVar p) b = bind p b
-  go a (TVar p) = bind p a
+  go (TCon x) (TCon y)
+    | x == y = return mempty
 
   -- bound variables only unify with themselves
-  go (TGen x) (TGen y) | x == y = return()
+  go (TGen x) (TGen y)
+    | x == y = return mempty
 
-  -- unification isn't possible
-  go a b = raise (UnifyError a b)
+  go (TVar p) t = varBind p t
+  go t (TVar p) = varBind p t
 
-  bind p ty =
-    do mb <- varBind p ty
-       case mb of
-         Just ty' -> go ty' ty
-         Nothing  -> return ()
+  go x y = raise (UnifyError x y)
 
 
--- Matching Substitution -------------------------------------------------------
-
--- | Only allow variable bindings to variables on the lhs.  For example,
---
---   [| match [a] [Int] |] = { a |-> Int }
---
--- but
---
---   [| match [Int] [a] |] = error
---
-match :: Type -> Type -> VarEnv -> Either UnifyError VarEnv
-match t1 t2 env = case runM (go t1 t2) env of
-                    Right (_,env') -> Right env'
-                    Left err       -> Left err
+-- | Generate a substitution that when applied to t1 will produce t2.
+match :: Type -> Type -> Either UnifyError Subst
+match t1 t2 = runM (go t1 t2)
   where
-  go :: Type -> Type -> MGU ()
-  go (TCon n1) (TCon n2)
-    | n1 == n2 = return ()
 
-  go (TApp f x) (TApp g y) =
-    do go f g
-       go x y
+  go l@(TApp f x) r@(TApp g y) =
+    do s1 <- go f g
+       s2 <- go x y
+       case s2 `merge` s1 of
+         Just s  -> return s
+         Nothing -> raise (MatchError l r)
 
-  -- only allow variables to bind on the LHS
-  go (TVar a) b = bind a b
+  go (TCon x) (TCon y)
+    | x == y = return mempty
 
-  -- generalized variables only match themselves
-  go (TGen a) (TGen b)
-    | a == b = return ()
+  -- bound variables only unify with themselves
+  go (TGen x) (TGen y)
+    | x == y = return mempty
 
-  go a b = raise (MatchError a b)
+  go (TVar p) t = varBind p t
 
-  bind p ty =
-    do mb <- varBind p ty
-       case mb of
-         Just ty' -> go ty' ty
-         Nothing  -> return ()
+  go x y = raise (MatchError x y)
 
 
--- Type Variable Environment ---------------------------------------------------
+-- | Bind a free variable.
+varBind :: TParam -> Type -> MGU Subst
+varBind p ty
+  | pty == ty                   = return mempty
+  | p `Set.member` freeTVars ty = raise (OccursCheckError p ty)
+  | otherwise                   = return (listFreeSubst [(p,ty)])
 
--- | Type variable mappings.
-data VarEnv = VarEnv { veBound :: Map.Map TParam Type
-                     , veFree  :: Map.Map TParam Type
-                     } deriving (Show,Eq)
-
-instance Monoid VarEnv where
-  mempty = VarEnv { veBound = mempty
-                  , veFree  = mempty }
-
-  mappend l r = VarEnv { veBound = merge veBound
-                       , veFree  = merge veFree }
-    where
-    merge p = Map.union (p l) (p r)
-
-  mconcat us = VarEnv { veBound = merge veBound
-                      , veFree  = merge veFree }
-    where
-    merge p = Map.unions (map p us)
-
-
-bindFree :: TParam -> Type -> VarEnv
-bindFree p t = mempty { veFree = Map.singleton p t }
-
-bindFrees :: [(TParam,Type)] -> VarEnv
-bindFrees us = mempty { veFree = Map.fromList us }
-
-lookupFree :: TParam -> VarEnv -> Maybe Type
-lookupFree p u = Map.lookup p (veFree u)
-
-
-bindBound :: TParam -> Type -> VarEnv
-bindBound p t = mempty { veBound = Map.singleton p t }
-
-bindBounds :: [(TParam,Type)] -> VarEnv
-bindBounds us = mempty { veBound = Map.fromList us }
-
-lookupBound :: TParam -> VarEnv -> Maybe Type
-lookupBound p u = Map.lookup p (veBound u)
-
-
--- | Increment the index on the bound parameters in a type, preserving the De
--- Bruijn indices.
-incBinders :: Int  -- ^ Number of binders crossed
-           -> Type -> Type
-incBinders binders = go
   where
-  go ty = case ty of
-    TApp f x -> TApp (go f) (go x)
-    TGen p   -> TGen p { tpIndex = tpIndex p + binders }
-    TCon _   -> ty
-    TVar _   -> ty
+  pty = TVar p
 
 
-data ZonkError = OccursCheckFailed TParam Type
-                 deriving (Show,Eq)
+-- Free Type Variables ---------------------------------------------------------
 
-instance Pretty ZonkError where
-  ppr (OccursCheckFailed p ty) =
-    sep [ text "cannot construct the infinite type:"
-        , pp p <+> char '=' <+> pp ty ]
+class TypeVars a where
+  freeTVars :: a -> Set.Set TParam
 
--- | Zonking context
-type Zonk = ReaderT VarEnv (StateT (Set.Set TParam) (ExceptionT ZonkError Id))
-
--- | Resolve type variables with respect to a variable environment.
-zonk :: Types a => VarEnv -> a -> Either ZonkError a
-zonk env a = case runM (zonkVars 0 a) env Set.empty of
-  Right (a',_) -> Right a'
-  Left err     -> Left err
-
-class Types a where
-
-  -- | Unification variables present in a type.
-  typeVars :: VarEnv -> a -> Set.Set TParam
-
-  -- | Remove type variables from a type.
-  zonkVars :: Int -> a -> Zonk a
-
-instance Types a => Types [a] where
-  typeVars u = foldMap (typeVars u)
-  zonkVars b = mapM (zonkVars b)
-
-instance Types a => Types (Maybe a) where
-  typeVars u = foldMap (typeVars u)
-  zonkVars b = mapM (zonkVars b)
-
-
-instance Types Type where
-
-  typeVars u = go
-    where
-    go (TApp f x) = foldMap go [f,x]
-    go (TVar p)   = maybe (Set.singleton p) go (lookupFree p u)
-    go (TCon _)   = Set.empty
-    go (TGen _)   = Set.empty
-
-  zonkVars b = go
-    where
-    go (TApp f x) =
-      do f' <- go f
-         x' <- go x
-         return (TApp f' x')
-
-    go ty@(TCon _) =
-      return ty
-
-    go ty@(TVar p) =
-      do u <- ask
-         return (maybe ty (incBinders b) (lookupFree p u))
-
-    go ty@(TGen p) =
-      do u <- ask
-         return (maybe ty (incBinders b) (lookupBound p u))
+instance TypeVars Type where
+  freeTVars (TApp l r) = Set.union (freeTVars l) (freeTVars r)
+  freeTVars (TVar p)   = Set.singleton p
+  freeTVars TCon{}     = Set.empty
+  freeTVars TGen{}     = Set.empty

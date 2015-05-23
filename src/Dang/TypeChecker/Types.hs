@@ -10,6 +10,7 @@ import Dang.Variables
 import           Control.Lens ( ignored )
 import           Control.Monad (guard)
 import           Data.Data ( Data )
+import           Data.Function (on)
 import           Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 import           Data.Typeable ( Typeable )
@@ -36,7 +37,13 @@ instance FreeVars Type
 data TParam = TParam { tpName  :: Maybe String
                      , tpIndex :: Int
                      , tpKind  :: Kind
-                     } deriving (Show,Eq,Ord,Generic,Data,Typeable)
+                     } deriving (Show,Generic,Data,Typeable)
+
+instance Eq TParam where
+  (==) = (==) `on` tpIndex
+
+instance Ord TParam where
+  compare = compare `on` tpIndex
 
 instance Names    TParam where names      = ignored
 instance FreeVars TParam where freeVars _ = Set.empty
@@ -122,7 +129,7 @@ sSet :: Sort
 sSet = TCon (mkQual (Type 2) ["Prelude"] "Set")
 
 
--- Type Schemas ----------------------------------------------------------------
+-- Constraints -----------------------------------------------------------------
 
 -- | Type constraints
 type Prop = Type
@@ -135,6 +142,8 @@ pEqCon  = mkQual (Type 0) ["Prelude"] "~"
 (~~) a b = tapp (TCon pEqCon) [a,b]
 infix 1 ~~
 
+
+-- Type Schemas ----------------------------------------------------------------
 
 -- | Things with quantified variables.
 data Schema = Forall

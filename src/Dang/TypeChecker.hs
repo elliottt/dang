@@ -5,8 +5,10 @@ module Dang.TypeChecker (
   ) where
 
 import qualified Dang.Core.AST as Core
-import           Dang.Monad ( Dang )
+import           Dang.Monad (Dang,pass,logInfo)
 import qualified Dang.Syntax.AST as Syn
+import           Dang.TypeChecker.CheckKinds (kcModule)
+import           Dang.TypeChecker.Monad (TC,runTC)
 import           Dang.Utils.Panic
 import           Dang.Utils.Pretty
 
@@ -17,13 +19,10 @@ tcPanic  = panic "Dang.TypeChecker"
 
 -- | Top-level interface to kind checking.
 kindCheckModule :: Syn.Module -> Dang Syn.Module
-kindCheckModule m = tcPanic (text "kindCheckModule: not implemented")
---  logStage "kind-checker"
---  kcm <- runTC (kcModule iset m)
---  logInfo "Kind checking output:"
---  logDebug (show kcm)
---  logInfo (pretty kcm)
---  return kcm
+kindCheckModule m = pass "kc" $
+  do kcm <- runTC (kcModule m)
+     logInfo (text "Kind checking output:" $$ pp kcm)
+     return kcm
 
 typeCheckModule :: Syn.Module -> Dang Core.Module
 typeCheckModule m = tcPanic (text "typeCheckModule: not implemented")
