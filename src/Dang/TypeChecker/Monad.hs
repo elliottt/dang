@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Dang.TypeChecker.Monad (
     -- * Type Checking Monad
@@ -15,6 +16,12 @@ module Dang.TypeChecker.Monad (
     -- ** Variables
   , freshVar
   , freshVarFromTParam
+
+    -- ** Constraints
+  , Goal, Goal'(..)
+  , getGoals, setGoals
+  , newGoal, newGoals
+  , emitGoal, emitGoals
 
     -- ** Types
   , freshInst
@@ -33,23 +40,22 @@ import Dang.Utils.Pretty
 import Control.Applicative ( Alternative )
 import Control.Monad (MonadPlus,mzero,when,unless)
 import Control.Monad.Fix ( MonadFix )
-import MonadLib
-           ( BaseM(..), runM, ReaderT, WriterT, StateT, put, get, set, ask
-           , local, collect )
+import GHC.Generics (Generic)
+import MonadLib (BaseM(..),runM,ReaderT,StateT,get,set,ask,local)
 
 
 -- TC Monad --------------------------------------------------------------------
 
-newtype TC a = TC { unTC :: ReaderT RO (StateT RW (WriterT [Goal] Dang)) a }
+newtype TC a = TC { unTC :: ReaderT RO (StateT RW Dang) a }
     deriving (Functor,Applicative,Alternative,Monad,MonadFix,MonadPlus)
 
 runTC :: TC a -> Dang a
 runTC m =
-  do ((a,_),gs) <- runM (unTC m) emptyRO emptyRW
+  do (a,RW { .. }) <- runM (unTC m) emptyRO emptyRW
 
-     unless (null gs) $ addErr $
+     unless (null rwGoals) $ addErr $
        hang (text "unsolved goals remaining:")
-          2 (vcat (map ppGoal gs))
+          2 (vcat (map ppGoal rwGoals))
 
      return a
 
@@ -81,10 +87,11 @@ withEnv env (TC m) = TC $
 -- Read/Write State ------------------------------------------------------------
 
 data RW = RW { rwSubst :: !Subst
-             , rwFresh :: !Int }
+             , rwFresh :: !Int
+             , rwGoals :: [Goal] }
 
 emptyRW :: RW
-emptyRW  = RW { rwSubst = mempty, rwFresh = 0 }
+emptyRW  = RW { rwSubst = mempty, rwFresh = 0, rwGoals = [] }
 
 -- | Get the current substitution.
 getSubst :: TC Subst
@@ -102,13 +109,36 @@ extendSubst su' =
   do su <- getSubst
      setSubst $! su @@ su'
 
+-- | Remove all goals from the current context.
+getGoals :: TC [Goal]
+getGoals  = TC $
+  do RW { .. } <- get
+     set RW { rwGoals = [], .. }
+     return rwGoals
 
--- Goals -----------------------------------------------------------------------
+-- | Replace the current set of goals with this one.
+setGoals :: [Goal] -> TC ()
+setGoals gs = TC $
+  do RW { .. } <- get
+     set RW { rwGoals = gs, .. }
 
+-- | Collect the goals produced by an action.
+collectGoals :: TC a -> TC (a,[Goal])
+collectGoals body =
+  do gs  <- getGoals
+     a   <- body
+     gs' <- getGoals
+     setGoals gs
+     return (a,gs')
+
+
+-- | A goal, with an attached location.
 type Goal = Located Goal'
 
 data Goal' = Goal { gProp :: Prop
-                  } deriving (Show)
+                  } deriving (Show,Generic)
+
+instance Types Goal'
 
 ppGoal :: Goal -> PPDoc
 ppGoal lg = pp (gProp (unLoc lg))
@@ -118,11 +148,20 @@ newGoal gProp =
   do loc <- askLoc
      return (Goal { .. } `at` loc)
 
-emitGoal :: Goal -> TC ()
-emitGoal g = TC (put [g])
+newGoals :: [Prop] -> TC [Goal]
+newGoals ps =
+  do loc <- askLoc
+     return (map (\ gProp -> Goal { .. } `at` loc) ps)
 
-collectGoals :: TC a -> TC (a,[Goal])
-collectGoals (TC m) = TC (collect m)
+emitGoal :: Goal -> TC ()
+emitGoal g =
+  do gs <- getGoals
+     setGoals (g:gs)
+
+emitGoals :: [Goal] -> TC ()
+emitGoals gs' =
+  do gs <- getGoals
+     setGoals (gs' ++ gs)
 
 
 -- Primitive Operations --------------------------------------------------------
