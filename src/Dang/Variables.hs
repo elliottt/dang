@@ -24,14 +24,17 @@ module Dang.Variables (
 import Dang.ModuleSystem.QualName
 import Dang.Utils.Location ( Located(..) )
 
-import Control.Lens ( ignored, Traversal' )
-import Data.Generics ( Data, Typeable )
-import Data.Graph (SCC(..))
-import Data.Graph.SCC ( stronglyConnComp )
-import GHC.Generics ( Rep, Generic, M1(..), K1(..), U1, (:*:)(..), (:+:)(..)
-                    , from )
-import GHC.Generics.Lens ( generic, _M1, _K1 )
+import           Control.Lens ( ignored, Traversal' )
+import           Data.Generics ( Data, Typeable )
+import           Data.Graph (SCC(..))
+import           Data.Graph.SCC ( stronglyConnComp )
 import qualified Data.Set as Set
+import qualified Data.Map.Strict as Map
+import           Data.Maybe (mapMaybe)
+import           GHC.Generics
+                     ( Rep, Generic, M1(..), K1(..), U1, (:*:)(..), (:+:)(..)
+                     , from )
+import           GHC.Generics.Lens ( generic, _M1, _K1 )
 
 
 -- All Names -------------------------------------------------------------------
@@ -172,6 +175,11 @@ toGroup s = case s of
 scc :: (FreeVars a, BoundVars a) => [a] -> [Group a]
 scc as = map toGroup (stronglyConnComp graph)
   where
-  graph = [ (a, n, Set.toList fvs) | a <- as
-                                   , let fvs = freeVars a
-                                   , n <- Set.toList (boundVars a) ]
+
+  keys = [ 0 :: Int .. ]
+
+  graph       = zipWith addNode keys as
+  addNode k a = (a, k, mapMaybe (`Map.lookup` nodesMap) (Set.toList (freeVars a)))
+
+  nodesMap   = Map.unions (zipWith mkNode keys as)
+  mkNode k a = Map.fromList [ (n,k) | n <- Set.toList (boundVars a) ]
