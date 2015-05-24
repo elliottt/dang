@@ -48,7 +48,7 @@ instance BaseM Scope Dang where
 
 runScope :: Scope a -> Dang a
 runScope m =
-  do (a,_) <- runM (unScope m) RO { roNames = mempty, roModName = [] }
+  do (a,_) <- runM (unScope m) RO { roNames = wiredInNames, roModName = [] }
                                RW { rwNext  = mempty, rwIfaces  = Map.empty }
      return a
 
@@ -61,12 +61,6 @@ withModName ns m = Scope $
 
 getModName :: Scope ModName
 getModName  = Scope (roModName `fmap` ask)
-
--- | Reset the naming environment.
-withNames :: Names -> Scope a -> Scope a
-withNames names m = Scope $
-  do ro <- ask
-     local ro { roNames = names } (unScope m)
 
 -- | Introduce a group of names in a scope, shadowing existing names that would
 -- have overlapped.
@@ -121,19 +115,34 @@ data NameDef = FromBind (Located QualName)
                -- ^ The location of the parameter
              | FromIface (Located Open) QualName
                -- ^ The location of the import responsible
+             | Builtin QualName
                deriving (Show)
 
 instance Pretty NameDef where
   ppr (FromBind  lq)   = text "declaration:" <+> ppWithLoc lq
   ppr (FromParam lq)   = text "parameter:"   <+> ppWithLoc lq
   ppr (FromIface lo _) = text "imported:"    <+> ppWithLoc lo
+  ppr (Builtin qn)     = text "builtin:"     <+> pp qn
 
 -- | The real name associated with a NameDef.
 defName :: NameDef -> QualName
-defName (FromBind Located { .. })   = locValue
+defName (FromBind Located { .. })  = locValue
 defName (FromParam Located { .. }) = locValue
 defName (FromIface _ qn)           = qn
+defName (Builtin qn)               = qn
 
+
+-- | Wired-in names.
+wiredInNames :: Names
+wiredInNames  = Names $ Map.fromList
+  [ builtin (Qual (Type 1) [] "Set") (Qual (Type 1) ["Prelude"] "Set")
+    -- ^ The type of types
+
+  , builtin (Qual (Type 1) [] "->") (Qual (Type 1) ["Prelude"] "->")
+    -- ^ The kind arrow
+  ]
+  where
+  builtin x y = (x, [Builtin y])
 
 
 newtype Names = Names { nDefs :: Map.Map QualName [NameDef]
@@ -266,7 +275,7 @@ scPass  = gmapM scPass
 scModule :: Module -> Scope Module
 scModule m = withModName (unLoc (modName m)) $
   do names <- fullNames (modNames m)
-     withNames names (scPass m)
+     extNames names (scPass m)
 
 
 -- | Annotate errors and warnings with the current location

@@ -150,7 +150,7 @@ data Schema = Forall
   { sParams :: [TParam]
   , sProps  :: [Prop]
   , sType   :: Type
-  } deriving (Show,Eq,Ord,Data,Typeable)
+  } deriving (Show,Eq,Ord,Generic,Data,Typeable)
 
 toSchema :: Type -> Schema
 toSchema  = Forall [] []

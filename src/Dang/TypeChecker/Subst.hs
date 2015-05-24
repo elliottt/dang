@@ -8,7 +8,7 @@ module Dang.TypeChecker.Subst (
   Types(..),
   ) where
 
-import           Dang.TypeChecker.Types (Type(..),TParam)
+import           Dang.TypeChecker.Types
 
 import           Control.Monad (guard)
 import qualified Data.Map.Strict as Map
@@ -67,6 +67,29 @@ instance Types Type where
   apply _ t@TCon{}   = t
   apply s t@(TVar p) = Map.findWithDefault t p (substFree  s)
   apply s t@(TGen p) = Map.findWithDefault t p (substBound s)
+
+instance Types a => Types (Map.Map k a) where
+  apply su = fmap (apply su)
+
+-- When applying the substitution to a schema, increment the domain of the bound
+-- variable substitution past the variables that are bound here, as well as any
+-- references to bound variables in either set.
+instance Types Schema where
+  apply Subst { .. } Forall { .. } = Forall { sProps = apply su sProps
+                                            , sType  = apply su sType
+                                            , .. }
+    where
+    su          = Subst { substBound = Map.mapKeys incrParam
+                                     $ fmap incrType substBound
+                        , substFree  = fmap incrType substFree }
+
+    numVars     = length sParams
+
+    incrParam p = p { tpIndex = tpIndex p + numVars }
+
+    incrType (TApp l r) = TApp (incrType l) (incrType r)
+    incrType (TGen p)   = TGen (incrParam p)
+    incrType ty         = ty
 
 instance Types a => Types [a]
 instance Types a => Types (Maybe a)

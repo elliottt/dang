@@ -13,6 +13,9 @@ module Dang.TypeChecker.Monad (
   , unify
   , applySubst
 
+    -- ** Environment
+  , withEnv
+
     -- ** Variables
   , freshVar
   , freshVarFromTParam
@@ -26,8 +29,12 @@ module Dang.TypeChecker.Monad (
     -- ** Types
   , freshInst
   , inst
+
+    -- ** Kinds
+  , getKind
   ) where
 
+import Dang.ModuleSystem.QualName (Name)
 import Dang.Monad
 import Dang.TypeChecker.Env
 import Dang.TypeChecker.Subst
@@ -71,17 +78,17 @@ instance BaseM TC Dang where
 newtype RO = RO { roEnv :: Env }
 
 emptyRO :: RO
-emptyRO  = RO { roEnv = emptyEnv }
+emptyRO  = RO { roEnv = mempty }
 
 -- | Retrieve the type environment.
 getEnv :: TC Env
 getEnv  = TC (roEnv `fmap` ask)
 
--- | Shadow the type environment.
+-- | Extend the current type environment with another.
 withEnv :: Env -> TC a -> TC a
 withEnv env (TC m) = TC $
   do RO { .. } <- ask
-     local RO { roEnv = env, .. } m
+     local RO { roEnv = env `mappend` roEnv, .. } m
 
 
 -- Read/Write State ------------------------------------------------------------
@@ -221,3 +228,10 @@ inst s@Forall { .. } tys =
      ty <- applySubst sType
      let su = listBoundSubst (zip sParams tys)
      return (apply su sProps, apply su ty)
+
+getKind :: Name -> TC Kind
+getKind n =
+  do env <- getEnv
+     case lookupKind n env of
+       Just k  -> return k
+       Nothing -> tcPanic (text "No kind present for:" <+> pp n)
