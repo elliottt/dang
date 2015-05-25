@@ -9,6 +9,7 @@ import Dang.ModuleSystem.QualName
 import Dang.ModuleSystem.Types (Export(..))
 import Dang.Syntax.AST ( Literal(..) )
 import Dang.TypeChecker.Types
+import Dang.Utils.Panic (panic)
 import Dang.Utils.Pretty
 import Dang.Variables (FreeVars(freeVars),BoundVars(boundVars))
 
@@ -19,21 +20,61 @@ import           Data.Typeable ( Typeable )
 
 data Module = Module
   { modName  :: ModName
-  , modDecls :: [Decl]
+  , modDecls :: DeclGroup
   } deriving (Show,Data,Typeable)
 
 emptyModule :: ModName -> Module
-emptyModule qn = Module { modName = qn, modDecls = [] }
+emptyModule qn = Module { modName = qn, modDecls = DGEmpty }
 
 instance Pretty Module where
-  ppr m = sep [ text "module" <+> pp (modName m)
-              , layout (concatMap (ppDecl True) (modDecls m))
-              ]
+  ppr m = sep [ text "module" <+> pp (modName m), pp (modDecls m) ]
 
 -- | Pretty print a list of type parameters for a type application/definition.
 ppTyApp :: Pretty a => [a] -> PPDoc
 ppTyApp [] = empty
 ppTyApp ts = fsep (list (char '[') comma (char ']') (map pp ts))
+
+
+-- Decl Groups -----------------------------------------------------------------
+
+data DeclGroup = DGSingle Decl
+                 -- ^ Lift a declaration
+
+               | DGRec    DeclGroup
+                 -- ^ Mark a group of declarations as recursive
+
+               | DGComp   DeclGroup DeclGroup
+                 -- ^ Combine two disjoint sets of declarations
+
+               | DGSeq    DeclGroup DeclGroup
+                 -- ^ Combine two groups of declarations, with the right
+                 -- shadowing the left
+
+               | DGLocal DeclGroup DeclGroup
+                 -- ^ Let-bindings for declaration groups
+
+               | DGEmpty
+                 -- ^ No declarations
+
+                 deriving (Show,Data,Typeable)
+
+-- | Eliminate top-level DGComp and DGSeq nodes.
+flattenDeclGroup :: DeclGroup -> [DeclGroup]
+flattenDeclGroup (DGComp l r) = flattenDeclGroup l ++ flattenDeclGroup r
+flattenDeclGroup (DGSeq  l r) = flattenDeclGroup l ++ flattenDeclGroup r
+flattenDeclGroup DGEmpty      = []
+flattenDeclGroup dg           = [dg]
+
+instance Pretty DeclGroup where
+  ppr = layout . concatMap fmt . flattenDeclGroup
+    where
+    fmt (DGSingle d)    = ppDecl True d
+    fmt (DGRec dg)      = [ sep [ text "rec",   pp dg ] ]
+    fmt (DGLocal as bs) = [ sep [ text "local", pp as ]
+                         $$ sep [ text "in",    pp bs ] ]
+    fmt dg              = panic "Dang.Core.AST"
+                        $ text "ppr(DeclGroup): Unexpected constructor:"
+                       $$ text (show dg)
 
 
 -- Declarations ----------------------------------------------------------------

@@ -1,7 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Dang.TypeChecker.CheckKinds where
+module Dang.TypeChecker.CheckKinds (
+    kcType
+  ) where
 
 import           Dang.ModuleSystem.QualName
 import           Dang.Monad (logInfo,addErr,withLoc)
@@ -19,62 +21,20 @@ import qualified Data.Foldable as F
 import qualified Data.Set as Set
 
 
-kcModule :: Module -> TC Module
-kcModule Module { .. } =
-  do logInfo (text "Kind checking module:" <+> ppModName (unLoc modName))
-     (decls',env) <- kcTopDecls modDecls
-     return Module { modDecls = decls', .. }
+-- | Check that the type has the given kind.
+kcType :: Type -> T.Kind -> TC ()
 
+kcType (TFun f x) k =
+  do xk <- freshVar T.kSet
+     kcType f (T.kArrow xk k)
+     kcType x xk
 
-kcTopDecls :: [TopDecl] -> TC ([TopDecl],Env)
-kcTopDecls  = go [] mempty . scc
-  where
-  go decls kinds [] =
-    return (decls,kinds)
+kcType (TCon n) k =
+  do k' <- getKind n
+     unify k' k
 
-  go decls kinds (g:gs) =
-    do let ds    = F.toList g
-           names = Set.toList (declaredTypes ds)
-
-       logInfo $ hang (text "checking kinds for group")
-                    2 (vcat (map pp ds))
-
-       -- seed the environment with kind variables, to start with
-       kvars <- replicateM (length names) (freshVar T.kSet)
-       let dks = addKinds (zip names kvars) mempty
-
-       withEnv dks $
-         do ds'  <- mapM kcTopDecl ds
-            dks' <- applySubst dks
-
-            logInfo $ hang (text "kinds:")
-                         2 (vcat [ pp n <> char ':' <+> pp k
-                                 | (n,k) <- allKinds dks' ])
-
-            go (ds' ++ decls) (dks' `mappend` kinds) gs
-
-
--- | Filter out names that are declared at the type level.
-declaredTypes :: [TopDecl] -> Set.Set Name
-declaredTypes tds = Set.filter isTypeDecl (boundVars tds)
-  where
-  isTypeDecl n = view (qualName . qualLevel) n == Type 0
-
-
-kcTopDecl :: TopDecl -> TC TopDecl
-kcTopDecl (TDPrimType lpt) = TDPrimType `fmap` withLoc lpt (traverse kcPrimType lpt)
-
-
--- | Just assume the kind given by the programmer.
-kcPrimType :: PrimType -> TC PrimType
-kcPrimType pt @ PrimType { .. } =
-  do logInfo (text "Checking:" <+> pp primTypeName)
-
-     var <- getKind primTypeName
-     sig <- translateKind primTypeKind
-     unify var sig
-
-     return pt
+kcType (TLoc lt) k = withLoc lt $
+     kcType (unLoc lt) k
 
 
 -- Kind Embedding --------------------------------------------------------------

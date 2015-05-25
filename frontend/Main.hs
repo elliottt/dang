@@ -29,8 +29,7 @@ main  =
 
           m   <- loadModule file
           scm <- scopeCheck m
-          kcm <- kindCheckModule scm
-          tcm <- typeCheckModule kcm
+          tcm <- typeCheckModule scm
 
           compile tcm (ofile file)
           unless (optCompileOnly opts) (link [ofile file] (dropExtension file))

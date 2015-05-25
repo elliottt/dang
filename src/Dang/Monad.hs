@@ -15,6 +15,9 @@ module Dang.Monad (
   , runDang
   , runDangWithArgs
 
+    -- ** Utility
+  , ppDang
+
     -- ** Options
   , getOptions
   , whenDebugOpt
