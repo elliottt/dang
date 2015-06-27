@@ -14,6 +14,7 @@ import Dang.Utils.Panic ( panic )
 import Dang.Utils.Pretty
 
 import           Control.Lens as Lens ( view, set, traverseOf )
+import           Data.Either (partitionEithers)
 import           Data.Generics ( Data, gmapM, extM, ext1M )
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -273,9 +274,40 @@ scPass  = gmapM scPass
 
 -- | Rename a module.
 scModule :: Module -> Scope Module
-scModule m = withModName (unLoc (modName m)) $
-  do names <- fullNames (modNames m)
-     extNames names (scPass m)
+scModule m @ Module { .. } = withModName (unLoc modName) $
+  do names  <- fullNames (modNames m)
+     decls' <- extNames names (scTopDecls modDecls)
+     return Module { modDecls = decls', .. } 
+
+
+class HasSig a where
+  isSig :: a -> [Either (Located Signature) a]
+
+instance HasSig Decl where
+  isSig (DSig sig) = [Left sig]
+  isSig d          = [Right d]
+
+instance HasSig TopDecl where
+  isSig (TDDecl d)            = [ case e of
+                                    Left sig -> Left sig
+                                    Right d' -> Right (TDDecl d')
+                                | e <- isSig d ]
+  isSig (TDExport (UnLoc ex)) = concatMap isSig (exValue ex)
+  isSig td                    = [Right td]
+
+partitionTopDecls :: HasSig decl => [decl] -> ([Located Signature],[decl])
+partitionTopDecls  = partitionEithers . concatMap isSig
+
+-- | Resolve signatures and declarations.
+scTopDecls :: [TopDecl] -> Scope [TopDecl]
+scTopDecls tds =
+  do let (sigs,decls) = partitionTopDecls tds
+
+         sigMap = Map.fromList [ (sigNames, sig)
+                               | sig @ (UnLoc Signature { .. }) <- sigs
+                               , UnLoc name <- sigNames ]
+
+     undefined Map.foldl
 
 
 -- | Annotate errors and warnings with the current location

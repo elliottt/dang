@@ -6,11 +6,13 @@ module Dang.TypeChecker.CheckTypes (
 
 import qualified Dang.Core.AST as Core
 import           Dang.ModuleSystem.QualName (ppModName)
+import           Dang.ModuleSystem.Types (Exported(..),Export(..))
 import           Dang.Monad (withLoc,logInfo)
 import qualified Dang.Syntax.AST as Syn
 import           Dang.TypeChecker.Monad
 import           Dang.Utils.Location (Located,unLoc)
 import           Dang.Utils.Pretty
+import           Dang.Variables (scc)
 
 
 tcModule :: Syn.Module -> TC Core.Module
@@ -23,4 +25,6 @@ tcModule Syn.Module { .. } =
 -- Top-level Declarations ------------------------------------------------------
 
 tcTopDecls :: [Syn.TopDecl] -> TC Core.DeclGroup
-tcTopDecls  = undefined
+tcTopDecls  = go . scc
+  where
+  go = undefined

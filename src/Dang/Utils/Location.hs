@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Dang.Utils.Location where
 
@@ -50,6 +51,8 @@ data Located a = Located
   { locRange :: !SrcLoc
   , locValue ::  a
   } deriving (Show,Functor,Ord,Eq,Generic,Data,Typeable,Foldable,Traversable)
+
+pattern UnLoc a <- Located { locValue = a }
 
 instance HasLocation (Located a) where
   {-# INLINE getLoc #-}

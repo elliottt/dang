@@ -5,8 +5,7 @@ import qualified Dang.Core.AST as Core
 import           Dang.Monad (Dang,pass,logInfo)
 import qualified Dang.Syntax.AST as Syn
 import           Dang.TypeChecker.CheckTypes (tcModule)
-import           Dang.TypeChecker.Monad (TC,runTC)
-import           Dang.Utils.Panic
+import           Dang.TypeChecker.Monad (runTC)
 import           Dang.Utils.Pretty
 
 
