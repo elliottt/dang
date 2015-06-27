@@ -1,3 +1,0 @@
-[submodule "deps/llvm-pretty"]
-	path = deps/llvm-pretty
-	url = git://github.com/elliottt/llvm-pretty.git
