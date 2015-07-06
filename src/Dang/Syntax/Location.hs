@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
@@ -11,24 +12,26 @@ import           Control.Applicative ((<|>))
 import           Data.Function (on)
 import           Data.Int (Int64)
 import qualified Data.Text.Lazy as L
+import           GHC.Generics (Generic)
 
 
 data Position = Position { posRow, posCol, posOff :: !Int64
-                         } deriving (Show)
+                         } deriving (Show,Generic)
 
 data Range = Range { rangeSource :: Maybe Source
                    , rangeStart, rangeEnd :: !Position
-                   } deriving (Show,Eq,Ord)
+                   } deriving (Show,Eq,Ord,Generic)
 
 data Source = Source { srcText   :: L.Text
                        -- ^ The full text of the origin
                      , srcOrigin :: String
                        -- ^ Origin of the text (file, interactive, etc...)
-                     } deriving (Show,Eq,Ord)
+                     } deriving (Show,Eq,Ord,Generic)
 
 data Located a = Located { locRange :: !Range
                          , locValue :: a
-                         } deriving (Functor,Foldable,Traversable,Show,Eq,Ord)
+                         } deriving (Functor,Foldable,Traversable,Show,Eq,Ord
+                                    ,Generic)
 
 
 class HasLoc a where
@@ -78,6 +81,13 @@ instance Monoid Range where
                  , rangeStart  = zeroPos
                  , rangeEnd    = zeroPos }
 
-  mappend a@(Range s1 l1 r1) b@(Range s2 l2 r2)
-    | l1 > r2   = Range (s1 <|> s2) r2 l1
+  mappend (Range s1 l1 r1) (Range s2 l2 r2)
+    | l1 > r2   = Range (s1 <|> s2) l2 r1
     | otherwise = Range (s1 <|> s2) l1 r2
+
+
+instance PP Position where
+  ppr Position { .. } = ppr posRow <> char ':' <> ppr posCol
+
+instance PP Range where
+  ppr Range { .. } = ppr rangeStart <> char '-' <> ppr rangeEnd

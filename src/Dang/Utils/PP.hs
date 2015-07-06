@@ -10,17 +10,20 @@ module Dang.Utils.PP (
     PP(..), pretty, pp,
 
     -- * Combinators
-    (<>), (<+>),
+    (<>), (<+>), ($$),
     fsep, sep, hsep, cat, vcat, punctuate,
     optParens, parens, brackets,
     comma, commas,
-    text, char, int
+    text, char, int, integer,
+    hang, nest
   ) where
 
 
 import           Data.String (IsString(..))
 import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
 import qualified Text.PrettyPrint.HughesPJ as PJ
+
+import           Data.Int (Int64)
 
 
 data Config = Config
@@ -89,8 +92,14 @@ instance PP Char where
   ppr     = char
   pprList = text
 
+instance PP Integer where
+  ppr = integer
+
 instance PP Int where
   ppr = int
+
+instance PP Int64 where
+  ppr = ppr . toInteger
 
 
 -- Combinators -----------------------------------------------------------------
@@ -103,6 +112,9 @@ liftDoc2 f a b = f <$> a <*> b
 
 (<+>) :: Doc -> Doc -> Doc
 (<+>)  = liftDoc2 (PJ.<+>)
+
+($$) :: Doc -> Doc -> Doc
+($$)  = liftDoc2 (PJ.$$)
 
 fsep :: [Doc] -> Doc
 fsep ds = PJ.fsep <$> sequence ds
@@ -150,5 +162,14 @@ text s = return (PJ.text s)
 char :: Char -> Doc
 char c = return (PJ.char c)
 
+integer :: Integer -> Doc
+integer i = return (PJ.integer i)
+
 int :: Int -> Doc
 int i = return (PJ.int i)
+
+hang :: Doc -> Int -> Doc -> Doc
+hang a i b = PJ.hang <$> a <*> pure i <*> b
+
+nest :: Int -> Doc -> Doc
+nest i d = PJ.nest i <$> d
