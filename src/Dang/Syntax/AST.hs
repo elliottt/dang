@@ -5,13 +5,16 @@ module Dang.Syntax.AST where
 
 
 import Dang.Syntax.Location
-import GHC.Generics (Generic)
+import Dang.Utils.PP
+
+import qualified Data.Text as T
+import           GHC.Generics (Generic)
 
 
 -- | Parsed names, either qualified or unqualified.
-data PName = PUnqual String
-           | PQual [String] String
-             deriving (Eq,Show,Generic)
+data PName = PUnqual T.Text
+           | PQual [T.Text] T.Text
+             deriving (Eq,Show,Ord,Generic)
 
 -- | A parsed structure, with its name type fixed to 'PName'.
 type PModStruct = ModStruct PName
@@ -81,3 +84,9 @@ data Type name = TCon name
                | TVar name
                | TFun (Type name) (Type name)
                  deriving (Eq,Show,Functor,Generic)
+
+
+-- Pretty-printing -------------------------------------------------------------
+
+instance PP PName where
+  ppr (PUnqual n) = pp n

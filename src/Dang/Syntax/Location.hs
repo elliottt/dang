@@ -22,11 +22,9 @@ data Range = Range { rangeSource :: Maybe Source
                    , rangeStart, rangeEnd :: !Position
                    } deriving (Show,Eq,Ord,Generic)
 
-data Source = Source { srcText   :: L.Text
-                       -- ^ The full text of the origin
-                     , srcOrigin :: String
-                       -- ^ Origin of the text (file, interactive, etc...)
-                     } deriving (Show,Eq,Ord,Generic)
+data Source = Interactive
+            | File FilePath
+              deriving (Show,Eq,Ord,Generic)
 
 data Located a = Located { locRange :: !Range
                          , locValue :: a
@@ -37,15 +35,17 @@ data Located a = Located { locRange :: !Range
 class HasLoc a where
   getLoc :: a -> Range
 
+instance HasLoc Range where
+  getLoc = id
+
+instance HasLoc (Located a) where
+  getLoc = locRange
+
 at :: HasLoc loc => loc -> a -> Located a
 at loc locValue = Located { locRange = getLoc loc, .. }
 
 thing :: Located a -> a
 thing Located { .. } = locValue
-
--- | By default, don't print any location information for a Located thing.
-instance PP a => PP (Located a) where
-  ppr Located { .. } = ppr locValue
 
 
 -- | Move a position by the width of a character.
@@ -69,12 +69,9 @@ instance Ord Position where
 
 
 -- | The text that the region describes
-rangeText :: Range -> L.Text
-rangeText Range { .. } =
-  case srcText `fmap` rangeSource of
-    Just txt -> L.take (posOff rangeEnd - posOff rangeStart)
-              $ L.drop (posOff rangeStart) txt
-    Nothing  -> L.empty
+rangeText :: Range -> L.Text -> L.Text
+rangeText Range { .. } txt = L.take (posOff rangeEnd - posOff rangeStart)
+                           $ L.drop (posOff rangeStart) txt
 
 instance Monoid Range where
   mempty = Range { rangeSource = Nothing
@@ -91,3 +88,11 @@ instance PP Position where
 
 instance PP Range where
   ppr Range { .. } = ppr rangeStart <> char '-' <> ppr rangeEnd
+
+instance PP Source where
+  ppr Interactive = text "<interactive>"
+  ppr (File path) = text path
+
+-- | By default, don't print any location information for a Located thing.
+instance PP a => PP (Located a) where
+  ppr Located { .. } = ppr locValue

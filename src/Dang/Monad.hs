@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Dang.Monad (
@@ -24,7 +25,7 @@ import           Data.IORef
                      (IORef,newIORef,readIORef,writeIORef,atomicModifyIORef'
                      ,modifyIORef')
 import           Data.Typeable (Typeable)
-import           MonadLib (runM, BaseM(..), ReaderT, ask)
+import           MonadLib (RunM(..), BaseM(..), ReaderT, ask)
 
 
 data RO = RO { roLoc  :: IORef Range
@@ -58,6 +59,12 @@ instance MonadPlus Dang where
     do ro      <- ask
        restore <- inBase (mkRestore ro)
        inBase (runDang' ro a `X.catch` \ DangError -> restore >> runDang' ro b)
+
+instance BaseM Dang Dang where
+  inBase = id
+
+instance RunM Dang a (Dang a) where
+  runM = id
 
 -- | The identity to the 'Alternative' and 'MonadPlus' instances.
 data DangError = DangError

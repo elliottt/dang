@@ -23,6 +23,7 @@ import           Data.String (IsString(..))
 import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
 import qualified Text.PrettyPrint.HughesPJ as PJ
 
+import qualified Data.Text as T
 import           Data.Int (Int64)
 
 
@@ -100,6 +101,9 @@ instance PP Int where
 
 instance PP Int64 where
   ppr = ppr . toInteger
+
+instance PP T.Text where
+  ppr s = text (T.unpack s)
 
 
 -- Combinators -----------------------------------------------------------------
