@@ -24,6 +24,7 @@ import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
 import qualified Text.PrettyPrint.HughesPJ as PJ
 
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
 import           Data.Int (Int64)
 
 
@@ -104,6 +105,9 @@ instance PP Int64 where
 
 instance PP T.Text where
   ppr s = text (T.unpack s)
+
+instance PP L.Text where
+  ppr s = text (L.unpack s)
 
 
 -- Combinators -----------------------------------------------------------------

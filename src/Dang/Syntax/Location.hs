@@ -68,10 +68,16 @@ instance Ord Position where
   compare = compare `on` posOff
 
 
--- | The text that the region describes
-rangeText :: Range -> L.Text -> L.Text
-rangeText Range { .. } txt = L.take (posOff rangeEnd - posOff rangeStart)
-                           $ L.drop (posOff rangeStart) txt
+-- | The lines that the region describes, with optional additional lines of
+-- context.
+rangeText :: Int -> Range -> L.Text -> L.Text
+rangeText cxt Range { .. } txt = L.unlines
+                               $ take len
+                               $ drop start
+                               $ L.lines txt
+  where
+  start = max 0 (fromIntegral (posRow rangeStart) - cxt)
+  len   = 2 * cxt + fromIntegral (posRow rangeEnd - posRow rangeStart) + 1
 
 instance Monoid Range where
   mempty = Range { rangeSource = Nothing

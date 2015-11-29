@@ -1,13 +1,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Dang.ModuleSystem.Rename where
 
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
-import Dang.ModuleSystem.Name
+import Dang.ModuleSystem.Name (Name,Namespace,mkUnknown)
+import Dang.Unique (withSupply)
 import Dang.Utils.PP
 import Dang.Utils.Panic (panic)
 
@@ -15,11 +17,16 @@ import           Control.Applicative (Alternative(..))
 import           Control.Monad (MonadPlus)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,StateT,get,set,ask,local)
 
 
-rename :: Namespace -> ModStruct PName -> Dang (ModStruct Name)
-rename ns = runRN ns . rnModStruct
+rename :: Module PName -> Dang (Module Name)
+rename m = runRN ns (rnModule m)
+  where
+  ns = L.toStrict $ case modName m of
+         PUnqual n  -> n
+         PQual ns n -> L.concat [ns, ".", n]
 
 
 -- Monad -----------------------------------------------------------------------
@@ -76,7 +83,7 @@ lookupPName pn (NameMap names) =
   case Map.lookup pn names of
 
     Just []  -> panic "Dang.Module.Rename:lookupPName"
-                      "Invalid naming environment"
+                      ("Invalid naming environment" :: String)
 
     Just [o] -> Resolved o
     Just os  -> Conflict pn os
@@ -84,6 +91,11 @@ lookupPName pn (NameMap names) =
 
 
 -- Renaming --------------------------------------------------------------------
+
+-- | Rename all entries in the top-level module.
+rnModule :: Module PName -> RN (Module Name)
+rnModule Module { .. } =
+  do undefined
 
 rnLoc :: Located a -> (a -> RN b) -> RN (Located b)
 rnLoc Located { .. } f = withLoc locRange $
@@ -122,4 +134,5 @@ conflict n os =
 unknown :: PName -> RN Name
 unknown pn =
   do addError (text "not in scope:" <+> pp pn)
-     mkUnknown pn `fmap` askLoc
+     loc <- askLoc
+     inBase (withSupply (mkUnknown pn loc))

@@ -7,17 +7,21 @@ module Dang.Syntax.AST where
 import Dang.Syntax.Location
 import Dang.Utils.PP
 
-import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
 import           GHC.Generics (Generic)
 
 
 -- | Parsed names, either qualified or unqualified.
-data PName = PUnqual T.Text
-           | PQual [T.Text] T.Text
+data PName = PUnqual !L.Text
+           | PQual   !L.Text !L.Text
              deriving (Eq,Show,Ord,Generic)
 
--- | A parsed structure, with its name type fixed to 'PName'.
-type PModStruct = ModStruct PName
+-- | A parsed top-level module.
+type PModule = Module PName
+
+data Module name = Module { modName  :: name
+                          , modDecls :: [Located (Decl name)]
+                          } deriving (Show)
 
 newtype ModStruct name = ModStruct { msElems :: [Located (Decl name)]
                                    } deriving (Eq,Show,Functor,Generic)
@@ -89,4 +93,5 @@ data Type name = TCon name
 -- Pretty-printing -------------------------------------------------------------
 
 instance PP PName where
-  ppr (PUnqual n) = pp n
+  ppr (PUnqual n)  = pp n
+  ppr (PQual ns n) = pp ns <> char '.' <> pp n

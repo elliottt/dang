@@ -10,12 +10,16 @@ module Dang.Monad (
   Dang(), runDang,
   io,
   askLoc, withLoc,
+
+  -- ** Messages
   Message(..), MessageType(..),
+  collectMessages,
   addError,
   addWarning
   ) where
 
 import Dang.Syntax.Location (Range,HasLoc(..))
+import Dang.Unique
 import Dang.Utils.PP
 
 import           Control.Applicative (Alternative(..))
@@ -28,14 +32,16 @@ import           Data.Typeable (Typeable)
 import           MonadLib (RunM(..), BaseM(..), ReaderT, ask)
 
 
-data RO = RO { roLoc  :: IORef Range
-             , roMsgs :: IORef [Message]
+data RO = RO { roLoc    :: !(IORef Range)
+             , roMsgs   :: !(IORef [Message])
+             , roSupply :: !(IORef Supply)
              }
 
 newRO :: IO RO
 newRO  =
-  do roLoc  <- newIORef mempty
-     roMsgs <- newIORef []
+  do roLoc    <- newIORef mempty
+     roMsgs   <- newIORef []
+     roSupply <- newIORef initialSupply
      return RO { .. }
 
 -- | Build an IO action that restores the previous state of the environment.
@@ -65,6 +71,11 @@ instance BaseM Dang Dang where
 
 instance RunM Dang a (Dang a) where
   runM = id
+
+instance SupplyM Dang where
+  withSupply f =
+    do RO { .. } <- Dang ask
+       io (atomicModifyIORef' roSupply f)
 
 -- | The identity to the 'Alternative' and 'MonadPlus' instances.
 data DangError = DangError
@@ -105,6 +116,15 @@ withLoc loc body =
 
 
 -- Errors and Warnings ---------------------------------------------------------
+
+collectMessages :: DangM dang => dang a -> dang (a,[Message])
+collectMessages m =
+  do RO { .. } <- inBase (Dang ask)
+     orig      <- io (atomicModifyIORef' roMsgs (\ orig -> ([], orig)))
+     a         <- m
+     msgs      <- io (atomicModifyIORef' roMsgs (\ msgs -> (orig, msgs)))
+     return (a,msgs)
+
 
 data Message = Message MessageType Range Doc
                deriving (Show)

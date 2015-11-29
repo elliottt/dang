@@ -12,11 +12,13 @@ cabal-version:       >= 1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Dang
+                       Dang.ModuleSystem.Rename
                        Dang.Syntax.Location
                        Dang.Utils.PP
   build-depends:       base >= 4.8 && <5,
                        monadLib,
                        pretty,
+                       containers,
                        text
   ghc-options:         -Wall
 
