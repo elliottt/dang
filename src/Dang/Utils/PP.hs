@@ -3,13 +3,26 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Dang.Utils.PP (
+    -- * Config
     Config(..), defaultConfig,
+
+    -- ** Name display
+    NameDisp(),
+    neverQualify,
+    alwaysQualify,
+    NameFormat(..),
+    formatName,
+
+    -- * Pretty-printer
     Doc(),
 
-    -- * Class
+    -- ** Names
+    getNameFormat,
+
+    -- ** Class
     PP(..), pretty, pp,
 
-    -- * Combinators
+    -- ** Combinators
     (<>), (<+>), ($$),
     fsep, sep, hsep, cat, vcat, punctuate,
     optParens, parens, brackets,
@@ -18,28 +31,75 @@ module Dang.Utils.PP (
     hang, nest
   ) where
 
+import Dang.Utils.Ident
 
+
+import           Control.Monad (mplus)
+import           Data.Int (Int64)
 import           Data.String (IsString(..))
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
 import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
 import qualified Text.PrettyPrint.HughesPJ as PJ
 
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as L
-import           Data.Int (Int64)
 
 
-data Config = Config
-              deriving (Show)
+data Config = Config { cfgNameDisp :: NameDisp
+                     }
 
 defaultConfig :: Config
-defaultConfig  = Config
+defaultConfig  = Config { cfgNameDisp = mempty
+                        }
+
+
+-- | How to display names, inspired by the GHC `Outputable` module.
+data NameDisp = EmptyNameDisp
+              | NameDisp (Namespace -> Ident -> Maybe NameFormat)
+
+instance Monoid NameDisp where
+  mempty                              = EmptyNameDisp
+
+  mappend (NameDisp f)  (NameDisp g)  = NameDisp (\ns i -> f ns i `mplus` g ns i)
+  mappend EmptyNameDisp b             = b
+  mappend a             EmptyNameDisp = a
+
+neverQualify :: Namespace -> NameDisp
+neverQualify ns = NameDisp $ \ ns' _ ->
+  if ns == ns'
+     then return UnQualified
+     else Nothing
+
+alwaysQualify :: Namespace -> NameDisp
+alwaysQualify ns = NameDisp $ \ ns' _ ->
+  if ns == ns'
+     then return (Qualified ns)
+     else Nothing
+
+
+data NameFormat = UnQualified
+                | Qualified !Namespace
+                  deriving (Show)
+
+-- | Lookup formatting information for a name. A result of 'Nothing' indicates
+-- that the name is not in scope.
+formatName :: NameDisp -> Namespace -> Ident -> Maybe NameFormat
+formatName EmptyNameDisp = \ _ _ -> Nothing
+formatName (NameDisp f)  = f
+
+
+
 
 data Env = Env { envConfig :: !Config
                , envPrec   :: !Int
-               } deriving (Show)
+               }
 
 defaultEnv :: Config -> Env
 defaultEnv envConfig = Env { envPrec = 0, .. }
+
+getNameFormat :: Namespace -> Ident -> DocM (Maybe NameFormat)
+getNameFormat ns i = DocM $
+  do Env { .. } <- ask
+     return $! formatName (cfgNameDisp envConfig) ns i
 
 newtype DocM a = DocM { unDocM :: ReaderT Env Id a
                       } deriving (Functor,Applicative,Monad)
@@ -108,6 +168,9 @@ instance PP T.Text where
 
 instance PP L.Text where
   ppr s = text (L.unpack s)
+
+instance PP Ident where
+  ppr ident = ppr (identText ident)
 
 
 -- Combinators -----------------------------------------------------------------

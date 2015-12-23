@@ -19,6 +19,7 @@ library
                        monadLib,
                        pretty,
                        containers,
+                       lens-simple,
                        text
   ghc-options:         -Wall
 

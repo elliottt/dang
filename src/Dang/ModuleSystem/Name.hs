@@ -6,17 +6,19 @@ module Dang.ModuleSystem.Name (
     Name(), Namespace,
     nameSource,
     nameSort,
+    nameIdent,
+    nameUnique,
 
     mkUnknown,
   ) where
 
 import Dang.Syntax.AST (PName(..))
-import Dang.Syntax.Location (Source,Range)
+import Dang.Syntax.Location (Range)
 import Dang.Unique
+import Dang.Utils.Ident
 import Dang.Utils.PP
 
 import           Data.Function (on)
-import qualified Data.Text as S
 import qualified Data.Text.Lazy as L
 
 
@@ -31,8 +33,6 @@ data NameSort = Declaration !ModInfo
                 -- ^ Type/function parameter.
                 deriving (Eq,Ord,Show)
 
-type Namespace = S.Text
-
 data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
                    -- ^ The unique number assigned to this name for this run of
                    -- the compiler.
@@ -40,7 +40,7 @@ data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
                  , nSort :: !NameSort
                    -- ^ What kind of name this is.
 
-                 , nName :: {-# UNPACK #-} !S.Text
+                 , nName :: {-# UNPACK #-} !Ident
                    -- ^ The actual name.
 
                  , nFrom :: {-# UNPACK #-} !Range
@@ -53,8 +53,8 @@ instance Eq Name where
 
 
 -- | Retrieve the text associated with the 'Name'.
-nameString :: Name -> S.Text
-nameString Name { .. } = nName
+nameIdent :: Name -> Ident
+nameIdent Name { .. } = nName
 
 -- | The definition site of the 'Name'.
 nameSource :: Name -> Range
@@ -79,7 +79,7 @@ mkUnknown :: PName -> Range -> Supply -> (Supply,Name)
 mkUnknown (PUnqual n) src s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Parameter
-                          , nName = L.toStrict n
+                          , nName = mkIdent (L.toStrict n)
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)
@@ -87,7 +87,7 @@ mkUnknown (PUnqual n) src s =
 mkUnknown (PQual ns n) src s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Declaration (ModInfo (L.toStrict ns))
-                          , nName = L.toStrict n
+                          , nName = mkIdent (L.toStrict n)
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)
@@ -99,4 +99,15 @@ mkUnknown (PQual ns n) src s =
 -- XXX fix this to interact with the environment, asking how to print this
 -- particular name.
 instance PP Name where
-  ppr Name { .. } = pp nName
+  ppr Name { .. } =
+    case nSort of
+
+      Declaration (ModInfo ns) ->
+        do mb <- getNameFormat ns nName
+           case mb of
+             Just (Qualified ns') -> pp ns' <> char '.' <> pp nName
+             Just UnQualified     ->                       pp nName
+             Nothing              -> pp ns  <> char '.' <> pp nName
+
+      Parameter ->
+        pp nName
