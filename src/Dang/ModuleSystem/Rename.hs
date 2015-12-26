@@ -3,7 +3,18 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Dang.ModuleSystem.Rename where
+module Dang.ModuleSystem.Rename (
+    rename,
+    renameModule,
+
+    rnLoc,
+    rnModStruct,
+    rnModBind,
+    rnSchema,
+    rnMatch,
+    rnDecl,
+    rnBind,
+  ) where
 
 import Dang.Monad
 import Dang.Syntax.AST
@@ -21,12 +32,10 @@ import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,StateT,get,set,ask,local)
 
 
-rename :: Module PName -> Dang (Module Name)
-rename m = runRN ns (rnModule m)
-  where
-  ns = L.toStrict $ case modName m of
-         PUnqual n  -> n
-         PQual ns n -> L.concat [ns, ".", n]
+renameModule :: Module PName -> Dang (Module Name)
+renameModule Module { .. } = rename modName $
+  do ds <- traverse (rnLoc rnDecl) modDecls
+     return Module { modDecls = ds, .. }
 
 
 -- Monad -----------------------------------------------------------------------
@@ -38,8 +47,8 @@ instance BaseM RN Dang where
   inBase m = RN (inBase m)
 
 
-runRN :: Namespace -> RN a -> Dang a
-runRN ns m = fmap fst $
+rename :: Namespace -> RN a -> Dang a
+rename ns m = fmap fst $
   runM (unRN m) RO { roNS    = ns     }
                 RW { rwNames = mempty }
 
@@ -56,83 +65,123 @@ getNamespace  = RN (roNS <$> ask)
 
 -- Name Maps -------------------------------------------------------------------
 
-newtype NameMap = NameMap (Map.Map PName [Origin])
+newtype NameMap = NameMap (Map.Map Def [Name])
                   deriving (Show)
+
+data Def = DefDecl PName
+         | DefType PName
+           deriving (Eq,Ord,Show)
+
+instance PP Def where
+  ppr (DefDecl n) = ppr n
+  ppr (DefType n) = ppr n
+
+defName :: Def -> PName
+defName (DefDecl n) = n
+defName (DefType n) = n
+
+defType :: Def -> Doc
+defType DefDecl{} = text "value"
+defType DefType{} = text "type"
 
 instance Monoid NameMap where
   mempty                          = NameMap mempty
-  mappend (NameMap a) (NameMap b) = NameMap (Map.unionWith mappend a b)
+  mappend (NameMap a) (NameMap b) = NameMap (Map.unionWith merge a b)
+    where
+    merge as bs | as == bs  = as
+                | otherwise = as ++ bs
 
-data Origin = FromDef Name
-              deriving (Show)
-
-ppOrigin :: Origin -> Doc
-ppOrigin (FromDef n) = pp n
-
-origName :: Origin -> Name
-origName (FromDef n) = n
-
-data NameResult = Resolved Origin
-                | Conflict PName [Origin]
+data NameResult = Resolved Name
+                | Conflict Def [Name]
                   -- ^ A non-empty list of conflicting names
                 | Unknown
                   deriving (Show)
 
-lookupPName :: PName -> NameMap -> NameResult
-lookupPName pn (NameMap names) =
-  case Map.lookup pn names of
+lookupDef :: Def -> NameMap -> NameResult
+lookupDef d (NameMap names) =
+  case Map.lookup d names of
 
     Just []  -> panic "Dang.Module.Rename:lookupPName"
                       ("Invalid naming environment" :: String)
 
-    Just [o] -> Resolved o
-    Just os  -> Conflict pn os
+    Just [n] -> Resolved n
+    Just ns  -> Conflict d ns
     Nothing  -> Unknown
 
 
 -- Renaming --------------------------------------------------------------------
 
--- | Rename all entries in the top-level module.
-rnModule :: Module PName -> RN (Module Name)
-rnModule Module { .. } =
-  do undefined
+type Rename f = f PName -> RN (f Name)
 
-rnLoc :: Located a -> (a -> RN b) -> RN (Located b)
-rnLoc Located { .. } f = withLoc locRange $
+rnLoc :: (a -> RN b) -> Located a -> RN (Located b)
+rnLoc f Located { .. } = withLoc locRange $
   do b <- f locValue
      return Located { locValue = b, .. }
 
 -- | Qualify all of the declarations in the struct.
-rnModStruct :: ModStruct PName -> RN (ModStruct Name)
+rnModStruct :: Rename ModStruct
 rnModStruct (ModStruct ds) =
   do ns <- getNamespace
      undefined
 
 -- | Replace a parsed name with a resolved one.
-rnPName :: PName -> RN Name
-rnPName pn =
+rnPName :: Def -> RN Name
+rnPName d =
   do RW { .. } <- RN get
-     case lookupPName pn rwNames of
-       Resolved o    -> return (origName o)
+     case lookupDef d rwNames of
+       Resolved n    -> return n
        Conflict n os -> conflict n os
-       Unknown       -> unknown pn
+       Unknown       -> unknown d
+
+-- | Rename a declaration.
+rnDecl :: Rename Decl
+rnDecl (DBind b)     = DBind    <$> rnBind b
+rnDecl (DModBind mb) = DModBind <$> rnModBind mb
+rnDecl (DLoc d)      = DLoc     <$> rnLoc rnDecl d
+rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
+                                     $$ text (show s)
+
+-- | Rename a binding.
+rnBind :: Rename Bind
+rnBind Bind { .. } =
+  do n'  <- rnLoc (rnPName . DefDecl) bName
+     mb' <- traverse rnSchema bSchema
+     b'  <- rnMatch bBody
+     return Bind { bName = n', bSchema = mb', bBody = b' }
+
+-- | Rename a module binding.
+rnModBind :: Rename ModBind
+rnModBind ModBind { .. } = undefined
+
+
+-- Expressions -----------------------------------------------------------------
+
+rnMatch :: Rename Match
+rnMatch  = undefined
+
+
+-- Types -----------------------------------------------------------------------
+
+rnSchema :: Rename Schema
+rnSchema  = undefined
 
 
 -- Errors/Warnings -------------------------------------------------------------
 
-conflict :: PName -> [Origin] -> RN Name
-conflict n os =
-  do addError (vcat (msg : map ppOrigin os))
-     return (origName (head os))
+conflict :: Def -> [Name] -> RN Name
+conflict d ns =
+  do addError (vcat (msg : map ppr ns))
+     return (head ns)
   where
-  msg = text "the symbol"
-    <+> pp n
+  msg = text "the"
+    <+> defType d
+    <+> pp d
     <+> text "is defined in multiple places:"
 
 -- | Invent a name for a parsed name, and record an error about a missing
 -- identifier.
-unknown :: PName -> RN Name
-unknown pn =
-  do addError (text "not in scope:" <+> pp pn)
+unknown :: Def -> RN Name
+unknown d =
+  do addError (text "not in scope:" <+> pp d)
      loc <- askLoc
-     inBase (withSupply (mkUnknown pn loc))
+     inBase (withSupply (mkUnknown (defName d) loc))

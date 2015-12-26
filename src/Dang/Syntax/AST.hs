@@ -5,6 +5,7 @@ module Dang.Syntax.AST where
 
 
 import Dang.Syntax.Location
+import Dang.Utils.Ident
 import Dang.Utils.PP
 
 import qualified Data.Text.Lazy as L
@@ -19,7 +20,7 @@ data PName = PUnqual !L.Text
 -- | A parsed top-level module.
 type PModule = Module PName
 
-data Module name = Module { modName  :: name
+data Module name = Module { modName  :: Namespace
                           , modDecls :: [Located (Decl name)]
                           } deriving (Show)
 
@@ -46,7 +47,7 @@ data ModBind name = ModBind { mbName :: Located name
                             } deriving (Eq,Show,Functor,Generic)
 
 data ModType name = MTSig (ModSig name)
-                  | MTFunctor (Located name) (Maybe (ModType name)) (ModType name)
+                  | MTFunctor (Located name) (ModType name) (ModType name)
                     -- XXX add with-constraints
                   | MTLoc (Located (ModType name))
                     deriving (Eq,Show,Functor,Generic)
@@ -59,7 +60,7 @@ data ModSig name = MSSig (Sig name)
 data ModExpr name = MEName name
                   | MEApp (ModExpr name) (ModExpr name)
                   | MEStruct (ModStruct name)
-                  | MEFunctor (Located name) (Maybe (ModType name)) (ModExpr name)
+                  | MEFunctor (Located name) (ModType name) (ModExpr name)
                   | MEConstraint (ModExpr name) (ModType name)
                   | MEUnpack (Expr name)
                   | MELoc (Located (ModExpr name))
@@ -78,6 +79,9 @@ data Pat name = PVar name
                 deriving (Eq,Show,Functor,Generic)
 
 data Expr name = EVar name
+               | EApp (Expr name) (Expr name)
+               | EAbs (Match name)
+               | ELit Literal
                | ELoc (Located (Expr name))
                  deriving (Eq,Show,Functor,Generic)
 
@@ -88,6 +92,9 @@ data Type name = TCon name
                | TVar name
                | TFun (Type name) (Type name)
                  deriving (Eq,Show,Functor,Generic)
+
+data Literal = LInt Integer Int -- ^ value and base
+               deriving (Eq,Show,Generic)
 
 
 -- Pretty-printing -------------------------------------------------------------
