@@ -41,8 +41,8 @@ instance HasLoc Range where
 instance HasLoc (Located a) where
   getLoc = locRange
 
-at :: HasLoc loc => loc -> a -> Located a
-at loc locValue = Located { locRange = getLoc loc, .. }
+at :: HasLoc loc => a -> loc -> Located a
+at locValue loc = Located { locRange = getLoc loc, .. }
 
 thing :: Located a -> a
 thing Located { .. } = locValue

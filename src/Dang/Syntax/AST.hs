@@ -20,7 +20,7 @@ data PName = PUnqual !L.Text
 -- | A parsed top-level module.
 type PModule = Module PName
 
-data Module name = Module { modName  :: Namespace
+data Module name = Module { modName  :: Located Namespace
                           , modDecls :: [Located (Decl name)]
                           } deriving (Show)
 
