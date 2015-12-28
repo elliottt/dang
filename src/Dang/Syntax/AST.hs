@@ -21,6 +21,7 @@ data PName = PUnqual !L.Text
 type PModule = Module PName
 
 data Module name = Module { modName  :: Located Namespace
+                          -- , modImports :: ?
                           , modDecls :: [Located (Decl name)]
                           } deriving (Show)
 

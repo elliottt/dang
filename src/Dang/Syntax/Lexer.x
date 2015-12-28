@@ -3,6 +3,7 @@
 {
 {-# OPTIONS_GHC -w #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Dang.Syntax.Lexer (
     Token(..), Keyword(..), lexer
   ) where
@@ -16,9 +17,13 @@ import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
 }
 
-$modStart   = [A-Z]
-$identStart = [a-z]
-$middle     = [A-Za-z0-9_']
+$mod_start   = [A-Z]
+$ident_start = [a-z]
+$middle      = [A-Za-z0-9_']
+
+@mod_name    = $mod_start $middle*
+@ident       = $ident_start $middle*
+@qual        = (@mod_name \. )+
 
 :-
 
@@ -32,10 +37,16 @@ $white+ ;
 -- keywords
 "module" { keyword Kmodule }
 "where"  { keyword Kwhere  }
+"import" { keyword Kimport }
+"open"   { keyword Kopen   }
+":"      { keyword Kcolon  }
 
 -- names
-$modStart $middle*   { emits (TModName . L.toStrict) }
-$identStart $middle* { emits (TName    . PUnqual)    }
+@qual @mod_name { emits (TModName . L.toStrict) }
+@mod_name       { emits (TModName . L.toStrict) }
+
+@qual @ident    { emits mkQual  }
+@ident          { emits TUnqual }
 
 }
 
@@ -44,14 +55,23 @@ $identStart $middle* { emits (TName    . PUnqual)    }
 -- Tokens ----------------------------------------------------------------------
 
 data Token = TModName !Namespace
-           | TName !PName
+           | TUnqual !L.Text
+           | TQual !L.Text !L.Text
            | TKeyword !Keyword
            | TError               -- ^ Lexical error
              deriving (Eq,Show)
 
+mkQual :: L.Text -> Token
+mkQual txt =
+  case L.breakOnEnd "." txt of
+    (ns,n) -> TQual (L.dropEnd 1 ns) n
+
 data Keyword = Kmodule
              | Kwhere
-             deriving (Eq,Show)
+             | Kcolon
+             | Kimport
+             | Kopen
+               deriving (Eq,Show)
 
 
 -- Actions ---------------------------------------------------------------------

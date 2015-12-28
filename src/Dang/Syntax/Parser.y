@@ -25,9 +25,17 @@ import qualified Data.Text.Lazy as L
 
 %token
   MOD_NAME { $$ @ Located { locValue = TModName _ } }
+  UNQUAL   { $$ @ Located { locValue = TUnqual _  } }
+  QUAL     { $$ @ Located { locValue = TQual _ _  } }
 
   'module' { Located $$ (TKeyword Kmodule) }
   'where'  { Located $$ (TKeyword Kwhere)  }
+
+  'import' { Located $$ (TKeyword Kimport) }
+  'open'   { Located $$ (TKeyword Kopen)   }
+
+  ':'      { Located $$ (TKeyword Kcolon)  }
+
 
 %monad { Dang }
 %error { parseError }
