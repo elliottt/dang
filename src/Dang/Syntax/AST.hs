@@ -42,7 +42,7 @@ data Sig name = Sig { sigNames  :: [Located name]
                     , sigSchema :: Schema name
                     } deriving (Eq,Show,Functor,Generic)
 
-data ModBind name = ModBind { mbName :: Located name
+data ModBind name = ModBind { mbName :: Located Namespace
                             , mbExpr :: ModExpr name
                             } deriving (Eq,Show,Functor,Generic)
 
@@ -62,7 +62,6 @@ data ModExpr name = MEName name
                   | MEStruct (ModStruct name)
                   | MEFunctor (Located name) (ModType name) (ModExpr name)
                   | MEConstraint (ModExpr name) (ModType name)
-                  | MEUnpack (Expr name)
                   | MELoc (Located (ModExpr name))
                     deriving (Eq,Show,Functor,Generic)
 

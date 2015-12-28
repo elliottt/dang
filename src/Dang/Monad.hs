@@ -9,7 +9,7 @@
 module Dang.Monad (
   Dang(), runDang,
   io,
-  askLoc, withLoc,
+  askLoc, addLoc, withLoc,
 
   -- ** Messages
   Message(..), MessageType(..),
@@ -18,7 +18,7 @@ module Dang.Monad (
   addWarning
   ) where
 
-import Dang.Syntax.Location (Range,HasLoc(..))
+import Dang.Syntax.Location (Located(..),Range,HasLoc(..))
 import Dang.Unique
 import Dang.Utils.PP
 
@@ -104,6 +104,10 @@ askLoc :: DangM dang => dang Range
 askLoc  =
   do RO { .. } <- inBase (Dang ask)
      io (readIORef roLoc)
+
+-- | Examine a located value, in the context of its location.
+addLoc :: DangM dang => Located a -> (a -> dang b) -> dang b
+addLoc Located { .. } f = withLoc locRange (f locValue)
 
 -- | Run a sub-computation with a new source location.
 withLoc :: (HasLoc loc, DangM dang) => loc -> dang a -> dang a

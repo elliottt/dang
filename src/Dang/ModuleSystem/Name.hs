@@ -3,12 +3,13 @@
 module Dang.ModuleSystem.Name (
     ModInfo(..),
     NameSort(..),
-    Name(), Namespace,
+    Name(),
     nameSource,
     nameSort,
     nameIdent,
     nameUnique,
 
+    mkBinding,
     mkUnknown,
   ) where
 
@@ -70,6 +71,17 @@ nameUnique Name { .. } = nUnique
 
 
 -- Name Construction -----------------------------------------------------------
+
+
+-- | Generate a name for a binding site.
+mkBinding :: Namespace -> L.Text -> Range -> Supply -> (Supply,Name)
+mkBinding ns n nFrom s =
+  let (s',nUnique) = nextUnique s
+      name         = Name { nSort = Declaration (ModInfo ns)
+                          , nName = mkIdent (L.toStrict n)
+                          , .. }
+   in (s',name)
+
 
 -- | Generate a bogus name from a parsed name. This is useful during renaming
 -- when we need to generate a name to finish the pass, but have already
