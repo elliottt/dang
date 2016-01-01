@@ -4,6 +4,8 @@
 {-# OPTIONS_GHC -w #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
+
 module Dang.Syntax.Parser (
     parseModule
   ) where
@@ -54,13 +56,21 @@ top_module :: { PModule }
 -- External Interface ----------------------------------------------------------
 
 parseModule :: Source -> L.Text -> Dang PModule
-parseModule src txt = top_module (lexer src txt)
+parseModule src txt = failErrors (top_module (lexer src txt))
 
 
 -- Parser Monad ----------------------------------------------------------------
 
 parseError :: [Located Token] -> Dang a
-parseError  = error "parse error"
+parseError toks =
+  do case toks of
+       loc : _ -> addLoc loc $ \case
+         TError -> addError (text "Lexical error")
+         _      -> addError (text "Parse error")
+
+       [] -> addError (text "Unexpected end-of-file")
+
+     mzero
 
 
 -- Utilities -------------------------------------------------------------------

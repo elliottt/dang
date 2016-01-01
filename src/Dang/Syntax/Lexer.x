@@ -127,7 +127,7 @@ data AlexInput = AlexInput { aiPos  :: !Position
 alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
 alexGetByte AlexInput { .. } =
   do (c,rest) <- L.uncons aiText
-     return (byteForChar c, AlexInput { aiText = rest, .. })
+     return (byteForChar c, AlexInput { aiText = rest, aiPos = movePos c aiPos, .. })
 
 
 -- Lexer Modes -----------------------------------------------------------------

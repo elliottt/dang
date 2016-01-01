@@ -52,7 +52,7 @@ thing Located { .. } = locValue
 movePos :: Char -> Position -> Position
 movePos c p
   | c == '\t' = p { posCol = posCol p + 8, posOff = posOff p + 8 }
-  | c == '\n' = p { posRow = posRow p + 1, posCol = 0, posOff = posOff p + 1 }
+  | c == '\n' = p { posRow = posRow p + 1, posCol = 1, posOff = posOff p + 1 }
   | c == '\r' = p
   | otherwise = p { posCol = posCol p + 1, posOff = posOff p + 1 }
 
@@ -76,8 +76,20 @@ rangeText cxt Range { .. } txt = L.unlines
                                $ drop start
                                $ L.lines txt
   where
-  start = max 0 (fromIntegral (posRow rangeStart) - cxt)
-  len   = 2 * cxt + fromIntegral (posRow rangeEnd - posRow rangeStart) + 1
+  start = max 0 (fromIntegral (posRow rangeStart) - cxt - 1)
+  len   = max 1 (cxt + fromIntegral (posRow rangeEnd - posRow rangeStart) + 1)
+
+-- | Generate an underline for the range mentioned.
+rangeUnderline :: Range -> Doc
+rangeUnderline Range { .. } = text (replicate (start - 1) ' ') <> text line
+  where
+  start = fromIntegral (posCol rangeStart)
+  end   = fromIntegral (posCol rangeEnd)
+
+  len   = end - start
+
+  line | len > 1   = replicate len '~'
+       | otherwise = "^"
 
 instance Monoid Range where
   mempty = Range { rangeSource = Nothing
