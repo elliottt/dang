@@ -165,7 +165,9 @@ mkModName Located { .. } =
 
 
 mkTApp :: [Type PName] -> Type PName
-mkTApp ts = TLoc (foldl1 TApp ts `at` ts)
+mkTApp [t]    = t
+mkTApp (t:ts) = TLoc (TApp t ts `at` (t,ts))
+mkTApp _      = panic "parser" (text "mkTApp: empty list")
 
 mkTFun :: [Type PName] -> Type PName
 mkTFun ts = TLoc (foldr1 TFun ts `at` ts)

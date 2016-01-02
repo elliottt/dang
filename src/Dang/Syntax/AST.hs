@@ -90,7 +90,7 @@ data Schema name = Schema [Located name] (Type name)
 
 data Type name = TCon name
                | TVar name
-               | TApp (Type name) (Type name)
+               | TApp (Type name) [Type name]
                | TFun (Type name) (Type name)
                | TLoc (Located (Type name))
                  deriving (Eq,Show,Functor,Generic)

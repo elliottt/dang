@@ -21,6 +21,7 @@ library
                        Dang.Syntax.Location
                        Dang.Syntax.Parser
                        Dang.Unique
+                       Dang.Utils.Panic
                        Dang.Utils.PP
   build-depends:       base >= 4.8 && <5,
                        array,
