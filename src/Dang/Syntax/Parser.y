@@ -2,6 +2,7 @@
 
 {
 {-# OPTIONS_GHC -w #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
@@ -20,6 +21,7 @@ import Dang.Utils.Ident
 import Dang.Utils.PP (text)
 import Dang.Utils.Panic
 
+import qualified Data.Text as S
 import qualified Data.Text.Lazy as L
 
 }
@@ -103,10 +105,20 @@ app_type :: { [Type PName] }
 
 atype :: { Type PName }
   : ident        { TLoc (TVar `fmap` $1) }
+  | con_name     { TLoc (TCon `fmap` $1) }
   | '(' type ')' { $2                    }
 
 
 -- Names -----------------------------------------------------------------------
+
+con_name :: { Located PName }
+  : MOD_NAME { case thing $1 of
+                 TModName mn ->
+                   case S.breakOnEnd "." mn of
+                     (ns,n) | S.null ns -> PUnqual (L.fromStrict n) <$ $1
+                            | otherwise -> PQual (L.fromStrict (S.dropEnd 1 ns))
+                                                 (L.fromStrict n) <$ $1 }
+
 
 ident_commas :: { [Located PName] }
   : ident            { [$1]    }
