@@ -35,6 +35,12 @@ data Located a = Located { locRange :: !Range
 class HasLoc a where
   getLoc :: a -> Range
 
+instance HasLoc a => HasLoc [a] where
+  getLoc = foldMap getLoc
+
+instance (HasLoc a, HasLoc b) => HasLoc (a,b) where
+  getLoc (a,b) = mappend (getLoc a) (getLoc b)
+
 instance HasLoc Range where
   getLoc = id
 

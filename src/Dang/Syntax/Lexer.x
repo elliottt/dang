@@ -39,7 +39,16 @@ $white+ ;
 "where"  { keyword Kwhere  }
 "import" { keyword Kimport }
 "open"   { keyword Kopen   }
+"forall" { keyword Kforall }
+
+-- punctuation
 ":"      { keyword Kcolon  }
+"="      { keyword Kassign }
+"("      { keyword Klparen }
+")"      { keyword Krparen }
+"->"     { keyword Krarrow }
+"."      { keyword Kdot    }
+","      { keyword Kcomma  }
 
 -- names
 @qual @mod_name { emits (TModName . L.toStrict) }
@@ -58,6 +67,9 @@ data Token = TModName !Namespace
            | TUnqual !L.Text
            | TQual !L.Text !L.Text
            | TKeyword !Keyword
+           | TStart
+           | TSep
+           | TEnd
            | TError               -- ^ Lexical error
              deriving (Eq,Show)
 
@@ -71,6 +83,13 @@ data Keyword = Kmodule
              | Kcolon
              | Kimport
              | Kopen
+             | Klparen
+             | Krparen
+             | Krarrow
+             | Kassign
+             | Kforall
+             | Kdot
+             | Kcomma
                deriving (Eq,Show)
 
 

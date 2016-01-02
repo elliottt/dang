@@ -37,9 +37,9 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 renameModule :: Module PName -> Dang (Module Name)
 renameModule Module { .. } = rename (thing modName) $
-  do declEnv <- mergeNames (`addLoc` declNames) modDecls
+  do declEnv <- mergeNames declNames modDecls
      withNames declEnv $
-       do ds <- traverse (rnLoc rnDecl) modDecls
+       do ds <- traverse rnDecl modDecls
           return Module { modDecls = ds, .. }
 
 

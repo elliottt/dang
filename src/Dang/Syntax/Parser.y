@@ -7,11 +7,13 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Dang.Syntax.Parser (
-    parseModule
+    parseModule,
+    lexWithLayout
   ) where
 
 import Dang.Monad
 import Dang.Syntax.AST
+import Dang.Syntax.Layout
 import Dang.Syntax.Lexer
 import Dang.Syntax.Location
 import Dang.Utils.Ident
@@ -35,8 +37,22 @@ import qualified Data.Text.Lazy as L
 
   'import' { Located $$ (TKeyword Kimport) }
   'open'   { Located $$ (TKeyword Kopen)   }
+  'forall' { Located $$ (TKeyword Kforall) }
+
+  '.'      { Located $$ (TKeyword Kdot)    }
+  ','      { Located $$ (TKeyword Kcomma)  }
 
   ':'      { Located $$ (TKeyword Kcolon)  }
+  '='      { Located $$ (TKeyword Kassign) }
+
+  '->'     { Located $$ (TKeyword Krarrow) }
+
+  '('      { Located $$ (TKeyword Klparen) }
+  ')'      { Located $$ (TKeyword Krparen) }
+
+  'v{'     { Located $$ TStart }
+  'v;'     { Located $$ TSep   }
+  'v}'     { Located $$ TEnd   }
 
 
 %monad { Dang }
@@ -46,17 +62,83 @@ import qualified Data.Text.Lazy as L
 
 %%
 
-top_module :: { PModule }
-  : 'module' MOD_NAME 'where'
-    { Module { modName  = mkModName $2
-             , modDecls = [] } }
 
-{
+-- Top-level Module ------------------------------------------------------------
+
+top_module :: { PModule }
+  : 'module' MOD_NAME 'where' 'v{' top_decls 'v}'
+    { Module { modName  = mkModName $2
+             , modDecls = $5 } }
+
+top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
+  : {- empty -} { []         }
+  | decls       { reverse $1 }
+
+-- Declarations ----------------------------------------------------------------
+
+decls :: { [Decl PName] }
+  : decl            { [$1]    }
+  | decls 'v;' decl { $3 : $1 }
+
+decl :: { Decl PName }
+  : ident_commas ':' schema { DLoc (DSig (Sig (reverse $1) $3) `at` ($1,$3)) }
+
+
+-- Types -----------------------------------------------------------------------
+
+schema :: { Located (Schema PName) }
+  : 'forall' idents '.' type { Schema (reverse $2) $4 `at` ($1,$3) }
+  |                     type { Schema [] $1           `at`  $1     }
+
+type :: { Type PName }
+  : arr_type { mkTFun (reverse $1) }
+
+arr_type :: { [Type PName] }
+  : app_type               { [mkTApp (reverse $1)]    }
+  | arr_type '->' app_type { mkTApp (reverse $3) : $1 }
+
+app_type :: { [Type PName] }
+  : atype          { [$1]    }
+  | app_type atype { $2 : $1 }
+
+atype :: { Type PName }
+  : ident        { TLoc (TVar `fmap` $1) }
+  | '(' type ')' { $2                    }
+
+
+-- Names -----------------------------------------------------------------------
+
+ident_commas :: { [Located PName] }
+  : ident            { [$1]    }
+  | idents ',' ident { $3 : $1 }
+
+idents :: { [Located PName] }
+  : ident        { [$1]    }
+  | idents ident { $2 : $1 }
+
+-- identifiers are unqualified parsed-names
+ident :: { Located PName }
+  : UNQUAL { case $1 of
+               Located { locValue = TUnqual n, .. } -> PUnqual n `at` locRange }
+
 
 -- External Interface ----------------------------------------------------------
 
+{
+
+lexWithLayout :: Source -> L.Text -> [Located Token]
+lexWithLayout src txt = layout dangLayout (lexer src txt)
+  where
+  dangLayout =
+    Layout { beginsLayout = (`elem` [TKeyword Kwhere])
+           , endsLayout   = const False
+           , start        = TStart
+           , sep          = TSep
+           , end          = TEnd
+           }
+
 parseModule :: Source -> L.Text -> Dang PModule
-parseModule src txt = failErrors (top_module (lexer src txt))
+parseModule src txt = failErrors (top_module (lexWithLayout src txt))
 
 
 -- Parser Monad ----------------------------------------------------------------
@@ -81,4 +163,10 @@ mkModName Located { .. } =
     TModName ns -> Located { locValue = ns, .. }
     _           -> panic "parser" (text "mkModName: expected a TModName")
 
+
+mkTApp :: [Type PName] -> Type PName
+mkTApp ts = TLoc (foldl1 TApp ts `at` ts)
+
+mkTFun :: [Type PName] -> Type PName
+mkTFun ts = TLoc (foldr1 TFun ts `at` ts)
 }

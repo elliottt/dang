@@ -22,7 +22,7 @@ type PModule = Module PName
 
 data Module name = Module { modName  :: Located Namespace
                           -- , modImports :: ?
-                          , modDecls :: [Located (Decl name)]
+                          , modDecls :: [Decl name]
                           } deriving (Show)
 
 newtype ModStruct name = ModStruct { msElems :: [Located (Decl name)]
@@ -40,7 +40,7 @@ data Bind name = Bind { bName   :: Located name
                       } deriving (Eq,Show,Functor,Generic)
 
 data Sig name = Sig { sigNames  :: [Located name]
-                    , sigSchema :: Schema name
+                    , sigSchema :: Located (Schema name)
                     } deriving (Eq,Show,Functor,Generic)
 
 data ModBind name = ModBind { mbName :: Located Namespace
@@ -85,16 +85,25 @@ data Expr name = EVar name
                | ELoc (Located (Expr name))
                  deriving (Eq,Show,Functor,Generic)
 
-data Schema name = Schema [name] (Type name)
+data Schema name = Schema [Located name] (Type name)
                    deriving (Eq,Show,Functor,Generic)
 
 data Type name = TCon name
                | TVar name
+               | TApp (Type name) (Type name)
                | TFun (Type name) (Type name)
+               | TLoc (Located (Type name))
                  deriving (Eq,Show,Functor,Generic)
 
 data Literal = LInt Integer Int -- ^ value and base
                deriving (Eq,Show,Generic)
+
+
+-- Locations -------------------------------------------------------------------
+
+instance HasLoc (Type name) where
+  getLoc (TLoc loc) = getLoc loc
+  getLoc _          = mempty
 
 
 -- Pretty-printing -------------------------------------------------------------
