@@ -66,6 +66,7 @@ instance HasLoc Range where
 
 instance HasLoc (Located a) where
   getLoc = locRange
+  {-# INLINE getLoc #-}
 
 at :: HasLoc loc => a -> loc -> Located a
 at locValue loc = Located { locRange = getLoc loc, .. }

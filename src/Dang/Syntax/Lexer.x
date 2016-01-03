@@ -38,6 +38,9 @@ $white+ ;
 "--" .* ;
 
 -- keywords
+"functor"{ keyword Kfunctor}
+"sig"    { keyword Ksig    }
+"struct" { keyword Kstruct }
 "module" { keyword Kmodule }
 "where"  { keyword Kwhere  }
 "import" { keyword Kimport }
@@ -88,6 +91,9 @@ mkQual mk txt =
     (ns,n) -> mk (L.dropEnd 1 ns) n
 
 data Keyword = Kmodule
+             | Kfunctor
+             | Ksig
+             | Kstruct
              | Kwhere
              | Kcolon
              | Kimport

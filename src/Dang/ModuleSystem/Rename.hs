@@ -188,7 +188,7 @@ modExprNames (MELoc ml)          = addLoc ml modExprNames
 modExprNames _                   = return mempty
 
 modStructNames :: GetNames ModStruct
-modStructNames ModStruct { .. } = mergeNames (`addLoc` declNames) msElems
+modStructNames ModStruct { .. } = mergeNames declNames msElems
 
 
 -- Renaming --------------------------------------------------------------------

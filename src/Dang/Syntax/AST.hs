@@ -27,12 +27,13 @@ data Module name = Module { modName  :: Located Namespace
                           , modDecls :: [Decl name]
                           } deriving (Show)
 
-newtype ModStruct name = ModStruct { msElems :: [Located (Decl name)]
+newtype ModStruct name = ModStruct { msElems :: [Decl name]
                                    } deriving (Eq,Show,Functor,Generic)
 
 data Decl name = DBind    (Bind name)
                | DSig     (Sig name)
                | DModBind (ModBind name)
+               | DModType (ModType name)
                | DLoc     (Located (Decl name))
                  deriving (Eq,Show,Functor,Generic)
 
@@ -49,16 +50,17 @@ data ModBind name = ModBind { mbName :: Located Namespace
                             , mbExpr :: ModExpr name
                             } deriving (Eq,Show,Functor,Generic)
 
-data ModType name = MTSig (ModSig name)
+data ModType name = MTVar name
+                  | MTSig [ModSpec name]
                   | MTFunctor (Located name) (ModType name) (ModType name)
                     -- XXX add with-constraints
                   | MTLoc (Located (ModType name))
                     deriving (Eq,Show,Functor,Generic)
 
-data ModSig name = MSSig (Sig name)
-                 | MSType (Type name)
-                 | MSLoc (Located (ModSig name))
-                   deriving (Eq,Show,Functor,Generic)
+data ModSpec name = MSSig (Sig name)
+                  | MSType (Type name)
+                  | MSLoc (Located (ModSpec name))
+                    deriving (Eq,Show,Functor,Generic)
 
 data ModExpr name = MEName name
                   | MEApp (ModExpr name) (ModExpr name)
@@ -81,6 +83,7 @@ data Pat name = PVar name
                 deriving (Eq,Show,Functor,Generic)
 
 data Expr name = EVar name
+               | ECon name
                | EApp (Expr name) [Expr name]
                | EAbs (Match name)
                | ELit Literal
@@ -102,6 +105,14 @@ data Literal = LInt Integer Int -- ^ value and base
 
 
 -- Locations -------------------------------------------------------------------
+
+instance HasLoc (ModType name) where
+  getLoc (MTLoc loc) = getLoc loc
+  getLoc _           = mempty
+
+instance HasLoc (ModExpr name) where
+  getLoc (MELoc loc) = getLoc loc
+  getLoc _           = mempty
 
 instance HasLoc (Type name) where
   getLoc (TLoc loc) = getLoc loc
@@ -127,7 +138,7 @@ instance UnLoc (ModType name) where
   unLoc (MTLoc l) = thing l
   unLoc mt        = mt
 
-instance UnLoc (ModSig name) where
+instance UnLoc (ModSpec name) where
   unLoc (MSLoc l) = thing l
   unLoc ms        = ms
 
@@ -152,7 +163,7 @@ instance UnLoc (Type name) where
 
 instance Plated (Decl    name) where plate = gplate
 instance Plated (ModType name) where plate = gplate
-instance Plated (ModSig  name) where plate = gplate
+instance Plated (ModSpec name) where plate = gplate
 instance Plated (ModExpr name) where plate = gplate
 instance Plated (Match   name) where plate = gplate
 instance Plated (Pat     name) where plate = gplate

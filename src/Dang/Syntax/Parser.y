@@ -35,6 +35,9 @@ import qualified Data.Text.Lazy as L
   QUAL     { $$ @ Located { locValue = TQualIdent _ _  } }
   NUM      { $$ @ Located { locValue = TNum _ _        } }
 
+  'functor'{ Located $$ (TKeyword Kfunctor)}
+  'sig'    { Located $$ (TKeyword Ksig)    }
+  'struct' { Located $$ (TKeyword Kstruct) }
   'module' { Located $$ (TKeyword Kmodule) }
   'where'  { Located $$ (TKeyword Kwhere)  }
 
@@ -82,8 +85,57 @@ top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
 -- Declarations ----------------------------------------------------------------
 
 decl :: { Decl PName }
-  : signature { DLoc (DSig  `fmap` $1) }
-  | bind      { DLoc (DBind `fmap` $1) }
+  : signature { DLoc (DSig     `fmap` $1) }
+  | bind      { DLoc (DBind    `fmap` $1) }
+  | mod_bind  { DLoc (DModBind `fmap` $1) }
+
+
+-- Module Types ----------------------------------------------------------------
+
+mod_type :: { ModType PName }
+  : con
+    { MTLoc (MTVar `fmap` $1) }
+
+  | 'sig' 'v{' sep1('v;', mod_spec) 'v}'
+    { MTLoc (MTSig $3 `at` ($1,$4)) }
+
+  | 'functor' list1(mod_param) '->' mod_type
+    { MTLoc (foldr (uncurry MTFunctor) $4 $2 `at` ($1,$4)) }
+
+mod_spec :: { ModSpec PName }
+  : signature { MSLoc (MSSig `fmap` $1) }
+
+
+-- Module Expressions ----------------------------------------------------------
+
+mod_bind :: { Located (ModBind PName) }
+  : 'module' mod_name list(mod_param) '=' mod_expr
+    { ModBind { mbName = $2
+              , mbExpr = mkFunctor $3 $5 } `at` ($1,$5) }
+
+mod_param :: { (Located PName, ModType PName) }
+  : '(' con ':' mod_type ')' { ($2,$4) }
+
+mod_expr :: { ModExpr PName }
+  : mod_bexpr opt(mod_constraint)
+    { case $2 of
+        Nothing -> $1
+        Just ty -> MELoc (MEConstraint $1 ty `at` ($1,ty)) }
+
+mod_constraint :: { ModType PName }
+  : ':' mod_type { $2 }
+
+mod_bexpr :: { ModExpr PName }
+  : list1(mod_aexpr) { MELoc (foldl1 MEApp $1 `at` $1) }
+  | mod_struct       { MELoc (MEStruct `fmap` $1)      }
+
+mod_aexpr :: { ModExpr PName }
+  : con              { MELoc (MEName `fmap` $1) }
+  | qual_con         { MELoc (MEName `fmap` $1) }
+  | '(' mod_expr ')' { $2                       }
+
+mod_struct :: { Located (ModStruct PName) }
+  : 'struct' 'v{' sep('v;', decl) 'v}' { ModStruct $3 `at` ($1,$4) }
 
 
 -- Types -----------------------------------------------------------------------
@@ -103,7 +155,8 @@ app_type :: { Type PName }
 
 atype :: { Type PName }
   : ident        { TLoc (TVar `fmap` $1) }
-  | con_name     { TLoc (TCon `fmap` $1) }
+  | con          { TLoc (TCon `fmap` $1) }
+  | qual_con     { TLoc (TCon `fmap` $1) }
   | '(' type ')' { $2                    }
 
 
@@ -125,6 +178,8 @@ expr :: { Expr PName }
 aexpr :: { Expr PName }
   : ident        { ELoc (EVar `fmap` $1) }
   | qual_ident   { ELoc (EVar `fmap` $1) }
+  | con          { ELoc (ECon `fmap` $1) }
+  | qual_con     { ELoc (ECon `fmap` $1) }
   | lit          { ELoc (ELit `fmap` $1) }
   | '(' expr ')' { $2                    }
 
@@ -139,10 +194,11 @@ mod_name :: { Located Namespace }
                  TQualCon ns n -> L.toStrict (L.concat [ns,".",n]) <$ $1 }
   | CON      { case thing $1 of TUnqualCon n -> L.toStrict n <$ $1 }
 
-con_name :: { Located PName }
-  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
-  | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
+con :: { Located PName }
+  : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
 
+qual_con :: { Located PName }
+  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
 
 qual_ident :: { Located PName }
   : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
@@ -153,6 +209,10 @@ ident :: { Located PName }
 
 
 -- Utilities -------------------------------------------------------------------
+
+opt(p)
+  : {- empty -} { Nothing }
+  | p           { Just $1 }
 
 sep(p,q)
   : {- empty -}   { []         }
@@ -182,15 +242,18 @@ list_body(p)
 {
 
 lexWithLayout :: Source -> L.Text -> [Located Token]
-lexWithLayout src txt = layout dangLayout (lexer src txt)
+lexWithLayout src txt = layout Layout { .. } (lexer src txt)
   where
-  dangLayout =
-    Layout { beginsLayout = (`elem` [TKeyword Kwhere])
-           , endsLayout   = const False
-           , start        = TStart
-           , sep          = TSep
-           , end          = TEnd
-           }
+
+  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig]
+  beginsLayout _            = False
+
+  -- no tokens explicitly end layout
+  endsLayout _ = False
+
+  start = TStart
+  sep   = TSep
+  end   = TEnd
 
 parseModule :: Source -> L.Text -> Dang PModule
 parseModule src txt = failErrors (top_module (lexWithLayout src txt))
@@ -227,4 +290,8 @@ mkEApp _      = panic "parser" (text "mkEApp: empty list")
 
 addParams :: [Pat PName] -> Expr PName -> Match PName
 addParams ps e = foldr MPat (MExpr e) ps
+
+mkFunctor :: [(Located PName, ModType PName)] -> ModExpr PName -> ModExpr PName
+mkFunctor [] e = e
+mkFunctor ps e = foldr (uncurry MEFunctor) e ps
 }
