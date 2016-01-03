@@ -16,7 +16,6 @@ import           Data.Char (ord,isAscii)
 import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
 
-import Debug.Trace
 }
 
 $number      = [0-9]
@@ -56,7 +55,7 @@ $white+ ;
 "_"      { keyword Kwild   }
 
 -- numbers
-$number+ { emits (TNum 10 . read . traceShowId . L.unpack) }
+$number+ { emits (TNum 10 . read . L.unpack) }
 
 -- names
 @qual @con_name { emits (mkQual TQualCon) }
