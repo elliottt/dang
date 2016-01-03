@@ -182,8 +182,10 @@ bind :: { Located (Bind PName) }
            , bBody   = addParams $2 $4 } `at` ($1,$4) }
 
 pat :: { Pat PName }
-  : '_'   { PLoc (PWild `at` $1) }
-  | ident { PLoc (PVar  `fmap` $1) }
+  : '_'                   { PLoc (PWild `at` $1)           }
+  | ident                 { PLoc (PVar  `fmap` $1)         }
+  | con                   { PLoc (PCon $1 [] `at` $1)      }
+  | '(' con list(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
 
 expr :: { Expr PName }
   : list1(aexpr)

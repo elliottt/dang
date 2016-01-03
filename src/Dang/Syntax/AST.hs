@@ -82,6 +82,7 @@ data Match name = MPat (Pat name) (Match name)
 
 data Pat name = PVar name
               | PWild
+              | PCon (Located name) [Pat name]
               | PLoc (Located (Pat name))
                 deriving (Eq,Show,Functor,Generic)
 
