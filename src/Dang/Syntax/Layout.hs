@@ -32,17 +32,13 @@ layout Layout { .. } = go Nothing []
   currentLevel (loc : _) = startCol loc
   currentLevel []        = 0
 
-  go isStart stack toks@(tok@Located { .. } : _)
-    | startCol locRange < currentLevel stack =
-      (end `at` locRange) : go isStart (tail stack) toks
-
   go Just{} stack (tok@Located { .. } : toks) =
     (start `at` locRange) : tok : go Nothing (locRange:stack) toks
 
   go (Just loc) stack [] =
     (start `at` loc) : go Nothing (loc : stack) []
 
-  go Nothing stack (tok@Located { .. } : toks)
+  go Nothing stack ts@(tok@Located { .. } : toks)
 
     | beginsLayout locValue =
       tok : go (Just locRange) stack toks
@@ -52,6 +48,9 @@ layout Layout { .. } = go Nothing []
 
     | startCol locRange == currentLevel stack =
       (sep `at` locRange) : tok : go Nothing stack toks
+
+    | startCol locRange < currentLevel stack =
+      (end `at` locRange) : go Nothing (tail stack) ts
 
     | otherwise =
       tok : go Nothing stack toks
