@@ -29,8 +29,17 @@ data Source = Interactive
 
 data Located a = Located { locRange :: !Range
                          , locValue :: a
-                         } deriving (Functor,Foldable,Traversable,Show,Eq,Ord
-                                    ,Generic)
+                         } deriving (Functor,Foldable,Traversable,Show,Generic)
+
+instance Eq (Located a) where
+  (==) = (==) `on` locRange
+  (/=) = (/=) `on` locRange
+  {-# INLINE (==) #-}
+  {-# INLINE (/=) #-}
+
+instance Ord (Located a) where
+  compare = compare `on` locRange
+  {-# INLINE compare #-}
 
 
 unLocAll :: (Plated a, UnLoc a) => a -> a

@@ -19,6 +19,8 @@ main  = runDang $
                                  exitFailure
 
      txt        <- io (L.readFile file)
+     io (mapM_ (print . thing) (lexWithLayout (File file) txt))
+
      (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
      io (mapM_ print (formatMessages (File file) txt ms))
      pMod <- case mbMod of

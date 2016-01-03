@@ -47,6 +47,8 @@ $white+ ;
 "open"   { keyword Kopen   }
 "forall" { keyword Kforall }
 "type"   { keyword Ktype   }
+"let"    { keyword Klet    }
+"in"     { keyword Kin     }
 
 -- punctuation
 "|"      { keyword Kpipe   }
@@ -110,6 +112,8 @@ data Keyword = Kmodule
              | Kcomma
              | Kwild
              | Kpipe
+             | Klet
+             | Kin
                deriving (Eq,Show)
 
 

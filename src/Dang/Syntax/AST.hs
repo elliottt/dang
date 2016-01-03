@@ -35,6 +35,7 @@ data Decl name = DBind    (Bind name)
                | DData    (Data name)
                | DModBind (ModBind name)
                | DModType (ModType name)
+                 -- XXX add open declarations
                | DLoc     (Located (Decl name))
                  deriving (Eq,Show,Functor,Generic)
 
@@ -89,8 +90,15 @@ data Expr name = EVar name
                | EApp (Expr name) [Expr name]
                | EAbs (Match name)
                | ELit Literal
+               | ELet [LetDecl name] (Expr name)
                | ELoc (Located (Expr name))
                  deriving (Eq,Show,Functor,Generic)
+
+data LetDecl name = LDBind (Bind name)
+                  | LDSig (Sig name)
+                    -- XXX add open declarations
+                  | LDLoc (Located (LetDecl name))
+                    deriving (Eq,Show,Functor,Generic)
 
 data Schema name = Schema [Located name] (Type name)
                    deriving (Eq,Show,Functor,Generic)

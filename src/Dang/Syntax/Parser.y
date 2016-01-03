@@ -55,6 +55,9 @@ import qualified Data.Text.Lazy as L
   ':'      { Located $$ (TKeyword Kcolon)  }
   '='      { Located $$ (TKeyword Kassign) }
 
+  'let'    { Located $$ (TKeyword Klet)    }
+  'in'     { Located $$ (TKeyword Kin)     }
+
   '->'     { Located $$ (TKeyword Krarrow) }
 
   '_'      { Located $$ (TKeyword Kwild)   }
@@ -183,7 +186,15 @@ pat :: { Pat PName }
   | ident { PLoc (PVar  `fmap` $1) }
 
 expr :: { Expr PName }
-  : list1(aexpr) { mkEApp $1 }
+  : list1(aexpr)
+    { mkEApp $1 }
+
+  | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
+    { ELoc (ELet $3 $6 `at` ($1,$6)) }
+
+let_decl :: { LetDecl PName }
+  : bind      { LDLoc (LDBind `fmap` $1) }
+  | signature { LDLoc (LDSig  `fmap` $1) }
 
 aexpr :: { Expr PName }
   : ident        { ELoc (EVar `fmap` $1) }
@@ -272,11 +283,11 @@ lexWithLayout :: Source -> L.Text -> [Located Token]
 lexWithLayout src txt = layout Layout { .. } (lexer src txt)
   where
 
-  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig]
+  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet]
   beginsLayout _            = False
 
-  -- no tokens explicitly end layout
-  endsLayout _ = False
+  endsLayout (TKeyword Kin) = True
+  endsLayout _              = False
 
   start = TStart
   sep   = TSep

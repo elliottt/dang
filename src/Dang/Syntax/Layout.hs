@@ -32,10 +32,6 @@ layout Layout { .. } = go Nothing []
   currentLevel (loc : _) = startCol loc
   currentLevel []        = 0
 
-  close loc stack =
-    let (closed,stack') = span (\loc' -> startCol loc < startCol loc') stack
-     in (replicate (length closed) (end `at` loc), stack')
-
   go isStart stack toks@(tok@Located { .. } : _)
     | startCol locRange < currentLevel stack =
       (end `at` locRange) : go isStart (tail stack) toks
@@ -51,9 +47,8 @@ layout Layout { .. } = go Nothing []
     | beginsLayout locValue =
       tok : go (Just locRange) stack toks
 
-    | endsLayout locValue || startCol locRange < currentLevel stack =
-      let (closeToks,stack') = close locRange stack
-       in closeToks ++ tok : go Nothing stack' toks
+    | endsLayout locValue =
+       (end `at` locRange) : tok : go Nothing (tail stack) toks
 
     | startCol locRange == currentLevel stack =
       (sep `at` locRange) : tok : go Nothing stack toks
