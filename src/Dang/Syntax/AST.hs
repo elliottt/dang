@@ -9,7 +9,7 @@ import Dang.Syntax.Location
 import Dang.Utils.Ident
 import Dang.Utils.PP
 
-import           Control.Lens.Plated (Plated(..),gplate,transform)
+import           Control.Lens.Plated (Plated(..),gplate)
 import qualified Data.Text.Lazy as L
 import           GHC.Generics (Generic)
 
@@ -81,7 +81,7 @@ data Pat name = PVar name
                 deriving (Eq,Show,Functor,Generic)
 
 data Expr name = EVar name
-               | EApp (Expr name) (Expr name)
+               | EApp (Expr name) [Expr name]
                | EAbs (Match name)
                | ELit Literal
                | ELoc (Located (Expr name))
@@ -105,6 +105,18 @@ data Literal = LInt Integer Int -- ^ value and base
 
 instance HasLoc (Type name) where
   getLoc (TLoc loc) = getLoc loc
+  getLoc _          = mempty
+
+instance HasLoc (Pat name) where
+  getLoc (PLoc loc) = getLoc loc
+  getLoc _          = mempty
+
+instance HasLoc (Match name) where
+  getLoc (MLoc loc) = getLoc loc
+  getLoc _          = mempty
+
+instance HasLoc (Expr name) where
+  getLoc (ELoc loc) = getLoc loc
   getLoc _          = mempty
 
 instance UnLoc (Decl name) where

@@ -49,6 +49,7 @@ $white+ ;
 "->"     { keyword Krarrow }
 "."      { keyword Kdot    }
 ","      { keyword Kcomma  }
+"_"      { keyword Kwild   }
 
 -- names
 @qual @con_name { emits (mkQual TQualCon) }
@@ -91,6 +92,7 @@ data Keyword = Kmodule
              | Kforall
              | Kdot
              | Kcomma
+             | Kwild
                deriving (Eq,Show)
 
 

@@ -49,6 +49,8 @@ import qualified Data.Text.Lazy as L
 
   '->'     { Located $$ (TKeyword Krarrow) }
 
+  '_'      { Located $$ (TKeyword Kwild)   }
+
   '('      { Located $$ (TKeyword Klparen) }
   ')'      { Located $$ (TKeyword Krparen) }
 
@@ -73,8 +75,8 @@ top_module :: { PModule }
              , modDecls = $5 } }
 
 top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
-  : {- empty -} { []         }
-  | decls       { reverse $1 }
+  : {- empty -}      { [] }
+  | sep1('v;', decl) { $1 }
 
 -- Declarations ----------------------------------------------------------------
 
@@ -83,30 +85,50 @@ decls :: { [Decl PName] }
   | decls 'v;' decl { $3 : $1 }
 
 decl :: { Decl PName }
-  : ident_commas ':' schema { DLoc (DSig (Sig (reverse $1) $3) `at` ($1,$3)) }
+  : signature { DLoc (DSig  `fmap` $1) }
+  | bind      { DLoc (DBind `fmap` $1) }
 
 
 -- Types -----------------------------------------------------------------------
 
+signature :: { Located (Sig PName) }
+  : sep1(',', ident) ':' schema { Sig $1 $3 `at` ($1,$3) }
+
 schema :: { Located (Schema PName) }
-  : 'forall' idents '.' type { Schema (reverse $2) $4 `at` ($1,$3) }
-  |                     type { Schema [] $1           `at`  $1     }
+  : 'forall' list1(ident) '.' type { Schema $2 $4 `at` ($1,$3) }
+  |                           type { Schema [] $1 `at`  $1     }
 
 type :: { Type PName }
-  : arr_type { mkTFun (reverse $1) }
+  : sep1('->', app_type) { mkTFun $1 }
 
-arr_type :: { [Type PName] }
-  : app_type               { [mkTApp (reverse $1)]    }
-  | arr_type '->' app_type { mkTApp (reverse $3) : $1 }
-
-app_type :: { [Type PName] }
-  : atype          { [$1]    }
-  | app_type atype { $2 : $1 }
+app_type :: { Type PName }
+  : list1(atype) { mkTApp $1 }
 
 atype :: { Type PName }
   : ident        { TLoc (TVar `fmap` $1) }
   | con_name     { TLoc (TCon `fmap` $1) }
   | '(' type ')' { $2                    }
+
+
+-- Expressions -----------------------------------------------------------------
+
+bind :: { Located (Bind PName) }
+  : ident list(pat) '=' expr
+    { Bind { bName   = $1
+           , bSchema = Nothing
+           , bBody   = addParams $2 $4 } `at` ($1,$4) }
+
+pat :: { Pat PName }
+  : '_'   { PLoc (PWild `at` $1) }
+  | ident { PLoc (PVar  `fmap` $1) }
+
+expr :: { Expr PName }
+  : list1(aexpr) { mkEApp $1 }
+
+aexpr :: { Expr PName }
+  : ident        { ELoc (EVar `fmap` $1) }
+  | qual_ident   { ELoc (EVar `fmap` $1) }
+  | '(' expr ')' { $2                    }
 
 
 -- Names -----------------------------------------------------------------------
@@ -121,17 +143,37 @@ con_name :: { Located PName }
   | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
 
-ident_commas :: { [Located PName] }
-  : ident            { [$1]    }
-  | idents ',' ident { $3 : $1 }
-
-idents :: { [Located PName] }
-  : ident        { [$1]    }
-  | idents ident { $2 : $1 }
+qual_ident :: { Located PName }
+  : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
 
 -- identifiers are unqualified parsed-names
 ident :: { Located PName }
   : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
+
+
+-- Utilities -------------------------------------------------------------------
+
+sep(p,q)
+  : {- empty -}   { []         }
+  | sep_body(p,q) { reverse $1 }
+
+sep1(p,q)
+  : sep_body(p,q) { reverse $1 }
+
+sep_body(p,q)
+  : q                 { [$1]    }
+  | sep_body(p,q) p q { $3 : $1 }
+
+list(p)
+  : {- empty -}  { []         }
+  | list_body(p) { reverse $1 }
+
+list1(p)
+  : list_body(p) { reverse $1 }
+
+list_body(p)
+  : p              { [$1]    }
+  | list_body(p) p { $2 : $1 }
 
 
 -- External Interface ----------------------------------------------------------
@@ -176,4 +218,12 @@ mkTApp _      = panic "parser" (text "mkTApp: empty list")
 
 mkTFun :: [Type PName] -> Type PName
 mkTFun ts = TLoc (foldr1 TFun ts `at` ts)
+
+mkEApp :: [Expr PName] -> Expr PName
+mkEApp [e]    = e
+mkEApp (e:es) = ELoc (EApp e es `at` (e,es))
+mkEApp _      = panic "parser" (text "mkEApp: empty list")
+
+addParams :: [Pat PName] -> Expr PName -> Match PName
+addParams ps e = foldl (\acc p -> MPat p acc) (MExpr e) ps
 }

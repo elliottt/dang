@@ -9,6 +9,7 @@ module Dang.Syntax.Location where
 import           Dang.Utils.PP
 
 import           Control.Applicative ((<|>))
+import           Control.Lens (Plated,transform)
 import           Data.Function (on)
 import           Data.Int (Int64)
 import qualified Data.Text.Lazy as L
@@ -31,6 +32,9 @@ data Located a = Located { locRange :: !Range
                          } deriving (Functor,Foldable,Traversable,Show,Eq,Ord
                                     ,Generic)
 
+
+unLocAll :: (Plated a, UnLoc a) => a -> a
+unLocAll  = transform unLoc
 
 -- | Remove one layer of location information.
 class UnLoc a where
