@@ -36,6 +36,10 @@ layout Layout { .. } = go Nothing []
     let (closed,stack') = span (\loc' -> startCol loc < startCol loc') stack
      in (replicate (length closed) (end `at` loc), stack')
 
+  go isStart stack toks@(tok@Located { .. } : _)
+    | startCol locRange < currentLevel stack =
+      (end `at` locRange) : go isStart (tail stack) toks
+
   go Just{} stack (tok@Located { .. } : toks) =
     (start `at` locRange) : tok : go Nothing (locRange:stack) toks
 
