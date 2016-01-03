@@ -33,6 +33,7 @@ import qualified Data.Text.Lazy as L
   CON      { $$ @ Located { locValue = TUnqualCon _    } }
   UNQUAL   { $$ @ Located { locValue = TUnqualIdent _  } }
   QUAL     { $$ @ Located { locValue = TQualIdent _ _  } }
+  NUM      { $$ @ Located { locValue = TNum _ _        } }
 
   'module' { Located $$ (TKeyword Kmodule) }
   'where'  { Located $$ (TKeyword Kwhere)  }
@@ -80,10 +81,6 @@ top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
 
 -- Declarations ----------------------------------------------------------------
 
-decls :: { [Decl PName] }
-  : decl            { [$1]    }
-  | decls 'v;' decl { $3 : $1 }
-
 decl :: { Decl PName }
   : signature { DLoc (DSig  `fmap` $1) }
   | bind      { DLoc (DBind `fmap` $1) }
@@ -128,7 +125,11 @@ expr :: { Expr PName }
 aexpr :: { Expr PName }
   : ident        { ELoc (EVar `fmap` $1) }
   | qual_ident   { ELoc (EVar `fmap` $1) }
+  | lit          { ELoc (ELit `fmap` $1) }
   | '(' expr ')' { $2                    }
+
+lit :: { Located Literal }
+  : NUM { case thing $1 of TNum base n -> LInt base n `at` $1 }
 
 
 -- Names -----------------------------------------------------------------------

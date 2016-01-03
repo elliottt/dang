@@ -15,7 +15,11 @@ import Dang.Utils.Ident
 import           Data.Char (ord,isAscii)
 import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
+
+import Debug.Trace
 }
+
+$number      = [0-9]
 
 $con_start   = [A-Z]
 $ident_start = [a-z]
@@ -51,6 +55,9 @@ $white+ ;
 ","      { keyword Kcomma  }
 "_"      { keyword Kwild   }
 
+-- numbers
+$number+ { emits (TNum 10 . read . traceShowId . L.unpack) }
+
 -- names
 @qual @con_name { emits (mkQual TQualCon) }
 @con_name       { emits TUnqualCon        }
@@ -69,6 +76,7 @@ data Token = TUnqualCon !L.Text
            | TUnqualIdent !L.Text
            | TQualIdent !L.Text !L.Text
            | TKeyword !Keyword
+           | TNum Integer Int
            | TStart
            | TSep
            | TEnd
