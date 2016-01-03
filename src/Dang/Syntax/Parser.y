@@ -21,6 +21,7 @@ import Dang.Utils.Ident
 import Dang.Utils.PP (text)
 import Dang.Utils.Panic
 
+import           Data.Maybe (fromMaybe)
 import qualified Data.Text.Lazy as L
 
 }
@@ -40,10 +41,13 @@ import qualified Data.Text.Lazy as L
   'struct' { Located $$ (TKeyword Kstruct) }
   'module' { Located $$ (TKeyword Kmodule) }
   'where'  { Located $$ (TKeyword Kwhere)  }
+  'type'   { Located $$ (TKeyword Ktype)   }
 
   'import' { Located $$ (TKeyword Kimport) }
   'open'   { Located $$ (TKeyword Kopen)   }
   'forall' { Located $$ (TKeyword Kforall) }
+
+  '|'      { Located $$ (TKeyword Kpipe)   }
 
   '.'      { Located $$ (TKeyword Kdot)    }
   ','      { Located $$ (TKeyword Kcomma)  }
@@ -87,6 +91,7 @@ top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
 decl :: { Decl PName }
   : signature { DLoc (DSig     `fmap` $1) }
   | bind      { DLoc (DBind    `fmap` $1) }
+  | data_decl { DLoc (DData    `fmap` $1) }
   | mod_bind  { DLoc (DModBind `fmap` $1) }
 
 
@@ -103,7 +108,8 @@ mod_type :: { ModType PName }
     { MTLoc (foldr (uncurry MTFunctor) $4 $2 `at` ($1,$4)) }
 
 mod_spec :: { ModSpec PName }
-  : signature { MSLoc (MSSig `fmap` $1) }
+  : signature { MSLoc (MSSig  `fmap` $1) }
+  | data_decl { MSLoc (MSData `fmap` $1) }
 
 
 -- Module Expressions ----------------------------------------------------------
@@ -185,6 +191,23 @@ aexpr :: { Expr PName }
 
 lit :: { Located Literal }
   : NUM { case thing $1 of TNum base n -> LInt base n `at` $1 }
+
+
+-- Data Declarations -----------------------------------------------------------
+
+data_decl :: { Located (Data PName) }
+  : 'type' con list(ident) opt(data_constrs)
+    { Data { dName = $2
+           , dParams = $3
+           , dConstrs = fromMaybe [] $4 } `at` ($1,$2,$3,$4) }
+
+data_constrs :: { [Located (Constr PName)] }
+  : '=' sep1('|', data_constr) { $2 }
+
+data_constr :: { Located (Constr PName) }
+  : con list(atype)
+    { Constr { cName = $1
+             , cParams = $2 } `at` ($1,$2) }
 
 
 -- Names -----------------------------------------------------------------------

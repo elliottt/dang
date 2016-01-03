@@ -55,11 +55,20 @@ instance UnLoc a => UnLoc (Maybe a) where
 class HasLoc a where
   getLoc :: a -> Range
 
+instance HasLoc a => HasLoc (Maybe a) where
+  getLoc = foldMap getLoc
+
 instance HasLoc a => HasLoc [a] where
   getLoc = foldMap getLoc
 
 instance (HasLoc a, HasLoc b) => HasLoc (a,b) where
   getLoc (a,b) = mappend (getLoc a) (getLoc b)
+
+instance (HasLoc a, HasLoc b, HasLoc c) => HasLoc (a,b,c) where
+  getLoc (a,b,c) = mconcat [ getLoc a, getLoc b, getLoc c ]
+
+instance (HasLoc a, HasLoc b, HasLoc c, HasLoc d) => HasLoc (a,b,c,d) where
+  getLoc (a,b,c,d) = mconcat [ getLoc a, getLoc b, getLoc c, getLoc d ]
 
 instance HasLoc Range where
   getLoc = id

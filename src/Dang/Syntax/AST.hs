@@ -32,6 +32,7 @@ newtype ModStruct name = ModStruct { msElems :: [Decl name]
 
 data Decl name = DBind    (Bind name)
                | DSig     (Sig name)
+               | DData    (Data name)
                | DModBind (ModBind name)
                | DModType (ModType name)
                | DLoc     (Located (Decl name))
@@ -58,7 +59,7 @@ data ModType name = MTVar name
                     deriving (Eq,Show,Functor,Generic)
 
 data ModSpec name = MSSig (Sig name)
-                  | MSType (Type name)
+                  | MSData (Data name)
                   | MSLoc (Located (ModSpec name))
                     deriving (Eq,Show,Functor,Generic)
 
@@ -102,6 +103,15 @@ data Type name = TCon name
 
 data Literal = LInt Integer Int -- ^ value and base
                deriving (Eq,Show,Generic)
+
+data Data name = Data { dName    :: Located name
+                      , dParams  :: [Located name]
+                      , dConstrs :: [Located (Constr name)]
+                      } deriving (Eq,Show,Functor,Generic)
+
+data Constr name = Constr { cName   :: Located name
+                          , cParams :: [Type name]
+                          } deriving (Eq,Show,Functor,Generic)
 
 
 -- Locations -------------------------------------------------------------------

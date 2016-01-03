@@ -46,8 +46,10 @@ $white+ ;
 "import" { keyword Kimport }
 "open"   { keyword Kopen   }
 "forall" { keyword Kforall }
+"type"   { keyword Ktype   }
 
 -- punctuation
+"|"      { keyword Kpipe   }
 ":"      { keyword Kcolon  }
 "="      { keyword Kassign }
 "("      { keyword Klparen }
@@ -102,10 +104,12 @@ data Keyword = Kmodule
              | Krparen
              | Krarrow
              | Kassign
+             | Ktype
              | Kforall
              | Kdot
              | Kcomma
              | Kwild
+             | Kpipe
                deriving (Eq,Show)
 
 
