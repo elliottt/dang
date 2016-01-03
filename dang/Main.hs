@@ -3,14 +3,27 @@ module Main where
 import Dang.Monad
 import Dang.Syntax.Location
 import Dang.Syntax.Parser
+import Dang.ModuleSystem.Rename
 
 import qualified Data.Text.Lazy.IO as L
+import           System.Exit (exitFailure)
+import           System.Environment (getArgs)
 
 
 main :: IO ()
 main  = runDang $
-  do txt     <- io (L.readFile "test.dg")
-     (mb,ms) <- collectMessages (try (parseModule Interactive txt))
-     io $ do mapM_ (print . locValue) (lexWithLayout (File "test.dg") txt)
-             print mb
-             mapM_ print (formatMessages (File "test.dg") txt ms)
+  do args <- io getArgs
+     file <- case args of
+               [file] -> return file
+               _      -> io $ do putStrLn "Usage: dang file.dg"
+                                 exitFailure
+
+     txt        <- io (L.readFile file)
+     (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
+     io (mapM_ print (formatMessages (File file) txt ms))
+     pMod <- case mbMod of
+               Just pMod -> return pMod
+               Nothing   -> io exitFailure
+
+     rnMod <- renameModule pMod
+     io (print rnMod)

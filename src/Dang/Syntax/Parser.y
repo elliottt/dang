@@ -108,8 +108,12 @@ mod_type :: { ModType PName }
     { MTLoc (foldr (uncurry MTFunctor) $4 $2 `at` ($1,$4)) }
 
 mod_spec :: { ModSpec PName }
-  : signature { MSLoc (MSSig  `fmap` $1) }
-  | data_decl { MSLoc (MSData `fmap` $1) }
+  : signature     { MSLoc (MSSig         `fmap` $1) }
+  | data_decl     { MSLoc (MSData        `fmap` $1) }
+  | mod_bind_spec { MSLoc (uncurry MSMod `fmap` $1) }
+
+mod_bind_spec :: { Located (Located Namespace, ModType PName) }
+  : 'module' mod_name ':' mod_type { ($2,$4) `at` ($1,$4) }
 
 
 -- Module Expressions ----------------------------------------------------------

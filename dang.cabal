@@ -14,6 +14,7 @@ library
   default-language:    Haskell2010
   exposed-modules:     Dang
                        Dang.ModuleSystem.Rename
+                       Dang.ModuleSystem.Name
                        Dang.Monad
                        Dang.Syntax.AST
                        Dang.Syntax.Layout
@@ -21,6 +22,7 @@ library
                        Dang.Syntax.Location
                        Dang.Syntax.Parser
                        Dang.Unique
+                       Dang.Utils.Ident
                        Dang.Utils.Panic
                        Dang.Utils.PP
   build-depends:       base >= 4.8 && <5,

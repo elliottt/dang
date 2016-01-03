@@ -60,6 +60,7 @@ data ModType name = MTVar name
 
 data ModSpec name = MSSig (Sig name)
                   | MSData (Data name)
+                  | MSMod (Located Namespace) (ModType name)
                   | MSLoc (Located (ModSpec name))
                     deriving (Eq,Show,Functor,Generic)
 

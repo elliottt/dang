@@ -157,16 +157,19 @@ mergeNames f = F.foldlM step mempty
        return (nm `mappend` acc)
 
 
+-- | Introduce a name from a binding site.
+newName :: Located PName -> RN Name
+newName Located { locValue = PUnqual t, .. } =
+  do ns <- getNamespace
+     withSupply (mkBinding ns t locRange)
+newName _ = panic "renamer" (text "Qualified name given to `newName`")
+
+
 -- | Introduce names for the given binding.
 bindName :: GetNames Bind
-bindName Bind { bName = Located { .. }, .. } =
-  case locValue of
-    -- there should only ever be unqualified names in bindings
-    PUnqual t -> do ns   <- getNamespace
-                    name <- withSupply (mkBinding ns t locRange)
-                    return (singleton (DefDecl locValue) name)
-
-    PQual{} -> panic "renamer" (text "Qualified name in binding, parser bug?")
+bindName Bind { .. } =
+  do name <- newName bName
+     return (singleton (DefDecl (thing bName)) name)
 
 
 -- | Introduce names for all bindings within a declaration. NOTE: this will
@@ -174,12 +177,27 @@ bindName Bind { bName = Located { .. }, .. } =
 declNames :: GetNames Decl
 declNames (DBind b)     = bindName b
 declNames (DModBind mb) = modBindNames mb
+declNames (DData d)     = dataNames d
 declNames (DLoc dl)     = addLoc dl declNames
 declNames DSig{}        = return mempty
 
 modBindNames :: GetNames ModBind
 modBindNames ModBind { .. } =
   addLoc mbName (\ns -> pushNamespace ns (modExprNames mbExpr))
+
+-- | The names introduced by a data declaration.
+dataNames :: GetNames Data
+dataNames Data { .. } =
+  do tyName   <- newName dName
+     conNames <- traverse (`addLoc` constrName) dConstrs
+     return $ mconcat
+            $ singleton (DefType (thing dName)) tyName
+            : conNames
+
+constrName :: GetNames Constr
+constrName Constr { .. } =
+  do conName <- newName cName
+     return (singleton (DefDecl (thing cName)) conName)
 
 modExprNames :: GetNames ModExpr
 modExprNames (MEStruct ms)       = modStructNames ms
@@ -216,7 +234,7 @@ rnPName d =
 rnModStruct :: Rename ModStruct
 rnModStruct (ModStruct ds) =
   do ns <- getNamespace
-     undefined
+     error "rnModStruct"
 
 -- | Rename a declaration.
 rnDecl :: Rename Decl
@@ -228,13 +246,13 @@ rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
 
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
-rnModBind ModBind { .. } = undefined
+rnModBind ModBind { .. } = error "rnModBind"
 
 
 -- Expressions -----------------------------------------------------------------
 
 rnMatch :: Rename Match
-rnMatch  = undefined
+rnMatch  = error "rnMatch"
 
 -- | Rename a binding. This assumes that new names have already been introduced
 -- externally.
@@ -249,7 +267,7 @@ rnBind Bind { .. } =
 -- Types -----------------------------------------------------------------------
 
 rnSchema :: Rename Schema
-rnSchema  = undefined
+rnSchema  = error "rnSchema"
 
 
 -- Errors/Warnings -------------------------------------------------------------
