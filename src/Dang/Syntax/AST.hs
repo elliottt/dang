@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Dang.Syntax.AST where
 
@@ -8,6 +9,7 @@ import Dang.Syntax.Location
 import Dang.Utils.Ident
 import Dang.Utils.PP
 
+import           Control.Lens.Plated (Plated(..),gplate,transform)
 import qualified Data.Text.Lazy as L
 import           GHC.Generics (Generic)
 
@@ -104,6 +106,46 @@ data Literal = LInt Integer Int -- ^ value and base
 instance HasLoc (Type name) where
   getLoc (TLoc loc) = getLoc loc
   getLoc _          = mempty
+
+instance UnLoc (Decl name) where
+  unLoc (DLoc l) = thing l
+  unLoc d        = d
+
+instance UnLoc (ModType name) where
+  unLoc (MTLoc l) = thing l
+  unLoc mt        = mt
+
+instance UnLoc (ModSig name) where
+  unLoc (MSLoc l) = thing l
+  unLoc ms        = ms
+
+instance UnLoc (ModExpr name) where
+  unLoc (MELoc l) = thing l
+  unLoc me        = me
+
+instance UnLoc (Pat name) where
+  unLoc (PLoc l) = thing l
+  unLoc p        = p
+
+instance UnLoc (Expr name) where
+  unLoc (ELoc l) = thing l
+  unLoc e        = e
+
+instance UnLoc (Type name) where
+  unLoc (TLoc l) = thing l
+  unLoc t        = t
+
+
+-- Traversal -------------------------------------------------------------------
+
+instance Plated (Decl    name) where plate = gplate
+instance Plated (ModType name) where plate = gplate
+instance Plated (ModSig  name) where plate = gplate
+instance Plated (ModExpr name) where plate = gplate
+instance Plated (Match   name) where plate = gplate
+instance Plated (Pat     name) where plate = gplate
+instance Plated (Expr    name) where plate = gplate
+instance Plated (Type    name) where plate = gplate
 
 
 -- Pretty-printing -------------------------------------------------------------

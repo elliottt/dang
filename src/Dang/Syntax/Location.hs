@@ -12,7 +12,7 @@ import           Control.Applicative ((<|>))
 import           Data.Function (on)
 import           Data.Int (Int64)
 import qualified Data.Text.Lazy as L
-import           GHC.Generics (Generic)
+import           GHC.Generics
 
 
 data Position = Position { posRow, posCol, posOff :: !Int64
@@ -30,6 +30,22 @@ data Located a = Located { locRange :: !Range
                          , locValue :: a
                          } deriving (Functor,Foldable,Traversable,Show,Eq,Ord
                                     ,Generic)
+
+
+-- | Remove one layer of location information.
+class UnLoc a where
+  unLoc :: a -> a
+
+-- We can't remove location information from a located thing, but we can remove
+-- location information from the inner thing.
+instance UnLoc a => UnLoc (Located a) where
+  unLoc = fmap unLoc
+
+instance UnLoc a => UnLoc [a] where
+  unLoc = fmap unLoc
+
+instance UnLoc a => UnLoc (Maybe a) where
+  unLoc = fmap unLoc
 
 
 class HasLoc a where

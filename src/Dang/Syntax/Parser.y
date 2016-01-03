@@ -21,7 +21,6 @@ import Dang.Utils.Ident
 import Dang.Utils.PP (text)
 import Dang.Utils.Panic
 
-import qualified Data.Text as S
 import qualified Data.Text.Lazy as L
 
 }
@@ -30,9 +29,10 @@ import qualified Data.Text.Lazy as L
 %tokentype { Located Token }
 
 %token
-  MOD_NAME { $$ @ Located { locValue = TModName _ } }
-  UNQUAL   { $$ @ Located { locValue = TUnqual _  } }
-  QUAL     { $$ @ Located { locValue = TQual _ _  } }
+  QUAL_CON { $$ @ Located { locValue = TQualCon _ _    } }
+  CON      { $$ @ Located { locValue = TUnqualCon _    } }
+  UNQUAL   { $$ @ Located { locValue = TUnqualIdent _  } }
+  QUAL     { $$ @ Located { locValue = TQualIdent _ _  } }
 
   'module' { Located $$ (TKeyword Kmodule) }
   'where'  { Located $$ (TKeyword Kwhere)  }
@@ -68,8 +68,8 @@ import qualified Data.Text.Lazy as L
 -- Top-level Module ------------------------------------------------------------
 
 top_module :: { PModule }
-  : 'module' MOD_NAME 'where' 'v{' top_decls 'v}'
-    { Module { modName  = mkModName $2
+  : 'module' mod_name 'where' 'v{' top_decls 'v}'
+    { Module { modName  = $2
              , modDecls = $5 } }
 
 top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
@@ -111,13 +111,14 @@ atype :: { Type PName }
 
 -- Names -----------------------------------------------------------------------
 
+mod_name :: { Located Namespace }
+  : QUAL_CON { case thing $1 of
+                 TQualCon ns n -> L.toStrict (L.concat [ns,".",n]) <$ $1 }
+  | CON      { case thing $1 of TUnqualCon n -> L.toStrict n <$ $1 }
+
 con_name :: { Located PName }
-  : MOD_NAME { case thing $1 of
-                 TModName mn ->
-                   case S.breakOnEnd "." mn of
-                     (ns,n) | S.null ns -> PUnqual (L.fromStrict n) <$ $1
-                            | otherwise -> PQual (L.fromStrict (S.dropEnd 1 ns))
-                                                 (L.fromStrict n) <$ $1 }
+  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
+  | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
 
 ident_commas :: { [Located PName] }
@@ -130,8 +131,7 @@ idents :: { [Located PName] }
 
 -- identifiers are unqualified parsed-names
 ident :: { Located PName }
-  : UNQUAL { case $1 of
-               Located { locValue = TUnqual n, .. } -> PUnqual n `at` locRange }
+  : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
 
 
 -- External Interface ----------------------------------------------------------
@@ -168,13 +168,6 @@ parseError toks =
 
 
 -- Utilities -------------------------------------------------------------------
-
-mkModName :: Located Token -> Located Namespace
-mkModName Located { .. } =
-  case locValue of
-    TModName ns -> Located { locValue = ns, .. }
-    _           -> panic "parser" (text "mkModName: expected a TModName")
-
 
 mkTApp :: [Type PName] -> Type PName
 mkTApp [t]    = t
