@@ -225,5 +225,5 @@ mkEApp (e:es) = ELoc (EApp e es `at` (e,es))
 mkEApp _      = panic "parser" (text "mkEApp: empty list")
 
 addParams :: [Pat PName] -> Expr PName -> Match PName
-addParams ps e = foldl (\acc p -> MPat p acc) (MExpr e) ps
+addParams ps e = foldr MPat (MExpr e) ps
 }
