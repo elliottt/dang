@@ -1,252 +1,197 @@
--- vim: filetype=haskell
+-- vim: ft=haskell
 
 {
 {-# OPTIONS_GHC -w #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+module Dang.Syntax.Lexer (
+    Token(..), Keyword(..), lexer
+  ) where
 
-module Dang.Syntax.Lexer where
+import Dang.Syntax.AST (PName(..))
+import Dang.Syntax.Location
+import Dang.Utils.Ident
 
-import Dang.Syntax.Lexeme
-import Dang.Utils.Location
-
-import Data.Bits (shiftR,(.&.))
-import Data.Int (Int64)
-import Data.Monoid (mempty)
-import Data.Word (Word8)
-import MonadLib
+import           Data.Char (ord,isAscii)
+import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
+
 }
 
-$digit       = [0-9]
-$letter      = [a-zA-Z]
-$lowerletter = [a-z]
-$capletter   = [A-Z]
-$symbol      = [\- \> \< \: \*]
+$number      = [0-9]
 
-@conident  = $capletter [$letter $digit [_ \! \? \']]*
-@ident     = [_ $lowerletter] [$letter $digit [_ \! \? \']]*
-@operident = $symbol+
+$con_start   = [A-Z]
+$ident_start = [a-z]
+$middle      = [A-Za-z0-9_']
+
+@con_name    = $con_start $middle*
+@ident       = $ident_start $middle*
+@qual        = (@con_name \. )+
 
 :-
 
--- No nested comments, currently
-<comment> {
-"-}"            { begin 0 }
-.               ;
-}
-
 <0> {
 
--- skip whitespace
-$white          ;
-"--".*$         ;
-"{-"            { begin comment }
+$white+ ;
 
--- reserved symbols
-\\              { keyword Klambda     }
-"("             { keyword Klparen     }
-")"             { keyword Krparen     }
-"["             { keyword Klbracket   }
-"]"             { keyword Krbrace     }
-"{"             { keyword Klbrace     }
-"}"             { keyword Krbrace     }
-","             { keyword Kcomma      }
-"."             { keyword Kdot        }
-"|"             { keyword Kpipe       }
-"_"             { keyword Kunderscore }
-";"             { keyword Ksemi       }
-
-"->"            { keyword Krarrow     }
-"=>"            { keyword KRarrow     }
-
--- declaration-related
-"="             { keyword Kassign     }
-":"             { keyword Kcolon      }
-
--- declaration-block keywords
-"open"          { keyword Kopen      }
-"as"            { keyword Kas        }
-"rec"           { keyword Krec       }
-"let"           { keyword Klet       }
-"in"            { keyword Kin        }
-"where"         { keyword Kwhere     }
-"local"         { keyword Klocal     }
+-- only single-line comments for now
+"--" .* ;
 
 -- keywords
-"data"          { keyword Kdata      }
-"module"        { keyword Kmodule    }
-"hiding"        { keyword Khiding    }
-"public"        { keyword Kpublic    }
-"private"       { keyword Kprivate   }
-"forall"        { keyword Kforall    }
-"primitive"     { keyword Kprimitive }
-"type"          { keyword Ktype      }
-"case"          { keyword Kcase      }
-"of"            { keyword Kof        }
+"functor"{ keyword Kfunctor}
+"sig"    { keyword Ksig    }
+"struct" { keyword Kstruct }
+"module" { keyword Kmodule }
+"where"  { keyword Kwhere  }
+"import" { keyword Kimport }
+"open"   { keyword Kopen   }
+"forall" { keyword Kforall }
+"type"   { keyword Ktype   }
+"let"    { keyword Klet    }
+"in"     { keyword Kin     }
 
-@conident       { emitS TConIdent     }
-@ident          { emitS TIdent        }
-@operident      { emitS TOperIdent    }
-= @operident    { emitS TOperIdent    }
-$digit+         { emitS ((`TInt` 10) . read) }
+-- punctuation
+"|"      { keyword Kpipe   }
+":"      { keyword Kcolon  }
+"="      { keyword Kassign }
+"("      { keyword Klparen }
+")"      { keyword Krparen }
+"->"     { keyword Krarrow }
+"."      { keyword Kdot    }
+","      { keyword Kcomma  }
+"_"      { keyword Kwild   }
+
+-- numbers
+$number+ { emits (TNum 10 . read . L.unpack) }
+
+-- names
+@qual @con_name { emits (mkQual TQualCon) }
+@con_name       { emits TUnqualCon        }
+
+@qual @ident    { emits (mkQual TQualIdent) }
+@ident          { emits TUnqualIdent        }
+
 }
 
 {
 
--- Input Operations ------------------------------------------------------------
+-- Tokens ----------------------------------------------------------------------
 
-type AlexInput = LexerInput
+data Token = TUnqualCon !L.Text
+           | TQualCon !L.Text !L.Text
+           | TUnqualIdent !L.Text
+           | TQualIdent !L.Text !L.Text
+           | TKeyword !Keyword
+           | TNum Integer Int
+           | TStart
+           | TSep
+           | TEnd
+           | TError               -- ^ Lexical error
+             deriving (Eq,Show)
 
-data LexerInput = LexerInput
-  { liPosn   :: !Position
-  , liSource :: FilePath
-  , liChar   :: !Char
-  , liBytes  :: [Word8]
-  , liInput  :: L.Text
-  } deriving (Show)
+mkQual :: (L.Text -> L.Text -> Token) -> L.Text -> Token
+mkQual mk txt =
+  case L.breakOnEnd "." txt of
+    (ns,n) -> mk (L.dropEnd 1 ns) n
 
-initLexerInput :: FilePath -> L.Text -> LexerInput
-initLexerInput source bytes = LexerInput
-  { liPosn   = Position 0 1 1
-  , liSource = source
-  , liChar   = '\n'
-  , liBytes  = []
-  , liInput  = bytes
-  }
-
--- | Build a range from the lexer state.
-mkRange :: LexerInput -> String -> SrcLoc
-mkRange li str =
-  SrcLoc (Range (liPosn li) (movesPos (liPosn li) str)) (Just (liSource li))
-
-fillBuffer :: LexerInput -> Maybe LexerInput
-fillBuffer li = do
-  (c,rest) <- L.uncons (liInput li)
-  return $! li
-    { liPosn  = movePos (liPosn li) c
-    , liBytes = utf8Encode c
-    , liChar  = c
-    , liInput = rest
-    }
-
-alexInputPrevChar :: AlexInput -> Char
-alexInputPrevChar  = liChar
-
-alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
-alexGetByte li = case liBytes li of
-  b:bs -> return (b, li { liBytes = bs })
-  _    -> alexGetByte =<< fillBuffer li
-
--- | Encode a Haskell String to a list of Word8 values, in UTF8 format.
-utf8Encode :: Char -> [Word8]
-utf8Encode = map fromIntegral . go . ord
- where
-  go oc
-   | oc <= 0x7f       = [oc]
-
-   | oc <= 0x7ff      = [ 0xc0 + (oc `shiftR` 6)
-                        , 0x80 +  oc .&. 0x3f
-                        ]
-
-   | oc <= 0xffff     = [ 0xe0 + ( oc `shiftR` 12)
-                        , 0x80 + ((oc `shiftR` 6) .&. 0x3f)
-                        , 0x80 +   oc             .&. 0x3f
-                        ]
-   | otherwise        = [ 0xf0 + ( oc `shiftR` 18)
-                        , 0x80 + ((oc `shiftR` 12) .&. 0x3f)
-                        , 0x80 + ((oc `shiftR` 6)  .&. 0x3f)
-                        , 0x80 +   oc              .&. 0x3f
-                        ]
-
-
--- Lexer Monad -----------------------------------------------------------------
-
-newtype Lexer a = Lexer
-  { unLexer :: StateT LexerState Id a
-  } deriving (Functor,Applicative,Monad)
-
-instance StateM Lexer LexerState where
-  get = Lexer   get
-  set = Lexer . set
-
-data LexerState = LexerState
-  { lexerInput :: !LexerInput
-  , lexerState :: !Int
-  } deriving Show
-
-scan :: FilePath -> L.Text -> [Lexeme]
-scan source bytes = fst (runId (runStateT st0 (unLexer loop)))
-  where
-  st0  = LexerState
-    { lexerInput = initLexerInput source bytes
-    , lexerState = 0
-    }
-
-  loop = do
-    inp <- alexGetInput
-    sc  <- alexGetStartCode
-    case alexScan inp sc of
-
-      AlexToken inp' len action -> do
-        alexSetInput inp'
-        mb   <- action inp len
-        rest <- loop
-        case mb of
-          Just lex -> return (lex:rest)
-          Nothing  -> return rest
-
-      AlexSkip inp' len -> do
-        alexSetInput inp'
-        loop
-
-      AlexEOF ->
-        return [Located mempty TEof]
-
-      AlexError inp' ->
-        return [Located (mkRange inp' "") (TError "Lexical error")]
-
-alexSetInput :: AlexInput -> Lexer ()
-alexSetInput inp = do
-  st <- get
-  set $! st { lexerInput = inp }
-
-alexGetInput :: Lexer AlexInput
-alexGetInput  = lexerInput `fmap` get
-
-
--- Start Codes -----------------------------------------------------------------
-
-alexGetStartCode :: Lexer Int
-alexGetStartCode  = lexerState `fmap` get
-
-alexSetStartCode :: Int -> Lexer ()
-alexSetStartCode code = do
-  s <- get
-  set $! s { lexerState = code }
+data Keyword = Kmodule
+             | Kfunctor
+             | Ksig
+             | Kstruct
+             | Kwhere
+             | Kcolon
+             | Kimport
+             | Kopen
+             | Klparen
+             | Krparen
+             | Krarrow
+             | Kassign
+             | Ktype
+             | Kforall
+             | Kdot
+             | Kcomma
+             | Kwild
+             | Kpipe
+             | Klet
+             | Kin
+               deriving (Eq,Show)
 
 
 -- Actions ---------------------------------------------------------------------
 
+type AlexAction = Maybe Source -> Int -> AlexInput -> Mode -> (Mode,[Located Token])
 
-type AlexAction result = AlexInput -> Int -> result
-
--- | Emit a token from the lexer
-emitT :: Token -> AlexAction (Lexer (Maybe Lexeme))
-emitT tok = emitS (const tok)
-
-emitS :: (String -> Token) -> AlexAction (Lexer (Maybe Lexeme))
-emitS mk li len = return (Just $! Located (mkRange li str) (mk str))
+withInput :: (L.Text -> Token) -> Maybe Source -> Int -> AlexInput
+          -> Located Token
+withInput mk rangeSource len AlexInput { .. } =
+  mk txt `at` Range { rangeStart = aiPos
+                    , rangeEnd   = L.foldl' (flip movePos) aiPos txt
+                    , .. }
   where
-  range = mkRange li str
-  str   = L.unpack (L.take (fromIntegral len) (liInput li))
+  txt = L.take (fromIntegral len) aiText
 
-keyword :: Keyword -> AlexAction (Lexer (Maybe Lexeme))
-keyword kw = emitT (TKeyword kw)
+keyword :: Keyword -> AlexAction
+keyword kw src len inp st = (st,[withInput (const (TKeyword kw)) src len inp])
 
-begin :: Int -> AlexAction (Lexer (Maybe Lexeme))
-begin code _ _ = alexSetStartCode code >> return Nothing
+emits :: (L.Text -> Token) -> AlexAction
+emits mk src len inp st = (st,[withInput mk src len inp])
+
+
+-- Lexer -----------------------------------------------------------------------
+
+lexer :: Source
+      -> L.Text
+      -> [Located Token]
+lexer src txt =
+  go AlexInput { aiPos = Position 1 1 0, aiText = txt } Normal
+  where
+
+  go inp st =
+    case alexScan inp (modeToInt st) of
+      AlexEOF                -> []
+      AlexError inp'         -> [TError `at` mkRange inp inp']
+      AlexSkip inp' _        -> go inp' st
+      AlexToken inp' len act ->
+        case act rangeSource len inp st of
+          (st',xs) -> xs ++ go inp' st'
+
+  rangeSource = Just src
+
+  mkRange a b =
+    Range { rangeStart = aiPos a, rangeEnd = aiPos b, .. }
+
+
+-- Alex Interface --------------------------------------------------------------
+
+data AlexInput = AlexInput { aiPos  :: !Position
+                           , aiText :: L.Text
+                           }
+
+alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
+alexGetByte AlexInput { .. } =
+  do (c,rest) <- L.uncons aiText
+     return (byteForChar c, AlexInput { aiText = rest, aiPos = movePos c aiPos, .. })
+
+
+-- Lexer Modes -----------------------------------------------------------------
+
+data Mode = Normal
+            deriving (Show)
+
+modeToInt :: Mode -> Int
+modeToInt Normal = 0
+
+
+-- Utility ---------------------------------------------------------------------
+
+byteForChar :: Char -> Word8
+byteForChar c
+  | isAscii c = fromIntegral (ord c)
+  | otherwise = non_graphic
+
+  where
+
+  non_graphic = 0
+
 
 }
-

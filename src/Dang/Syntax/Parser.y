@@ -1,406 +1,343 @@
-{
 -- vim: ft=haskell
 
+{
 {-# OPTIONS_GHC -w #-}
-{-# LANGUAGE Trustworthy #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 
-module Dang.Syntax.Parser where
+module Dang.Syntax.Parser (
+    parseModule,
+    lexWithLayout
+  ) where
 
-import Dang.ModuleSystem.QualName
-import Dang.ModuleSystem.Types
+import Dang.Monad
 import Dang.Syntax.AST
-import Dang.Syntax.Lexeme
-import Dang.Syntax.ParserCore
-import Dang.Utils.Location (Located(..),unLoc,getLoc,at,extendLoc)
-import Dang.Utils.Pretty
+import Dang.Syntax.Layout
+import Dang.Syntax.Lexer
+import Dang.Syntax.Location
+import Dang.Utils.Ident
+import Dang.Utils.PP (text)
+import Dang.Utils.Panic
 
-import Data.Foldable ( foldMap )
-import Data.Monoid (mempty,mappend,mconcat)
-import MonadLib
+import           Data.Maybe (fromMaybe)
+import qualified Data.Text.Lazy as L
+
 }
 
+
+%tokentype { Located Token }
+
 %token
+  QUAL_CON { $$ @ Located { locValue = TQualCon _ _    } }
+  CON      { $$ @ Located { locValue = TUnqualCon _    } }
+  UNQUAL   { $$ @ Located { locValue = TUnqualIdent _  } }
+  QUAL     { $$ @ Located { locValue = TQualIdent _ _  } }
+  NUM      { $$ @ Located { locValue = TNum _ _        } }
 
--- modules
-  'module'    { Located $$ (TKeyword Kmodule)    }
-  'open'      { Located $$ (TKeyword Kopen)      }
-  'as'        { Located $$ (TKeyword Kas)        }
-  'hiding'    { Located $$ (TKeyword Khiding)    }
+  'functor'{ Located $$ (TKeyword Kfunctor)}
+  'sig'    { Located $$ (TKeyword Ksig)    }
+  'struct' { Located $$ (TKeyword Kstruct) }
+  'module' { Located $$ (TKeyword Kmodule) }
+  'where'  { Located $$ (TKeyword Kwhere)  }
+  'type'   { Located $$ (TKeyword Ktype)   }
 
--- declaration blocks
-  '{'       { Located $$ (TKeyword Klbrace)    }
-  ';'       { Located $$ (TKeyword Ksemi)      }
-  '}'       { Located $$ (TKeyword Krbrace)    }
-  'v{'      { Located $$ (TVirt Vopen)         }
-  'v;'      { Located $$ (TVirt Vsep)          }
-  'v}'      { Located $$ (TVirt Vclose)        }
-  'public'  { Located $$ (TKeyword Kpublic)    }
-  'private' { Located $$ (TKeyword Kprivate)   }
-  'local'   { Located $$ (TKeyword Klocal)     }
+  'import' { Located $$ (TKeyword Kimport) }
+  'open'   { Located $$ (TKeyword Kopen)   }
+  'forall' { Located $$ (TKeyword Kforall) }
 
--- declarations
-  'primitive' { Located $$ (TKeyword Kprimitive) }
-  'type'      { Located $$ (TKeyword Ktype)      }
-  'data'      { Located $$ (TKeyword Kdata)      }
-  '='         { Located $$ (TKeyword Kassign)    }
-  ':'         { Located $$ (TKeyword Kcolon)     }
+  '|'      { Located $$ (TKeyword Kpipe)   }
 
--- type-related
-  '->' { Located $$ (TKeyword Krarrow) }
-  '=>' { Located $$ (TKeyword KRarrow) }
+  '.'      { Located $$ (TKeyword Kdot)    }
+  ','      { Located $$ (TKeyword Kcomma)  }
 
--- keywords
-  'where'     { Located $$ (TKeyword Kwhere)      }
-  'case'      { Located $$ (TKeyword Kcase)       }
-  'of'        { Located $$ (TKeyword Kof)         }
-  'let'       { Located $$ (TKeyword Klet)        }
-  'in'        { Located $$ (TKeyword Kin)         }
-  '\\'        { Located $$ (TKeyword Klambda)     }
-  '('         { Located $$ (TKeyword Klparen)     }
-  ')'         { Located $$ (TKeyword Krparen)     }
-  ','         { Located $$ (TKeyword Kcomma)      }
-  '.'         { Located $$ (TKeyword Kdot)        }
-  '|'         { Located $$ (TKeyword Kpipe)       }
-  '_'         { Located $$ (TKeyword Kunderscore) }
+  ':'      { Located $$ (TKeyword Kcolon)  }
+  '='      { Located $$ (TKeyword Kassign) }
 
--- identifiers
-  CONIDENT { $$@Located { locValue = TConIdent _  }}
-  IDENT    { $$@Located { locValue = TIdent _     }}
-  OPER     { $$@Located { locValue = TOperIdent _ }}
-  INT      { $$@Located { locValue = TInt _ _     }}
+  'let'    { Located $$ (TKeyword Klet)    }
+  'in'     { Located $$ (TKeyword Kin)     }
+
+  '->'     { Located $$ (TKeyword Krarrow) }
+
+  '_'      { Located $$ (TKeyword Kwild)   }
+
+  '('      { Located $$ (TKeyword Klparen) }
+  ')'      { Located $$ (TKeyword Krparen) }
+
+  'v{'     { Located $$ TStart }
+  'v;'     { Located $$ TSep   }
+  'v}'     { Located $$ TEnd   }
 
 
-%monad { Parser } { (>>=) } { return }
+%monad { Dang }
 %error { parseError }
 
-%name parseModule top_module
-
-%tokentype { Lexeme }
-
-%lexer { lexer } { Located mempty TEof }
+%name top_module
 
 %%
 
--- Names -----------------------------------------------------------------------
 
-ident :: { Located String }
-  : IDENT { fmap fromTIdent $1 }
-  | 'as'  { "as" `at` $1 }
+-- Top-level Module ------------------------------------------------------------
 
-
-cident :: { Located String }
-  : CONIDENT { fmap fromTConIdent $1 }
-
-
-mod_name :: { Located ModName }
-  : sep1('.', cident) { map unLoc $1 `at` getLoc $1 }
-
-
-qual_cident :: { Located (ModName,String) }
-  : sep1('.', cident)
-    { case $1 of
-        [x] -> ([],) `fmap` x
-        xs  -> (map unLoc (init xs), unLoc (last xs)) `at` getLoc $1 }
-
-
-qual_ident :: { Located (ModName,String) }
-  : mod_name '.' ident
-    { (unLoc $1, unLoc $3) `at` mconcat [getLoc $1,getLoc $3] }
-  | ident
-    { fmap ([],) $1 }
-
-
--- Modules ---------------------------------------------------------------------
-
-top_module :: { Module }
-  : 'module' mod_name 'where' top_decls
+top_module :: { PModule }
+  : 'module' mod_name 'where' 'v{' top_decls 'v}'
     { Module { modName  = $2
-             , modDecls = $4 } }
+             , modDecls = $5 } }
 
+top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
+  : {- empty -}      { [] }
+  | sep1('v;', decl) { $1 }
 
 -- Declarations ----------------------------------------------------------------
 
-top_decls :: { [TopDecl] }
-  : layout(top_decl) { $1 }
-
-top_decl :: { TopDecl }
-  : decl                { TDDecl          $1 }
-  | data_decl           { TDData          $1 }
-  | prim_type           { TDPrimType      $1 }
-  | prim_term           { TDPrimTerm      $1 }
-  | local_decls         { TDLocal         $1 }
-  | 'public'  top_decls
-    { TDExport (Exported Public $2 `at` mappend $1 (getLoc $2)) }
-  | 'private' top_decls
-    { TDExport (Exported Private $2 `at` mappend $1 (getLoc $2)) }
-
-local_decls :: { Located LocalDecls }
-  : 'local' decls 'in' top_decls
-    { LocalDecls { ldLocals = $2
-                 , ldDecls  = $4
-                 } `at` mconcat [$1,$3,getLoc $4] }
+decl :: { Decl PName }
+  : signature { DLoc (DSig     `fmap` $1) }
+  | bind      { DLoc (DBind    `fmap` $1) }
+  | data_decl { DLoc (DData    `fmap` $1) }
+  | mod_bind  { DLoc (DModBind `fmap` $1) }
 
 
-decls :: { [Decl] }
-  : layout(decl) { $1 }
+-- Module Types ----------------------------------------------------------------
 
-decl :: { Decl }
-  : open      { DOpen $1 }
-  | signature { DSig  $1 }
-  | bind      { DBind $1 }
+mod_type :: { ModType PName }
+  : con
+    { MTLoc (MTVar `fmap` $1) }
+
+  | 'sig' 'v{' sep1('v;', mod_spec) 'v}'
+    { MTLoc (MTSig $3 `at` ($1,$4)) }
+
+  | 'functor' list1(mod_param) '->' mod_type
+    { MTLoc (foldr (uncurry MTFunctor) $4 $2 `at` ($1,$4)) }
+
+mod_spec :: { ModSpec PName }
+  : signature     { MSLoc (MSSig         `fmap` $1) }
+  | data_decl     { MSLoc (MSData        `fmap` $1) }
+  | mod_bind_spec { MSLoc (uncurry MSMod `fmap` $1) }
+
+mod_bind_spec :: { Located (Located PName, ModType PName) }
+  : 'module' mod_name ':' mod_type { ($2,$4) `at` ($1,$4) }
 
 
--- Imports ---------------------------------------------------------------------
+-- Module Expressions ----------------------------------------------------------
 
-open :: { Located Open }
-  : 'open' mod_name opt_as opt_hiding open_symbols
-    { Open { openMod     = $2
-           , openAs      = $3
-           , openHiding  = $4
-           , openSymbols = $5 } `at` mconcat [ $1
-                                             , getLoc $2
-                                             , getLoc $3
-                                             , getLoc $5 ] }
+mod_bind :: { Located (ModBind PName) }
+  : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
+    { ModBind { mbName = $2
+              , mbExpr = mkFunctor $3 (restrictMod $4 $6) } `at` ($1,$6) }
 
-opt_as :: { Maybe (Located ModName) }
-  : 'as' mod_name { Just $2 }
-  | {- empty -}   { Nothing }
+mod_param :: { (Located PName, ModType PName) }
+  : '(' con ':' mod_type ')' { ($2,$4) }
 
-opt_hiding :: { Bool }
-  : 'hiding'    { True  }
-  | {- empty -} { False }
+mod_restrict :: { ModType PName }
+  : ':' mod_type { $2 }
 
-open_symbols :: { [Located OpenSymbol] }
-  : '(' sep1(',', open_symbol) ')' { $2 }
-  | {- empty -}                    { [] }
+mod_expr :: { ModExpr PName }
+  : mod_bexpr opt(mod_constraint)
+    { case $2 of
+        Nothing -> $1
+        Just ty -> MELoc (MEConstraint $1 ty `at` ($1,ty)) }
 
-open_symbol :: { Located OpenSymbol }
-  : ident
-    { fmap OpenTerm $1 }
+mod_constraint :: { ModType PName }
+  : ':' mod_type { $2 }
 
-  | cident '(' sep1(',',cident) ')'
-    { OpenType (unLoc $1) (map unLoc $3)
-          `at` mconcat (getLoc $1 : map getLoc $3) }
+mod_bexpr :: { ModExpr PName }
+  : list1(mod_aexpr) { MELoc (foldl1 MEApp $1 `at` $1) }
+  | mod_struct       { MELoc (MEStruct `fmap` $1)      }
 
--- Kinds -----------------------------------------------------------------------
+mod_aexpr :: { ModExpr PName }
+  : con              { MELoc (MEName `fmap` $1) }
+  | qual_con         { MELoc (MEName `fmap` $1) }
+  | '(' mod_expr ')' { $2                       }
 
-prim_type :: { Located PrimType }
-  : 'primitive' cident ':' kind
-    { PrimType { primTypeName = mkName (Type 0) [] (unLoc $2)
-               , primTypeKind = $4
-               } `at` mconcat [$1, $3, getLoc $4] }
-
--- Just an alias for type
-kind :: { Kind }
-  : type { incLevels $1 }
+mod_struct :: { Located (ModStruct PName) }
+  : 'struct' 'v{' sep('v;', decl) 'v}' { ModStruct $3 `at` ($1,$4) }
 
 
 -- Types -----------------------------------------------------------------------
 
-signature :: { Located Signature }
-  : sep1(',', ident) ':' type_schema
-    { Signature { sigNames  = fmap (fmap (mkName Expr [])) $1
-                , sigSchema = $3 } `at` mconcat [ getLoc $1
-                                                , $2
-                                                , getLoc $3 ] }
+signature :: { Located (Sig PName) }
+  : sep1(',', ident) ':' schema { Sig $1 $3 `at` ($1,$3) }
 
-type_schema :: { Schema }
-  : type '=>' type
-    { mkForall $1 $3 }
+schema :: { Located (Schema PName) }
+  : 'forall' list1(ident) '.' type { Schema $2 $4 `at` ($1,$3) }
+  |                           type { Schema [] $1 `at`  $1     }
 
-  | type
-    { Forall [] $1 }
+type :: { Type PName }
+  : sep1('->', app_type) { mkTFun $1 }
 
-type :: { Type }
-  : sep1('->', app_type)
-    { TLoc (foldr1 TFun $1 `at` getLoc $1) }
+app_type :: { Type PName }
+  : list1(atype) { mkTApp $1 }
 
-app_type :: { Type }
-  : atype
-    { $1 }
-
-  | atype list1(atype)
-    { TLoc (TApp $1 $2 `at` mappend (getLoc $1) (getLoc $2)) }
-
-atype :: { Type }
-  : ident
-    { TLoc (fmap (TVar . mkName (Type 0) []) $1) }
-
-  | qual_cident
-    { TLoc (fmap (TCon . mkTyCon) $1) }
-
-  | '(' sep(',', type) ')'
-    { TLoc (mkTuple $2 `at` mappend (getLoc $1) (getLoc $3)) }
-
-  | row
-    { $1 }
-
-row :: { Type }
-  : '{' sep(',', ltype) opt(row_ext) '}'
-    { TLoc (mkTRow $2 $3 `at` mappend (getLoc $1) (getLoc $3)) }
-
-ltype :: { Labelled Type }
-  : ident ':' type
-    { Labelled { labName  = fmap (mkName (Type 0) []) $1
-               , labValue = $3 } }
-
-row_ext :: { Type }
-  : '|' type { $2 }
-
+atype :: { Type PName }
+  : ident        { TLoc (TVar `fmap` $1) }
+  | con          { TLoc (TCon `fmap` $1) }
+  | qual_con     { TLoc (TCon `fmap` $1) }
+  | '(' type ')' { $2                    }
 
 
 -- Expressions -----------------------------------------------------------------
 
-prim_term :: { Located PrimTerm }
-  : 'primitive' ident ':' type_schema
-    { PrimTerm { primTermName = mkName Expr [] (unLoc $2)
-               , primTermType = $4
-               } `at` mconcat [$1,$3,getLoc $4] }
+bind :: { Located (Bind PName) }
+  : ident list(pat) '=' expr
+    { Bind { bName   = $1
+           , bSchema = Nothing
+           , bBody   = addParams $2 $4 } `at` ($1,$4) }
 
-bind :: { Located Bind }
-  : ident list(apat) '=' expr
-    { Bind { bindName = mkName Expr [] `fmap` $1
-           , bindType = Nothing
-           , bindBody = matchPats $2 (MSuccess $4)
-           } `at` mappend (getLoc $1) (getLoc $2) }
+pat :: { Pat PName }
+  : '_'                    { PLoc (PWild `at` $1)           }
+  | ident                  { PLoc (PVar  `fmap` $1)         }
+  | con                    { PLoc (PCon $1 [] `at` $1)      }
+  | '(' con list1(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
 
-expr :: { Expr }
-  : 'let' decls 'in' expr
-    { ELoc (Let $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
-
-  | 'case' expr 'of' case_arms
-    { ELoc (Case $2 $4 `at` mconcat [$1,$3,getLoc $4]) }
-
-  | '\\' case_arms
-    { ELoc (Abs $2 `at` mconcat [$1,getLoc $2]) }
-
-  | app_expr
-    { $1 }
-
-app_expr :: { Expr }
+expr :: { Expr PName }
   : list1(aexpr)
-    { mkApp $1 }
+    { mkEApp $1 }
 
-aexpr :: { Expr }
-  : evar
-    { ELoc $1 }
+  | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
+    { ELoc (ELet $3 $6 `at` ($1,$6)) }
 
-  | literal
-    { ELoc (Lit `fmap` $1) }
+let_decl :: { LetDecl PName }
+  : bind      { LDLoc (LDBind `fmap` $1) }
+  | signature { LDLoc (LDSig  `fmap` $1) }
 
-  | '(' expr ')'
-    { ELoc ($2 `at` mappend $1 $3) }
+aexpr :: { Expr PName }
+  : ident        { ELoc (EVar `fmap` $1) }
+  | qual_ident   { ELoc (EVar `fmap` $1) }
+  | con          { ELoc (ECon `fmap` $1) }
+  | qual_con     { ELoc (ECon `fmap` $1) }
+  | lit          { ELoc (ELit `fmap` $1) }
+  | '(' expr ')' { $2                    }
 
-evar :: { Located Expr }
-  : ident
-    { fmap (Var . mkName Expr []) $1 }
-
-  | sep_body('.',cident) opt(evar_tail)
-    { case $2 of
-        Just i  -> Var (mkName Expr (reverse (map unLoc $1)) (unLoc i))
-                     `at` mconcat [getLoc $1, getLoc i]
-        Nothing -> let (con:pfx) = $1
-                    in Con (mkName Expr (reverse (map unLoc pfx)) (unLoc con))
-                         `at` getLoc $1 }
-
-evar_tail :: { Located String }
-  : '.' ident { $2 }
-
-case_arms :: { Match }
-  : layout1(case_arm) { foldr MSplit MFail $1 }
-
-case_arm :: { Match }
-  : pat '->' expr
-    { MLoc (MPat $1 (MSuccess $3) `at` mconcat [getLoc $1,$2,getLoc $3]) }
-
-literal :: { Located Literal }
-  : INT
-    { let TInt i b = unLoc $1
-       in (LInt i b `at` getLoc $1) }
+lit :: { Located Literal }
+  : NUM { case thing $1 of TNum base n -> LInt base n `at` $1 }
 
 
--- Patterns --------------------------------------------------------------------
+-- Data Declarations -----------------------------------------------------------
 
-pat :: { Pat }
-  : qual_cident list(apat)
-    { let (ns,n) = unLoc $1
-       in PLoc (PCon (mkName Expr ns n) $2
-                `at` mconcat [getLoc $1, getLoc $2]) }
+data_decl :: { Located (Data PName) }
+  : 'type' con list(ident) opt(data_constrs)
+    { Data { dName = $2
+           , dParams = $3
+           , dConstrs = fromMaybe [] $4 } `at` ($1,$2,$3,$4) }
 
-  | apat
-    { $1 }
+data_constrs :: { [Located (Constr PName)] }
+  : '=' sep1('|', data_constr) { $2 }
 
-apat :: { Pat }
-  : ident
-    { PLoc (fmap (PVar . mkName Expr []) $1) }
-
-  | '_'
-    { PLoc (PWildcard `at` $1) }
-
-  | '(' pat ')'
-    { PLoc ($2 `at` mconcat [$1,$3]) }
+data_constr :: { Located (Constr PName) }
+  : con list(atype)
+    { Constr { cName = $1
+             , cParams = $2 } `at` ($1,$2) }
 
 
--- Data ------------------------------------------------------------------------
+-- Names -----------------------------------------------------------------------
 
-data_decl :: { Located DataDecl }
-  : 'data' layout1(constr_group)
-    {% mkData $1 $2 }
+mod_name :: { Located PName }
+  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
+  | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
-constr_group :: { (Name, Located ConstrGroup) }
-  : cident list(atype) mb_constrs
-    { ( mkTyCon ([],unLoc $1)
-      , ConstrGroup { groupResTys  = $2
-                    , groupConstrs = $3
-                    } `at` mconcat [getLoc $1,getLoc $3]) }
+con :: { Located PName }
+  : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
 
-mb_constrs :: { [Located Constr] }
-  : '=' sep1('|', constr) { $2 }
-  | {- empty -}           { [] }
+qual_con :: { Located PName }
+  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
 
-constr :: { Located Constr }
-  : cident list(atype)
-    { Constr { constrName   = mkDataCon ([],unLoc $1)
-             , constrFields = $2
-             } `at` mconcat [getLoc $1, getLoc $2] }
+qual_ident :: { Located PName }
+  : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
+
+-- identifiers are unqualified parsed-names
+ident :: { Located PName }
+  : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
 
 
--- Combinators -----------------------------------------------------------------
-
-layout(e)
-  : '{'  sep(';', e)  '}'  { $2 }
-  | 'v{' sep('v;', e) 'v}' { $2 }
-
-layout1(e)
-  : '{'  sep1(';', e)  '}'  { $2 }
-  | 'v{' sep1('v;', e) 'v}' { $2 }
-
+-- Utilities -------------------------------------------------------------------
 
 opt(p)
-  : p           { Just $1 }
-  | {- empty -} { Nothing }
-
+  : {- empty -} { Nothing }
+  | p           { Just $1 }
 
 sep(p,q)
-  : sep_body(p,q) { reverse $1 }
-  | {- empty -}   { []         }
+  : {- empty -}   { []         }
+  | sep_body(p,q) { reverse $1 }
 
 sep1(p,q)
   : sep_body(p,q) { reverse $1 }
 
 sep_body(p,q)
-  : sep_body(p,q) p q { $3 : $1 }
-  | q                 { [$1]    }
-
+  : q                 { [$1]    }
+  | sep_body(p,q) p q { $3 : $1 }
 
 list(p)
-  : list_body(p) { reverse $1 }
-  | {- empty -}  { []         }
+  : {- empty -}  { []         }
+  | list_body(p) { reverse $1 }
 
 list1(p)
   : list_body(p) { reverse $1 }
 
 list_body(p)
-  : list_body(p) p { $2 : $1 }
-  | p              { [$1]    }
+  : p              { [$1]    }
+  | list_body(p) p { $2 : $1 }
+
+
+-- External Interface ----------------------------------------------------------
+
+{
+
+lexWithLayout :: Source -> L.Text -> [Located Token]
+lexWithLayout src txt = layout Layout { .. } (lexer src txt)
+  where
+
+  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet]
+  beginsLayout _            = False
+
+  endsLayout (TKeyword Kin) = True
+  endsLayout _              = False
+
+  start = TStart
+  sep   = TSep
+  end   = TEnd
+
+parseModule :: Source -> L.Text -> Dang PModule
+parseModule src txt = failErrors (top_module (lexWithLayout src txt))
+
+
+-- Parser Monad ----------------------------------------------------------------
+
+parseError :: [Located Token] -> Dang a
+parseError toks =
+  do case toks of
+       loc : _ -> addLoc loc $ \case
+         TError -> addError (text "Lexical error")
+         _      -> addError (text "Parse error")
+
+       [] -> addError (text "Unexpected end-of-file")
+
+     mzero
+
+
+-- Utilities -------------------------------------------------------------------
+
+mkTApp :: [Type PName] -> Type PName
+mkTApp [t]    = t
+mkTApp (t:ts) = TLoc (TApp t ts `at` (t,ts))
+mkTApp _      = panic "parser" (text "mkTApp: empty list")
+
+mkTFun :: [Type PName] -> Type PName
+mkTFun ts = TLoc (foldr1 TFun ts `at` ts)
+
+mkEApp :: [Expr PName] -> Expr PName
+mkEApp [e]    = e
+mkEApp (e:es) = ELoc (EApp e es `at` (e,es))
+mkEApp _      = panic "parser" (text "mkEApp: empty list")
+
+addParams :: [Pat PName] -> Expr PName -> Match PName
+addParams ps e = foldr MPat (MExpr e) ps
+
+mkFunctor :: [(Located PName, ModType PName)] -> ModExpr PName -> ModExpr PName
+mkFunctor [] e = e
+mkFunctor ps e = foldr (uncurry MEFunctor) e ps
+
+restrictMod :: Maybe (ModType PName) -> ModExpr PName -> ModExpr PName
+restrictMod Nothing   = id
+restrictMod (Just ty) = (`MEConstraint` ty)
+}

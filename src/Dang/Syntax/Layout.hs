@@ -1,105 +1,59 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Dang.Syntax.Layout (
-    layout
+    Layout(..),
+    layout,
   ) where
 
-import Dang.Syntax.Lexeme
-import Dang.Utils.Location
+import Dang.Syntax.Location
 
 
-layout :: [Lexeme] -> [Lexeme]
-layout  = normal False []
+data Layout a = Layout { beginsLayout :: a -> Bool
+                         -- ^ True when this token begins layout
 
+                       , endsLayout :: a -> Bool
+                         -- ^ True when this token explicitly ends layout
 
--- | Layout scopes
-data Scope = Explicit Keyword -- ^ Layout scope started explicitly
-           | Layout !Int      -- ^ Implicit layout block
-           | Delimit Bool     -- ^ Delimited block marker.  The boolean
-                              -- parameter indicates whether or not the
-                              -- delimiter starts another block (local .. in ..,
-                              -- vs let .. in ..)
-             deriving (Show,Eq)
+                       , sep :: a
+                         -- ^ The separator token
 
-col :: SrcLoc -> Int
-col src = posCol (locStart src)
+                       , start :: a
+                         -- ^ Layout block starting token
 
--- | Check if a token signals the start of a layout block
-startsLayout :: Token -> Bool
-startsLayout tok = case tok of
-  TKeyword Kwhere   -> True
-  TKeyword Kprivate -> True
-  TKeyword Kpublic  -> True
-  TKeyword Krec     -> True
-  TKeyword Kof      -> True
-  TKeyword Klambda  -> True
-  TKeyword Kdata    -> True
-  _                 -> False
+                       , end :: a
+                         -- ^ Layout block ending token
+                       }
 
-eof :: Lexeme
-eof  = TError "Unexpected end of input" `at` NoLoc
-
-normal :: Bool -> [Scope] -> [Lexeme] -> [Lexeme]
-normal start stack (l@(Located src t):ls)
-  | startsLayout        t = toks ++ normal True stack' ls
-  | TKeyword Klet    == t = toks ++ normal True (Delimit False : stack') ls
-  | TKeyword Klocal  == t = toks ++ normal True (Delimit True  : stack') ls
-  | TKeyword Klbrace == t = toks ++ normal False (Explicit Krbrace:stack') ls
-  | TKeyword Klparen == t = toks ++ normal False (Explicit Krparen:stack') ls
-  | TKeyword Kin     == t = toks ++ normal dstart stack' ls
-  | TEof             == t = toks
-  | otherwise             = toks ++ normal False stack' ls
+layout :: Layout a -> [Located a] -> [Located a]
+layout Layout { .. } = go Nothing []
   where
+  startCol Range { rangeStart = Position { .. } } = posCol
 
-  -- such value recursion
-  (dstart,toks,offStack) = offsides vs l stack
-  (vs,stack')
-    | start && TKeyword Klbrace == t = ([], Explicit Krbrace : offStack)
+  currentLevel (loc : _) = startCol loc
+  currentLevel []        = 0
 
-    | start = ([TVirt Vopen `at` src], Layout (col src) : offStack)
+  go Just{} stack (tok@Located { .. } : toks) =
+    (start `at` locRange) : tok : go Nothing (locRange:stack) toks
 
-    | otherwise = ( [], offStack )
+  go (Just loc) stack [] =
+    (start `at` loc) : go Nothing (loc : stack) []
 
-normal _ _ _ = [eof]
+  go Nothing stack ts@(tok@Located { .. } : toks)
 
+    | beginsLayout locValue =
+      tok : go (Just locRange) stack toks
 
--- Offsides Check --------------------------------------------------------------
+    | endsLayout locValue =
+       (end `at` locRange) : tok : go Nothing (tail stack) toks
 
--- | Perform the offsides check, given context.
-offsides :: [Lexeme] -> Lexeme -> [Scope] -> (Bool,[Lexeme],[Scope])
-offsides vs l@(Located src t) = go vs
-  where
-  go virts stack = case stack of
+    | startCol locRange == currentLevel stack =
+      (sep `at` locRange) : tok : go Nothing stack toks
 
-    -- close a delimited block with `in`
-    Delimit b : rest | TKeyword Kin == t -> delimit b virts rest
+    | startCol locRange < currentLevel stack =
+      (end `at` locRange) : go Nothing (tail stack) ts
 
-    -- can't close delimited blocks that are explicitly open
-    Explicit _ : rest | TKeyword Kin == t -> done (lexErr : virts) rest
+    | otherwise =
+      tok : go Nothing stack toks
 
-    -- close virtual blocks up to the start of a delimited block
-    Layout _ : rest | TKeyword Kin == t -> go (virt Vclose : virts) rest
-
-    -- separate or close the current layout block
-    Layout c : rest
-      | col src == c -> done (virt Vsep : virts) stack
-      | col src < c  -> go (virt Vclose : virts) rest
-
-    -- close layout blocks while this is a closing token
-    Layout _ : rest
-      | closingToken -> go (virt Vclose : virts) rest
-
-    -- close an explicit block when it's the expected closing token
-    Explicit close : rest | TKeyword close == t -> done virts rest
-
-    _ -> done virts stack
-
-  delimit b ts s = (b, reverse (l:ts), s)
-  done      ts s = (False, reverse (l:ts), s)
-
-  virt v = TVirt v `at` src
-
-  lexErr = TError "Lexical error" `at` src
-
-  closingToken = t == TKeyword Krbrace
-              || t == TKeyword Krparen
+  go _ stack [] =
+    [ end `at` loc | loc <- stack ]

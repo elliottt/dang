@@ -1,138 +1,45 @@
 name:                dang
 version:             0.1.0.0
-homepage:            https://github.com/elliottt/dang
 license:             BSD3
 license-file:        LICENSE
-author:              Trevor Eliott
+author:              Trevor Elliott
 maintainer:          awesomelyawesome@gmail.com
+copyright:           2015
 category:            Language
 build-type:          Simple
-cabal-version:       >=1.10
+cabal-version:       >= 1.10
 
 library
-  build-tools:          alex, happy
-  hs-source-dirs:       src
-  ghc-options:          -Wall
-  default-language:     Haskell2010
-
-  exposed-modules:
-                        -- parsing
-                        Dang.Syntax,
-                        Dang.Syntax.AST,
-                        Dang.Syntax.Layout,
-                        Dang.Syntax.Lexeme,
-                        Dang.Syntax.Lexer,
-                        Dang.Syntax.Parser,
-                        Dang.Syntax.ParserCore,
-
-                        -- module system
-                        Dang.ModuleSystem,
-                        Dang.ModuleSystem.Interface,
-                        Dang.ModuleSystem.QualName,
-                        Dang.ModuleSystem.ScopeCheck,
-                        Dang.ModuleSystem.Types,
-
-                        -- type checking
-                        Dang.Core.AST,
-                        Dang.Core.Interface,
-                        Dang.TypeChecker,
-                        Dang.TypeChecker.CheckKinds,
-                        Dang.TypeChecker.CheckTypes,
-                        Dang.TypeChecker.Env,
-                        Dang.TypeChecker.Monad,
-                        Dang.TypeChecker.Subst,
-                        Dang.TypeChecker.Types,
-                        Dang.TypeChecker.Unify,
-
-                        -- compilation
-                        Dang.Compile,
-                        Dang.Compile.LambdaLift,
-                        Dang.Link,
-
-                        -- code generation
-                        Dang.CodeGen,
-                        --Dang.CodeGen.Core,
-                        --Dang.CodeGen.Env,
-                        --Dang.CodeGen.Rts,
-                        --Dang.CodeGen.Types,
-                        --Dang.Desugar,
-
-                        -- utility
-                        Dang.FileName,
-                        Dang.IO,
-                        Dang.Monad,
-                        Dang.Tool,
-                        Data.ClashMap,
-                        Dang.Options
-                        Dang.Prim,
-                        Dang.Utils,
-                        Dang.Utils.Location,
-                        Dang.Utils.Panic,
-                        Dang.Utils.Pretty,
-                        Dang.Variables
-
-  build-depends:        base             >= 4,
-                        GraphSCC         >= 1.0,
-                        array            >= 0.4,
-                        bytestring       >= 0.9,
-                        cereal           >= 0.3,
-                        containers       >= 0.4,
-                        directory        >= 1.1,
-                        filepath         >= 1.3,
-                        llvm-pretty      >= 0.1,
-                        monadLib         >= 3.6,
-                        pretty           >= 1.1.3.2,
-                        process          >= 1.1,
-                        syb              >= 0.3,
-                        text             >= 0.11,
-                        ansi-terminal    >= 0.6.2.1,
-                        lens             >= 4.2
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  exposed-modules:     Dang
+                       Dang.ModuleSystem.Rename
+                       Dang.ModuleSystem.Name
+                       Dang.Monad
+                       Dang.Syntax.AST
+                       Dang.Syntax.Layout
+                       Dang.Syntax.Lexer
+                       Dang.Syntax.Location
+                       Dang.Syntax.Parser
+                       Dang.Unique
+                       Dang.Utils.Ident
+                       Dang.Utils.Panic
+                       Dang.Utils.PP
+  build-depends:       base >= 4.8 && <5,
+                       array,
+                       monadLib,
+                       pretty,
+                       containers,
+                       lens,
+                       text
+  ghc-options:         -Wall
 
 executable dang
-  main-is:              Main.hs
-  default-language:     Haskell2010
-  hs-source-dirs:       frontend
-  ghc-options:          -Wall
-  build-depends:        base             >= 4,
-                        bytestring       >= 0.9,
-                        cereal           >= 0.3,
-                        containers       >= 0.4,
-                        directory        >= 1.1,
-                        filepath         >= 1.3,
-                        GraphSCC         >= 1.0,
-                        llvm-pretty      >= 0.1,
-                        monadLib         >= 3.6,
-                        pretty           >= 1.1.3.2,
-                        process          >= 1.1,
-                        syb              >= 0.3,
-                        text             >= 0.11,
-                        lens             >= 4.2,
-                        ansi-terminal    >= 0.6.2.1,
-                        dang
-
-test-suite dang-tests
-  main-is:              Main.hs
-  type:                 exitcode-stdio-1.0
-  hs-source-dirs:       src
-  hs-source-dirs:       tests
-  ghc-options:          -Wall
-  other-modules:        Tests.Monadic,
-                        Tests.QualName,
-                        Tests.Unification,
-                        Tests.Utils,
-                        Tests.Types
-  build-depends:        base                       >= 4,
-                        cereal                     >= 0.3,
-                        containers                 >= 0.4,
-                        filepath                   >= 1.3,
-                        GraphSCC                   >= 1.0,
-                        monadLib                   >= 3.6,
-                        pretty                     >= 1.1.3.2,
-                        QuickCheck                 >= 2.4,
-                        syb                        >= 0.3,
-                        test-framework             >= 0.6,
-                        test-framework-quickcheck2 >= 0.2,
-                        text                       >= 0.11,
-                        lens                       >= 4.2,
-                        ansi-terminal              >= 0.6.2.1,
-                        dang
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >=4.8 && <5,
+                       text,
+                       dang
+  hs-source-dirs:      dang
+  default-language:    Haskell2010
+  ghc-options:         -Wall
