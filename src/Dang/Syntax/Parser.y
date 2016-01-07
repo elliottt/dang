@@ -283,8 +283,8 @@ list_body(p)
 
 {
 
-lexWithLayout :: Source -> L.Text -> [Located Token]
-lexWithLayout src txt = layout Layout { .. } (lexer src txt)
+lexWithLayout :: Source -> Maybe Position -> L.Text -> [Located Token]
+lexWithLayout src mbStart txt = layout Layout { .. } (lexer src mbStart txt)
   where
 
   beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet]
@@ -298,7 +298,7 @@ lexWithLayout src txt = layout Layout { .. } (lexer src txt)
   end   = TEnd
 
 parseModule :: Source -> L.Text -> Dang PModule
-parseModule src txt = failErrors (top_module (lexWithLayout src txt))
+parseModule src txt = failErrors (top_module (lexWithLayout src Nothing txt))
 
 
 -- Parser Monad ----------------------------------------------------------------

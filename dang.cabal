@@ -27,6 +27,7 @@ library
                        Dang.Utils.PP
   build-depends:       base >= 4.8 && <5,
                        array,
+                       ansi-terminal,
                        monadLib,
                        pretty,
                        containers,

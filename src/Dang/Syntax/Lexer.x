@@ -13,6 +13,7 @@ import Dang.Syntax.Location
 import Dang.Utils.Ident
 
 import           Data.Char (ord,isAscii)
+import           Data.Maybe (fromMaybe)
 import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
 
@@ -140,11 +141,14 @@ emits mk src len inp st = (st,[withInput mk src len inp])
 -- Lexer -----------------------------------------------------------------------
 
 lexer :: Source
+      -> Maybe Position
       -> L.Text
       -> [Located Token]
-lexer src txt =
-  go AlexInput { aiPos = Position 1 1 0, aiText = txt } Normal
+lexer src mbPos txt =
+  go AlexInput { aiPos = startPos, aiText = txt } Normal
   where
+
+  startPos = fromMaybe (Position 1 1 0) mbPos
 
   go inp st =
     case alexScan inp (modeToInt st) of
