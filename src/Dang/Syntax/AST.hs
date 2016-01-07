@@ -22,7 +22,7 @@ data PName = PUnqual !L.Text
 -- | A parsed top-level module.
 type PModule = Module PName
 
-data Module name = Module { modName  :: Located Namespace
+data Module name = Module { modName  :: Located name
                           -- , modImports :: ?
                           , modDecls :: [Decl name]
                           } deriving (Show)
@@ -48,7 +48,7 @@ data Sig name = Sig { sigNames  :: [Located name]
                     , sigSchema :: Located (Schema name)
                     } deriving (Eq,Show,Functor,Generic)
 
-data ModBind name = ModBind { mbName :: Located Namespace
+data ModBind name = ModBind { mbName :: Located name
                             , mbExpr :: ModExpr name
                             } deriving (Eq,Show,Functor,Generic)
 
@@ -61,7 +61,7 @@ data ModType name = MTVar name
 
 data ModSpec name = MSSig (Sig name)
                   | MSData (Data name)
-                  | MSMod (Located Namespace) (ModType name)
+                  | MSMod (Located name) (ModType name)
                   | MSLoc (Located (ModSpec name))
                     deriving (Eq,Show,Functor,Generic)
 

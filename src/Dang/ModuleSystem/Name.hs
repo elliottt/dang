@@ -9,6 +9,7 @@ module Dang.ModuleSystem.Name (
     nameIdent,
     nameUnique,
 
+    mkModName,
     mkBinding,
     mkUnknown,
   ) where
@@ -32,6 +33,9 @@ data NameSort = Declaration !ModInfo
 
               | Parameter
                 -- ^ Type/function parameter.
+
+              | ModDecl !(Maybe ModInfo)
+                -- ^ A module, declared in this module.
                 deriving (Eq,Ord,Show)
 
 data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
@@ -51,6 +55,13 @@ data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
 instance Eq Name where
   (==) = (==) `on` nUnique
   (/=) = (/=) `on` nUnique 
+  {-# INLINE (==) #-}
+  {-# INLINE (/=) #-}
+
+instance Ord Name where
+  compare = compare `on` nUnique
+  {-# INLINE compare #-}
+
 
 
 -- | Retrieve the text associated with the 'Name'.
@@ -72,6 +83,13 @@ nameUnique Name { .. } = nUnique
 
 -- Name Construction -----------------------------------------------------------
 
+mkModName :: Maybe Namespace -> L.Text -> Range -> Supply -> (Supply,Name)
+mkModName mbNs n nFrom s =
+  let (s',nUnique) = nextUnique s
+      name         = Name { nSort = ModDecl (ModInfo `fmap` mbNs)
+                          , nName = mkIdent (L.toStrict n)
+                          , .. }
+   in (s',name)
 
 -- | Generate a name for a binding site.
 mkBinding :: Namespace -> L.Text -> Range -> Supply -> (Supply,Name)
@@ -108,8 +126,6 @@ mkUnknown (PQual ns n) src s =
 
 -- Pretty-printing -------------------------------------------------------------
 
--- XXX fix this to interact with the environment, asking how to print this
--- particular name.
 instance PP Name where
   ppr Name { .. } =
     case nSort of
@@ -120,6 +136,16 @@ instance PP Name where
              Just (Qualified ns') -> pp ns' <> char '.' <> pp nName
              Just UnQualified     ->                       pp nName
              Nothing              -> pp ns  <> char '.' <> pp nName
+
+      ModDecl (Just (ModInfo ns)) ->
+        do mb <- getNameFormat ns nName
+           case mb of
+             Just (Qualified ns') -> pp ns' <> char '.' <> pp nName
+             Just UnQualified     ->                       pp nName
+             Nothing              -> pp ns  <> char '.' <> pp nName
+
+      ModDecl Nothing ->
+        pp nName
 
       Parameter ->
         pp nName

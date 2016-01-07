@@ -115,19 +115,22 @@ mod_spec :: { ModSpec PName }
   | data_decl     { MSLoc (MSData        `fmap` $1) }
   | mod_bind_spec { MSLoc (uncurry MSMod `fmap` $1) }
 
-mod_bind_spec :: { Located (Located Namespace, ModType PName) }
+mod_bind_spec :: { Located (Located PName, ModType PName) }
   : 'module' mod_name ':' mod_type { ($2,$4) `at` ($1,$4) }
 
 
 -- Module Expressions ----------------------------------------------------------
 
 mod_bind :: { Located (ModBind PName) }
-  : 'module' mod_name list(mod_param) '=' mod_expr
+  : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
     { ModBind { mbName = $2
-              , mbExpr = mkFunctor $3 $5 } `at` ($1,$5) }
+              , mbExpr = mkFunctor $3 (restrictMod $4 $6) } `at` ($1,$6) }
 
 mod_param :: { (Located PName, ModType PName) }
   : '(' con ':' mod_type ')' { ($2,$4) }
+
+mod_restrict :: { ModType PName }
+  : ':' mod_type { $2 }
 
 mod_expr :: { ModExpr PName }
   : mod_bexpr opt(mod_constraint)
@@ -182,10 +185,10 @@ bind :: { Located (Bind PName) }
            , bBody   = addParams $2 $4 } `at` ($1,$4) }
 
 pat :: { Pat PName }
-  : '_'                   { PLoc (PWild `at` $1)           }
-  | ident                 { PLoc (PVar  `fmap` $1)         }
-  | con                   { PLoc (PCon $1 [] `at` $1)      }
-  | '(' con list(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
+  : '_'                    { PLoc (PWild `at` $1)           }
+  | ident                  { PLoc (PVar  `fmap` $1)         }
+  | con                    { PLoc (PCon $1 [] `at` $1)      }
+  | '(' con list1(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
 
 expr :: { Expr PName }
   : list1(aexpr)
@@ -229,10 +232,9 @@ data_constr :: { Located (Constr PName) }
 
 -- Names -----------------------------------------------------------------------
 
-mod_name :: { Located Namespace }
-  : QUAL_CON { case thing $1 of
-                 TQualCon ns n -> L.toStrict (L.concat [ns,".",n]) <$ $1 }
-  | CON      { case thing $1 of TUnqualCon n -> L.toStrict n <$ $1 }
+mod_name :: { Located PName }
+  : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
+  | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
 con :: { Located PName }
   : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
@@ -334,4 +336,8 @@ addParams ps e = foldr MPat (MExpr e) ps
 mkFunctor :: [(Located PName, ModType PName)] -> ModExpr PName -> ModExpr PName
 mkFunctor [] e = e
 mkFunctor ps e = foldr (uncurry MEFunctor) e ps
+
+restrictMod :: Maybe (ModType PName) -> ModExpr PName -> ModExpr PName
+restrictMod Nothing   = id
+restrictMod (Just ty) = (`MEConstraint` ty)
 }

@@ -19,7 +19,7 @@ module Dang.ModuleSystem.Rename (
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
-import Dang.ModuleSystem.Name (Name,mkUnknown,mkBinding)
+import Dang.ModuleSystem.Name (Name,mkModName,mkUnknown,mkBinding)
 import Dang.Unique (SupplyM,withSupply)
 import Dang.Utils.Ident (Namespace)
 import Dang.Utils.PP
@@ -36,11 +36,16 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 
 renameModule :: Module PName -> Dang (Module Name)
-renameModule Module { .. } = rename (thing modName) $
-  do declEnv <- mergeNames declNames modDecls
-     withNames declEnv $
-       do ds <- traverse rnDecl modDecls
-          return Module { modDecls = ds, .. }
+renameModule Module { .. } = rename (mkNamespace (thing modName)) $
+  do n' <- withSupply $ case thing modName of
+             PQual ns n -> mkModName (Just (L.toStrict ns)) n (locRange modName)
+             PUnqual n  -> mkModName Nothing                n (locRange modName)
+
+     withNames (singleton (DefMod (thing modName)) n') $
+       do declEnv <- mergeNames declNames modDecls
+          withNames declEnv $
+            do ds <- traverse rnDecl modDecls
+               return Module { modName = n' <$ modName, modDecls = ds }
 
 
 -- Monad -----------------------------------------------------------------------
@@ -63,11 +68,15 @@ data RO = RO { roNS    :: Namespace
              , roNames :: NameMap
              }
 
+mkNamespace :: PName -> Namespace
+mkNamespace (PUnqual n)  = L.toStrict n
+mkNamespace (PQual ns n) = L.toStrict (ns `L.append` "." `L.append` n)
+
 -- | Extend the current namespace with the given one.
-pushNamespace :: Namespace -> RN a -> RN a
+pushNamespace :: PName -> RN a -> RN a
 pushNamespace ns m =
   do ro <- RN ask
-     let ns' = roNS ro `T.append` "." `T.append` ns
+     let ns' = roNS ro `T.append` "." `T.append` mkNamespace ns
      RN (local ro { roNS = ns' } (unRN m))
 
 getNamespace :: RN Namespace
@@ -112,19 +121,23 @@ checkShadowing l@(NameMap xs) r@(NameMap ys) =
      return (l `mappend` r)
 
 
-data Def = DefDecl PName
+data Def = DefMod  PName
+         | DefDecl PName
          | DefType PName
            deriving (Eq,Ord,Show)
 
 instance PP Def where
+  ppr (DefMod  n) = ppr n
   ppr (DefDecl n) = ppr n
   ppr (DefType n) = ppr n
 
 defName :: Def -> PName
+defName (DefMod  n) = n
 defName (DefDecl n) = n
 defName (DefType n) = n
 
 defType :: Def -> Doc
+defType DefMod{}  = text "module"
 defType DefDecl{} = text "value"
 defType DefType{} = text "type"
 
