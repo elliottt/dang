@@ -22,7 +22,7 @@ main  = runDang $
      io (mapM_ (print . thing) (lexWithLayout (File file) Nothing txt))
 
      (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
-     io (mapM_ print (formatMessages (File file) txt ms))
+     io (mapM_ (formatMessage (File file) txt) ms)
      pMod <- case mbMod of
                Just pMod -> return pMod
                Nothing   -> io exitFailure

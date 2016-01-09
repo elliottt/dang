@@ -17,6 +17,7 @@ library
                        Dang.ModuleSystem.Name
                        Dang.Monad
                        Dang.Syntax.AST
+                       Dang.Syntax.Format
                        Dang.Syntax.Layout
                        Dang.Syntax.Lexer
                        Dang.Syntax.Location

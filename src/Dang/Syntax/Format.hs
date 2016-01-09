@@ -3,46 +3,52 @@
 
 module Dang.Syntax.Format where
 
-import Dang.Syntax.Lexer (Token(..),Keyword(..))
-import Dang.Syntax.Location
-           (Source(..),Located(..),Position(..),zeroPos,Range(..))
-import Dang.Syntax.Parser (lexWithLayout)
+import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
+import Dang.Syntax.Location (Source(..),Located(..),Position(..),Range(..))
 
-import           Control.Monad (replicateM_)
+import           Control.Monad (forM_)
 import qualified Data.Text.Lazy    as L
 import qualified Data.Text.Lazy.IO as L
 import qualified System.Console.ANSI as Term
 
 
--- | Print out a formatted chunk of source code to the console.
-formatChunk :: Source -> Position -> L.Text -> IO ()
+-- | Print out a formatted chunk of source code to the console. The returned
+-- value is the size of the line number gutter.
+formatChunk :: Source -> Position -> L.Text -> IO Int
 formatChunk src start chunk =
-  do spaces (posCol start - 1)
+  do putStr (gutter (posRow start))
+     spaces (posCol start - 1)
      go start toks
 
   where
 
-  toks = lexWithLayout src (Just start) chunk
+  toks = lexer src (Just start) chunk
 
-  spaces   n = putStr (replicate (fromIntegral n) ' ')
-  newlines n = replicateM_ (fromIntegral n) (putStrLn "")
+  pad = length (show (posRow (rangeEnd (locRange (last toks)))))
 
-  go pos (Located { locRange = Range { .. }, .. } : toks) =
-      do if posRow rangeStart == posRow pos
-            then spaces (posCol rangeStart - posCol pos)
-            else do newlines (posRow rangeStart - posRow pos)
-                    spaces (posCol rangeStart - 1)
-         formatToken locValue
-         go rangeEnd toks
+  gutter row =
+    let str = show row
+     in showString (replicate (pad - length str) ' ')
+      $ showString str
+      $ showChar '|' ""
 
-  go _ [] = putStrLn ""
+  spaces n = putStr (replicate (fromIntegral n) ' ')
 
+  newlines s e = forM_ [s .. e - 1] $ \ row ->
+    do putStrLn ""
+       putStr (gutter (row + 1))
 
-test = formatChunk Interactive zeroPos
-  "module Foo : sig\n\
-  \               foo : Int\n\
-  \           = struct\n\
-  \               foo = 10"
+  go pos (Located { locRange = Range { .. }, .. } : rest) =
+    do if posRow rangeStart == posRow pos
+          then spaces (posCol rangeStart - posCol pos)
+          else do newlines (posRow pos) (posRow rangeStart)
+                  spaces (posCol rangeStart - 1)
+       formatToken locValue
+       go rangeEnd rest
+
+  go _ [] =
+    do putStrLn ""
+       return $! pad + 1
 
 
 formatToken :: Token -> IO ()

@@ -17,7 +17,7 @@ module Dang.Monad (
   Message(..), MessageType(..), isError, isWarning,
   failErrors,
   collectMessages,
-  formatMessage, formatMessages,
+  formatMessage,
   addError,
   addWarning,
 
@@ -26,9 +26,10 @@ module Dang.Monad (
   mplus,
   ) where
 
+import Dang.Syntax.Format
 import Dang.Syntax.Location
            (Source(),Located(..),Range(..),HasLoc(..),rangeText,rangeUnderline
-           ,Position(..))
+           ,Position(..),zeroPos)
 import Dang.Unique
 import Dang.Utils.PP
 
@@ -184,27 +185,20 @@ ppHeading :: String -> Doc
 ppHeading msg =
   text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
 
-formatMessages :: Source -> L.Text -> [Message] -> [Doc]
-formatMessages src txt = map (formatMessage src txt)
-
-formatMessage :: Source -> L.Text -> Message -> Doc
+formatMessage :: Source -> L.Text -> Message -> IO ()
 formatMessage src txt (Message ty loc doc) =
-  ppHeading (show (pp ty <+> pp src <+> pp loc))
-  $$ text ""
-  $$ vcat source
-  $$ nest (padding + 1) (rangeUnderline loc)
-  $$ text ""
-  $$ doc
+  do print (ppHeading (show (pp ty <+> pp src <+> pp loc)))
+     putStrLn ""
+     gutterLen <- formatChunk src startPos (rangeText cxtLines loc txt)
+     putStr (replicate gutterLen ' ')
+     putStrLn (show (rangeUnderline loc))
+     putStrLn ""
+     print doc
   where
   cxtLines = 3
 
-  context = L.lines (rangeText cxtLines loc txt)
-  numbers = take (length context) [ posRow (rangeStart loc) - fromIntegral cxtLines .. ]
-  padding = length (show (last numbers))
-  source  = [ nest p (pp n) <> char '|' <> pp line
-            | line <- context
-            | n    <- numbers, let p = padding - length (show n) ]
-
+  startRow = posRow (rangeStart loc) - fromIntegral cxtLines
+  startPos = zeroPos { posRow = max 1 startRow }
 
 putMessages :: [Message] -> Dang ()
 putMessages ms = Dang $
