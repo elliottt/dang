@@ -62,7 +62,7 @@ formatToken (TQualIdent ns n) = do L.putStr ns
                                    L.putStr n
 formatToken (TKeyword kw)     = formatKeyword kw
 -- XXX handle other bases
-formatToken (TNum b i)        = putStr (show i)
+formatToken (TNum b i)        = foreground Term.Yellow (putStr (show i))
 
 formatToken TStart            = return ()
 formatToken TSep              = return ()
