@@ -12,7 +12,7 @@ import Dang.Syntax.AST (PName(..))
 import Dang.Syntax.Location
 import Dang.Utils.Ident
 
-import           Data.Char (ord,isAscii)
+import           Data.Char (ord,isAscii,isSpace)
 import           Data.Maybe (fromMaybe)
 import           Data.Word (Word8)
 import qualified Data.Text.Lazy as L
@@ -87,7 +87,7 @@ data Token = TUnqualCon !L.Text
            | TStart
            | TSep
            | TEnd
-           | TError               -- ^ Lexical error
+           | TError !L.Text -- ^ Lexical error
              deriving (Eq,Show)
 
 mkQual :: (L.Text -> L.Text -> Token) -> L.Text -> Token
@@ -152,9 +152,21 @@ lexer src mbPos txt =
 
   go inp st =
     case alexScan inp (modeToInt st) of
-      AlexEOF                -> []
-      AlexError inp'         -> [TError `at` mkRange inp inp']
-      AlexSkip inp' _        -> go inp' st
+
+      AlexEOF ->
+        []
+
+      -- chew up text until the next whitespace character, then continue
+      AlexError inp' ->
+        let (as,bs) = L.break isSpace (aiText inp')
+            pos'    = L.foldl (flip movePos) (aiPos inp') as
+            inp2    = AlexInput { aiPos = pos', aiText = bs }
+            loc     = Range { rangeStart = aiPos inp', rangeEnd = pos', .. }
+        in (TError as `at` loc) : go inp2 st
+
+      AlexSkip inp' _ ->
+        go inp' st
+
       AlexToken inp' len act ->
         case act rangeSource len inp st of
           (st',xs) -> xs ++ go inp' st'

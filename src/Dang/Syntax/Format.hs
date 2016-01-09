@@ -67,7 +67,7 @@ formatToken (TNum b i)        = putStr (show i)
 formatToken TStart            = return ()
 formatToken TSep              = return ()
 formatToken TEnd              = return ()
-formatToken TError            = return ()
+formatToken (TError s)        = L.putStr s
 
 
 foreground :: Term.Color -> IO () -> IO ()
