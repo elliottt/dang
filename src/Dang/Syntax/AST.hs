@@ -6,7 +6,6 @@ module Dang.Syntax.AST where
 
 
 import Dang.Syntax.Location
-import Dang.Utils.Ident
 import Dang.Utils.PP
 
 import           Control.Lens.Plated (Plated(..),gplate)
@@ -80,7 +79,7 @@ data Match name = MPat (Pat name) (Match name)
                 | MLoc (Located (Match name))
                   deriving (Eq,Show,Functor,Generic)
 
-data Pat name = PVar name
+data Pat name = PVar (Located name)
               | PWild
               | PCon (Located name) [Pat name]
               | PLoc (Located (Pat name))

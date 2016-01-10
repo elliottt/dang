@@ -61,6 +61,7 @@ formatToken (TQualIdent ns n) = do L.putStr ns
                                    putStr "."
                                    L.putStr n
 formatToken (TKeyword kw)     = formatKeyword kw
+formatToken (TLineComment l)  = comment (L.putStr l)
 -- XXX handle other bases
 formatToken (TNum b i)        = foreground Term.Yellow (putStr (show i))
 
@@ -69,6 +70,12 @@ formatToken TSep              = return ()
 formatToken TEnd              = return ()
 formatToken (TError s)        = L.putStr s
 
+
+comment :: IO () -> IO ()
+comment m =
+  do Term.setSGR [Term.SetColor Term.Foreground Term.Dull Term.Green]
+     m
+     Term.setSGR []
 
 foreground :: Term.Color -> IO () -> IO ()
 foreground c m =

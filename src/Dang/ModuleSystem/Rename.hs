@@ -6,6 +6,7 @@
 module Dang.ModuleSystem.Rename (
     rename,
     renameModule,
+    renameExpr,
 
     rnLoc,
     rnModStruct,
@@ -35,17 +36,23 @@ import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 
-renameModule :: Module PName -> Dang (Module Name)
+-- | Rename a top-level module.
+renameModule :: Module PName -> Dang (Either [Message] (Module Name))
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just (L.toStrict ns)) n (locRange modName)
              PUnqual n  -> mkModName Nothing                n (locRange modName)
 
      withNames (singleton (DefMod (thing modName)) n') $
-       do declEnv <- mergeNames declNames modDecls
+       do declEnv <- mergeNames overlapErrors declNames modDecls
           withNames declEnv $
             do ds <- traverse rnDecl modDecls
                return Module { modName = n' <$ modName, modDecls = ds }
+
+
+-- | Rename an expression.
+renameExpr :: Namespace -> Expr PName -> Dang (Either [Message] (Expr Name))
+renameExpr ns e = rename ns (rnExpr e)
 
 
 -- Monad -----------------------------------------------------------------------
@@ -60,8 +67,13 @@ instance SupplyM RN where
   withSupply f = inBase (withSupply f)
 
 
-rename :: Namespace -> RN a -> Dang a
-rename ns m = runM (unRN m) RO { roNS = ns, roNames = mempty }
+rename :: Namespace -> RN a -> Dang (Either [Message] a)
+rename ns m =
+  do (res,ms) <- collectMessages (runM (unRN m) RO { roNS = ns, roNames = mempty })
+     if any isError ms
+        then return (Left ms)
+        else do putMessages ms
+                return (Right res)
 
 
 data RO = RO { roNS    :: Namespace
@@ -85,7 +97,7 @@ getNamespace  = RN (roNS <$> ask)
 withNames :: NameMap -> RN a -> RN a
 withNames names m =
   do ro     <- RN ask
-     names' <- checkShadowing names (roNames ro)
+     names' <- overlapShadows names (roNames ro)
      RN (local ro { roNames = names' } (unRN m))
 
 
@@ -105,9 +117,11 @@ singleton :: Def -> Name -> NameMap
 singleton d n = NameMap (Map.singleton d [n])
 
 
--- | Merge name mappings, but add errors when overlap occurs.
-checkMerge :: NameMap -> NameMap -> RN NameMap
-checkMerge l@(NameMap xs) r@(NameMap ys) =
+-- | Merge name mappings, but add errors when overlap occurs. For the purposes
+-- of error reporting, the names in both maps are considered to be defined at
+-- the same level.
+overlapErrors :: NameMap -> NameMap -> RN NameMap
+overlapErrors l@(NameMap xs) r@(NameMap ys) =
   do Map.traverseWithKey conflict (Map.intersectionWith nubMerge xs ys)
      return (l `mappend` r)
 
@@ -115,8 +129,11 @@ checkMerge l@(NameMap xs) r@(NameMap ys) =
   nubMerge as bs = nub (as ++ bs)
 
 
-checkShadowing :: NameMap -> NameMap -> RN NameMap
-checkShadowing l@(NameMap xs) r@(NameMap ys) =
+-- | Merge names, but issue shadowing warnings when overlap occurs. For the
+-- purposes of warning reporting, the names on the right are assumed to be the
+-- original declarations, with the names on the left being the ones that shadow.
+overlapShadows :: NameMap -> NameMap -> RN NameMap
+overlapShadows l@(NameMap xs) r@(NameMap ys) =
   do Map.traverseWithKey shadows (Map.intersectionWith (,) xs ys)
      return (l `mappend` r)
 
@@ -161,13 +178,15 @@ lookupDef d (NameMap names) =
 
 type GetNames f = f PName -> RN NameMap
 
-mergeNames :: Foldable f => (a -> RN NameMap) -> f a -> RN NameMap
-mergeNames f = F.foldlM step mempty
+-- | Merge names, with a monadic implementation of 'mappend'.
+mergeNames :: Traversable f
+           => (NameMap -> NameMap -> RN NameMap)
+           -> (a -> RN NameMap) -> f a -> RN NameMap
+mergeNames merge f as = F.foldlM step mempty as
   where
   step acc a =
-    do nm <- f a
-       -- XXX this should collect conflicts
-       return (nm `mappend` acc)
+    do names <- f a
+       merge names acc
 
 
 -- | Introduce a name from a binding site.
@@ -177,13 +196,17 @@ newName Located { locValue = PUnqual t, .. } =
      withSupply (mkBinding ns t locRange)
 newName _ = panic "renamer" (text "Qualified name given to `newName`")
 
-
 -- | Introduce names for the given binding.
 bindName :: GetNames Bind
 bindName Bind { .. } =
   do name <- newName bName
      return (singleton (DefDecl (thing bName)) name)
 
+-- | Introduce names for 
+letDeclNames :: GetNames LetDecl
+letDeclNames (LDBind b) = bindName b
+letDeclNames (LDLoc l)  = addLoc l letDeclNames
+letDeclNames LDSig{}    = return mempty
 
 -- | Introduce names for all bindings within a declaration. NOTE: this will
 -- traverse into module definitions, introducing names for visible bindings.
@@ -194,6 +217,7 @@ declNames (DData d)     = dataNames d
 declNames (DLoc dl)     = addLoc dl declNames
 declNames DSig{}        = return mempty
 
+-- | Names introduced by a module binding.
 modBindNames :: GetNames ModBind
 modBindNames ModBind { .. } =
   addLoc mbName (\ns -> pushNamespace ns (modExprNames mbExpr))
@@ -207,19 +231,32 @@ dataNames Data { .. } =
             $ singleton (DefType (thing dName)) tyName
             : conNames
 
+-- | Names introduced by a constructor.
 constrName :: GetNames Constr
 constrName Constr { .. } =
   do conName <- newName cName
      return (singleton (DefDecl (thing cName)) conName)
 
+-- | Names defined by a module expression.
 modExprNames :: GetNames ModExpr
 modExprNames (MEStruct ms)       = modStructNames ms
 modExprNames (MEConstraint me _) = modExprNames me
 modExprNames (MELoc ml)          = addLoc ml modExprNames
 modExprNames _                   = return mempty
 
+-- | Names defined by a module structure.
 modStructNames :: GetNames ModStruct
-modStructNames ModStruct { .. } = mergeNames declNames msElems
+modStructNames ModStruct { .. } =
+  mergeNames overlapErrors declNames msElems
+
+-- | Names defined by a pattern.
+patNames :: GetNames Pat
+patNames (PCon _ ps) = mergeNames overlapErrors patNames ps
+patNames (PLoc lp)   = addLoc lp patNames
+patNames PWild       = return mempty
+patNames (PVar ln)   =
+  do n <- newName ln
+     return (singleton (DefDecl (thing ln)) n)
 
 
 -- Renaming --------------------------------------------------------------------
@@ -264,9 +301,6 @@ rnModBind ModBind { .. } = error "rnModBind"
 
 -- Expressions -----------------------------------------------------------------
 
-rnMatch :: Rename Match
-rnMatch  = error "rnMatch"
-
 -- | Rename a binding. This assumes that new names have already been introduced
 -- externally.
 rnBind :: Rename Bind
@@ -275,6 +309,37 @@ rnBind Bind { .. } =
      mb' <- traverse rnSchema bSchema
      b'  <- rnMatch bBody
      return Bind { bName = n', bSchema = mb', bBody = b' }
+
+rnMatch :: Rename Match
+rnMatch (MSplit l r) = MSplit <$> rnMatch l <*> rnMatch r
+rnMatch MFail        = return MFail
+rnMatch (MExpr e)    = MExpr <$> rnExpr e
+rnMatch (MLoc lm)    = MLoc  <$> rnLoc rnMatch lm
+rnMatch (MPat p m)   =
+  do names <- patNames p
+     withNames names (MPat <$> rnPat p <*> rnMatch m)
+
+rnPat :: Rename Pat
+rnPat  = undefined
+
+-- | Rename an expression.
+rnExpr :: Rename Expr
+rnExpr (EVar pn)   = EVar <$> rnPName (DefDecl pn)
+rnExpr (ECon pn)   = ECon <$> rnPName (DefDecl pn)
+rnExpr (EApp f xs) = EApp <$> rnExpr f <*> traverse rnExpr xs
+rnExpr (EAbs m)    = EAbs <$> rnMatch m
+rnExpr (ELoc e)    = ELoc <$> rnLoc rnExpr e
+rnExpr (ELit l)    = pure (ELit l)
+rnExpr (ELet ds e) =
+  do names <- mergeNames overlapErrors letDeclNames ds
+     withNames names (ELet <$> traverse rnLetDecl ds <*> rnExpr e)
+
+
+
+rnLetDecl :: Rename LetDecl
+rnLetDecl (LDBind b) = LDBind <$> rnBind b
+rnLetDecl (LDLoc ld) = LDLoc  <$> rnLoc rnLetDecl ld
+rnLetDecl LDSig{}    = panic "renamer" (text "signature found in let binding")
 
 
 -- Types -----------------------------------------------------------------------

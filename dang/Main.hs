@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Main where
 
 import Dang.Monad
@@ -21,11 +23,21 @@ main  = runDang $
      txt        <- io (L.readFile file)
      io (mapM_ (print . thing) (lexWithLayout (File file) Nothing txt))
 
+     let dumpMessages ms = io (mapM_ (formatMessage (File file) txt) ms)
+
      (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
-     io (mapM_ (formatMessage (File file) txt) ms)
+     dumpMessages ms
+
      pMod <- case mbMod of
                Just pMod -> return pMod
                Nothing   -> io exitFailure
 
      rnMod <- renameModule pMod
+     case rnMod of
+       Right m   -> io (print m)
+       Left errs -> do dumpMessages errs
+                       io exitFailure
+
      io (print rnMod)
+
+

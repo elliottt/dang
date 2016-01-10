@@ -5,7 +5,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Dang.Syntax.Lexer (
-    Token(..), Keyword(..), lexer
+    Token(..), Keyword(..), lexer, ignoreComments
   ) where
 
 import Dang.Syntax.AST (PName(..))
@@ -36,7 +36,7 @@ $middle      = [A-Za-z0-9_']
 $white+ ;
 
 -- only single-line comments for now
-"--" .* ;
+"--" .*  { emits TLineComment }
 
 -- keywords
 "functor"{ keyword Kfunctor}
@@ -84,11 +84,16 @@ data Token = TUnqualCon !L.Text
            | TQualIdent !L.Text !L.Text
            | TKeyword !Keyword
            | TNum Integer Int
+           | TLineComment !L.Text
            | TStart
            | TSep
            | TEnd
            | TError !L.Text -- ^ Lexical error
              deriving (Eq,Show)
+
+isComment :: Token -> Bool
+isComment TLineComment{} = True
+isComment _              = False
 
 mkQual :: (L.Text -> L.Text -> Token) -> L.Text -> Token
 mkQual mk txt =
@@ -139,6 +144,9 @@ emits mk src len inp st = (st,[withInput mk src len inp])
 
 
 -- Lexer -----------------------------------------------------------------------
+
+ignoreComments :: [Located Token] -> [Located Token]
+ignoreComments  = filter (not . isComment . thing)
 
 lexer :: Source
       -> Maybe Position

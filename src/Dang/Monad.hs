@@ -20,6 +20,7 @@ module Dang.Monad (
   formatMessage,
   addError,
   addWarning,
+  putMessages,
 
   -- ** Re-exported
   mzero,
@@ -146,7 +147,7 @@ failErrors m =
   do (a,ms) <- collectMessages m
      let (es,ws) = partition isError ms
      guard (null es)
-     inBase (putMessages ws)
+     putMessages ws
      return a
 
 
@@ -200,8 +201,8 @@ formatMessage src txt (Message ty loc doc) =
   startRow = posRow (rangeStart loc) - fromIntegral cxtLines
   startPos = zeroPos { posRow = max 1 startRow }
 
-putMessages :: [Message] -> Dang ()
-putMessages ms = Dang $
+putMessages :: DangM dang => [Message] -> dang ()
+putMessages ms = inBase $ Dang $
   do RO { .. } <- ask
      inBase (modifyIORef' roMsgs (ms ++))
 

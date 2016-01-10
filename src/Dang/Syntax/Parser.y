@@ -185,8 +185,8 @@ bind :: { Located (Bind PName) }
            , bBody   = addParams $2 $4 } `at` ($1,$4) }
 
 pat :: { Pat PName }
-  : '_'                    { PLoc (PWild `at` $1)           }
-  | ident                  { PLoc (PVar  `fmap` $1)         }
+  : '_'                    { PLoc (PWild   `at` $1)         }
+  | ident                  { PLoc (PVar $1 `at` $1)         }
   | con                    { PLoc (PCon $1 [] `at` $1)      }
   | '(' con list1(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
 
@@ -284,7 +284,8 @@ list_body(p)
 {
 
 lexWithLayout :: Source -> Maybe Position -> L.Text -> [Located Token]
-lexWithLayout src mbStart txt = layout Layout { .. } (lexer src mbStart txt)
+lexWithLayout src mbStart txt =
+  layout Layout { .. } (ignoreComments (lexer src mbStart txt))
   where
 
   beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet]
@@ -307,8 +308,8 @@ parseError :: [Located Token] -> Dang a
 parseError toks =
   do case toks of
        loc : _ -> addLoc loc $ \case
-         TError -> addError (text "Lexical error")
-         _      -> addError (text "Parse error")
+         TError _ -> addError (text "Lexical error")
+         _        -> addError (text "Parse error")
 
        [] -> addError (text "Unexpected end-of-file")
 
