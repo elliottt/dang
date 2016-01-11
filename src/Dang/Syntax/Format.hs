@@ -53,11 +53,11 @@ formatChunk src start chunk =
 
 formatToken :: Token -> IO ()
 formatToken (TUnqualCon c)    =    L.putStr c
-formatToken (TQualCon ns n)   = do L.putStr ns
+formatToken (TQualCon ns n)   = do L.putStr (L.intercalate "." ns)
                                    putStr "."
                                    L.putStr n
 formatToken (TUnqualIdent n)  =    L.putStr n
-formatToken (TQualIdent ns n) = do L.putStr ns
+formatToken (TQualIdent ns n) = do L.putStr (L.intercalate "." ns)
                                    putStr "."
                                    L.putStr n
 formatToken (TKeyword kw)     = formatKeyword kw

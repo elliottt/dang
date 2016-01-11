@@ -22,11 +22,12 @@ import Dang.Syntax.AST
 import Dang.Syntax.Location
 import Dang.ModuleSystem.Name (Name,mkModName,mkUnknown,mkBinding)
 import Dang.Unique (SupplyM,withSupply)
-import Dang.Utils.Ident (Namespace)
+import Dang.Utils.Ident (Namespace,packNamespaceLazy)
 import Dang.Utils.PP
 import Dang.Utils.Panic (panic)
 
 import           Control.Applicative (Alternative(..))
+import           Control.Lens (Lens',over,view)
 import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
 import           Data.List (nub)
@@ -40,14 +41,15 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 renameModule :: Module PName -> Dang (Either [Message] (Module Name))
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
-             PQual ns n -> mkModName (Just (L.toStrict ns)) n (locRange modName)
-             PUnqual n  -> mkModName Nothing                n (locRange modName)
+             PQual ns n -> mkModName (Just ns) n (locRange modName)
+             PUnqual n  -> mkModName Nothing   n (locRange modName)
 
      withNames (singleton (DefMod (thing modName)) n') $
        do declEnv <- mergeNames overlapErrors declNames modDecls
+          io (print declEnv)
           withNames declEnv $
             do ds <- traverse rnDecl modDecls
-               return Module { modName = n' <$ modName, modDecls = ds }
+               return Module { modName = n' `at` modName, modDecls = ds }
 
 
 -- | Rename an expression.
@@ -82,7 +84,7 @@ data RO = RO { roNS    :: Namespace
 
 mkNamespace :: PName -> Namespace
 mkNamespace (PUnqual n)  = L.toStrict n
-mkNamespace (PQual ns n) = L.toStrict (ns `L.append` "." `L.append` n)
+mkNamespace (PQual ns n) = packNamespaceLazy (ns ++ [n])
 
 -- | Extend the current namespace with the given one.
 pushNamespace :: PName -> RN a -> RN a
@@ -102,6 +104,21 @@ withNames names m =
 
 
 -- Name Maps -------------------------------------------------------------------
+
+newtype NameTrie = NameTrie (Map.Map Def NameNode)
+                   deriving (Show)
+
+instance Monoid NameTrie where
+  mempty                            = NameTrie Map.empty
+  mappend (NameTrie a) (NameTrie b) = NameTrie (Map.unionWith merge a b)
+    where
+    merge (NameNode xs x) (NameNode ys y)
+      | xs == ys  = NameNode xs               (mappend x y)
+      | otherwise = NameNode (nub (xs ++ ys)) (mappend x y)
+
+data NameNode = NameNode [Name] NameTrie
+                deriving (Show)
+
 
 newtype NameMap = NameMap (Map.Map Def [Name])
                   deriving (Show)
@@ -148,15 +165,16 @@ instance PP Def where
   ppr (DefDecl n) = ppr n
   ppr (DefType n) = ppr n
 
-defName :: Def -> PName
-defName (DefMod  n) = n
-defName (DefDecl n) = n
-defName (DefType n) = n
-
 defType :: Def -> Doc
 defType DefMod{}  = text "module"
 defType DefDecl{} = text "value"
 defType DefType{} = text "type"
+
+defPName :: Lens' Def PName
+defPName f (DefMod  pn) = DefMod  `fmap` (f pn)
+defPName f (DefDecl pn) = DefDecl `fmap` (f pn)
+defPName f (DefType pn) = DefType `fmap` (f pn)
+
 
 data NameResult = Resolved Name
                 | Conflict Def [Name]
@@ -220,7 +238,7 @@ declNames DSig{}        = return mempty
 -- | Names introduced by a module binding.
 modBindNames :: GetNames ModBind
 modBindNames ModBind { .. } =
-  addLoc mbName (\ns -> pushNamespace ns (modExprNames mbExpr))
+  addLoc mbName $ \ ns -> pushNamespace ns $ modExprNames mbExpr
 
 -- | The names introduced by a data declaration.
 dataNames :: GetNames Data
@@ -228,8 +246,7 @@ dataNames Data { .. } =
   do tyName   <- newName dName
      conNames <- traverse (`addLoc` constrName) dConstrs
      return $ mconcat
-            $ singleton (DefType (thing dName)) tyName
-            : conNames
+            $ singleton (DefType (thing dName)) tyName : conNames
 
 -- | Names introduced by a constructor.
 constrName :: GetNames Constr
@@ -282,9 +299,7 @@ rnPName d =
 
 -- | Qualify all of the declarations in the struct.
 rnModStruct :: Rename ModStruct
-rnModStruct (ModStruct ds) =
-  do ns <- getNamespace
-     error "rnModStruct"
+rnModStruct (ModStruct ds) = ModStruct <$> traverse rnDecl ds
 
 -- | Rename a declaration.
 rnDecl :: Rename Decl
@@ -296,7 +311,18 @@ rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
 
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
-rnModBind ModBind { .. } = error "rnModBind"
+rnModBind ModBind { .. } = pushNamespace (thing mbName) $
+  do n' <- rnPName (DefMod (thing mbName))
+     e' <- rnModExpr mbExpr
+     return ModBind { mbName = n' `at` mbName, mbExpr = e' }
+
+rnModExpr :: Rename ModExpr
+rnModExpr (MEName n)           = MEName   <$> rnPName (DefMod n)
+rnModExpr (MEApp f x)          = MEApp    <$> rnModExpr f <*> rnModExpr x
+rnModExpr (MEStruct s)         = MEStruct <$> rnModStruct s
+rnModExpr (MEFunctor a sig e)  = undefined
+rnModExpr (MEConstraint n sig) = undefined
+rnModExpr (MELoc lm)           = MELoc <$> rnLoc rnModExpr lm
 
 
 -- Expressions -----------------------------------------------------------------
@@ -376,4 +402,4 @@ unknown :: Def -> RN Name
 unknown d =
   do addError (text "not in scope:" <+> pp d)
      loc <- askLoc
-     inBase (withSupply (mkUnknown (defName d) loc))
+     inBase (withSupply (mkUnknown (view defPName d) loc))

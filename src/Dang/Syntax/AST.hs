@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Dang.Syntax.AST where
 
@@ -15,7 +16,7 @@ import           GHC.Generics (Generic)
 
 -- | Parsed names, either qualified or unqualified.
 data PName = PUnqual !L.Text
-           | PQual   !L.Text !L.Text
+           | PQual   ![L.Text] !L.Text
              deriving (Eq,Show,Ord,Generic)
 
 -- | A parsed top-level module.

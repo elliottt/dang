@@ -79,9 +79,9 @@ $number+ { emits (TNum 10 . read . L.unpack) }
 -- Tokens ----------------------------------------------------------------------
 
 data Token = TUnqualCon !L.Text
-           | TQualCon !L.Text !L.Text
+           | TQualCon ![L.Text] !L.Text
            | TUnqualIdent !L.Text
-           | TQualIdent !L.Text !L.Text
+           | TQualIdent ![L.Text] !L.Text
            | TKeyword !Keyword
            | TNum Integer Int
            | TLineComment !L.Text
@@ -95,10 +95,12 @@ isComment :: Token -> Bool
 isComment TLineComment{} = True
 isComment _              = False
 
-mkQual :: (L.Text -> L.Text -> Token) -> L.Text -> Token
+mkQual :: ([L.Text] -> L.Text -> Token) -> L.Text -> Token
 mkQual mk txt =
-  case L.breakOnEnd "." txt of
-    (ns,n) -> mk (L.dropEnd 1 ns) n
+  case L.splitOn "." txt of
+    [n] -> mk [] n
+    []  -> error "impossible"
+    ns  -> mk (init ns) (last ns)
 
 data Keyword = Kmodule
              | Kfunctor
