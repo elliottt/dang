@@ -3,6 +3,7 @@
 module Main where
 
 import Dang.Monad
+import Dang.Syntax.Format (printMessage)
 import Dang.Syntax.Location
 import Dang.Syntax.Parser
 import Dang.ModuleSystem.Rename
@@ -23,7 +24,7 @@ main  = runDang $
      txt        <- io (L.readFile file)
      io (mapM_ (print . thing) (lexWithLayout (File file) Nothing txt))
 
-     let dumpMessages ms = io (mapM_ (formatMessage (File file) txt) ms)
+     let dumpMessages ms = io (mapM_ (printMessage (File file) txt) ms)
 
      (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
      dumpMessages ms

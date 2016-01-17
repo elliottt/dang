@@ -14,10 +14,9 @@ module Dang.Monad (
   try,
 
   -- ** Messages
-  Message(..), MessageType(..), isError, isWarning,
+  module Dang.Message,
   failErrors,
   collectMessages,
-  formatMessage,
   addError,
   addWarning,
   putMessages,
@@ -27,7 +26,7 @@ module Dang.Monad (
   mplus,
   ) where
 
-import Dang.Syntax.Format
+import Dang.Message
 import Dang.Syntax.Location
            (Source(),Located(..),Range(..),HasLoc(..),rangeText,rangeUnderline
            ,Position(..),zeroPos)
@@ -150,7 +149,6 @@ failErrors m =
      putMessages ws
      return a
 
-
 collectMessages :: DangM dang => dang a -> dang (a,[Message])
 collectMessages m =
   do RO { .. } <- inBase (Dang ask)
@@ -159,60 +157,18 @@ collectMessages m =
      msgs      <- io (atomicModifyIORef' roMsgs (\ msgs -> (orig, msgs)))
      return (a,msgs)
 
-
-data Message = Message MessageType Range Doc
-               deriving (Show)
-
-instance PP Message where
-  ppr (Message ty loc doc) = (pp ty <+> pp loc) $$ nest 2 doc
-
-isError :: Message -> Bool
-isError (Message Error _ _) = True
-isError _                   = False
-
-isWarning :: Message -> Bool
-isWarning (Message Warning _ _) = True
-isWarning _                     = False
-
-data MessageType = Error
-                 | Warning
-                   deriving (Show)
-
-instance PP MessageType where
-  ppr Error   = text "[error]"
-  ppr Warning = text "[warning]"
-
-ppHeading :: String -> Doc
-ppHeading msg =
-  text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
-
-formatMessage :: Source -> L.Text -> Message -> IO ()
-formatMessage src txt (Message ty loc doc) =
-  do print (ppHeading (show (pp ty <+> pp src <+> pp loc)))
-     putStrLn ""
-     gutterLen <- formatChunk src startPos (rangeText cxtLines loc txt)
-     putStr (replicate gutterLen ' ')
-     putStrLn (show (rangeUnderline loc))
-     putStrLn ""
-     print doc
-  where
-  cxtLines = 3
-
-  startRow = posRow (rangeStart loc) - fromIntegral cxtLines
-  startPos = zeroPos { posRow = max 1 startRow }
-
 putMessages :: DangM dang => [Message] -> dang ()
 putMessages ms = inBase $ Dang $
   do RO { .. } <- ask
      inBase (modifyIORef' roMsgs (ms ++))
 
 addMessage :: (PP msg, DangM dang) => MessageType -> msg -> dang ()
-addMessage ty msg = inBase $
-  do loc <- askLoc
-     putMessages [Message ty loc (pp msg)]
+addMessage msgType msg = inBase $
+  do msgSource <- askLoc
+     putMessages [Message { msgDoc = pp msg, .. }]
 
-addError :: (PP msg, DangM dang) => msg -> dang ()
-addError  = addMessage Error
+addError :: (PP msg, DangM dang) => Error -> msg -> dang ()
+addError e = addMessage (Error e)
 
-addWarning :: (PP msg, DangM dang) => msg -> dang ()
-addWarning  = addMessage Warning
+addWarning :: (PP msg, DangM dang) => Warning -> msg -> dang ()
+addWarning w = addMessage (Warning w)

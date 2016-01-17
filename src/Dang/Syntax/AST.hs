@@ -10,6 +10,7 @@ import Dang.Syntax.Location
 import Dang.Utils.PP
 
 import           Control.Lens.Plated (Plated(..),gplate)
+import           Data.List (intersperse)
 import qualified Data.Text.Lazy as L
 import           GHC.Generics (Generic)
 
@@ -195,4 +196,4 @@ instance Plated (Type    name) where plate = gplate
 
 instance PP PName where
   ppr (PUnqual n)  = pp n
-  ppr (PQual ns n) = pp ns <> char '.' <> pp n
+  ppr (PQual ns n) = vcat (intersperse (char '.') (map pp ns)) <> char '.' <> pp n

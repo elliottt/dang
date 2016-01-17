@@ -3,13 +3,42 @@
 
 module Dang.Syntax.Format where
 
+import Dang.Message (Message(..),MessageType(..),describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
-import Dang.Syntax.Location (Source(..),Located(..),Position(..),Range(..))
+import Dang.Syntax.Location
+           (Source(..),Located(..),Position(..),Range(..),zeroPos,rangeText
+           ,rangeUnderline)
+import Dang.Utils.PP
 
 import           Control.Monad (forM_)
 import qualified Data.Text.Lazy    as L
 import qualified Data.Text.Lazy.IO as L
 import qualified System.Console.ANSI as Term
+
+
+printMessage :: Source -> L.Text -> Message -> IO ()
+printMessage src txt (Message ty loc doc) =
+  do print (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
+     putStrLn ""
+     print (describeMessageType ty)
+     putStrLn ""
+     gutterLen <- formatChunk src startPos (rangeText cxtLines loc txt)
+     putStr (replicate gutterLen ' ')
+     putStrLn (show (rangeUnderline loc))
+     putStrLn ""
+     print doc
+  where
+  cxtLines = 3
+
+  tyDoc = case ty of
+    Error{}   -> text "[error]"
+    Warning{} -> text "[warning]"
+
+  startRow = posRow (rangeStart loc) - fromIntegral cxtLines
+  startPos = zeroPos { posRow = max 1 startRow }
+
+  ppHeading msg =
+    text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
 
 
 -- | Print out a formatted chunk of source code to the console. The returned

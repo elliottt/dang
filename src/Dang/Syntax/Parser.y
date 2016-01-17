@@ -308,10 +308,10 @@ parseError :: [Located Token] -> Dang a
 parseError toks =
   do case toks of
        loc : _ -> addLoc loc $ \case
-         TError _ -> addError (text "Lexical error")
-         _        -> addError (text "Parse error")
+         TError _ -> addError ErrLexer  (text "Lexical error")
+         _        -> addError ErrParser (text "Parse error")
 
-       [] -> addError (text "Unexpected end-of-file")
+       [] -> addError ErrParser (text "Unexpected end-of-file")
 
      mzero
 

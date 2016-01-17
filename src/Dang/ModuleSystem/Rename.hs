@@ -312,9 +312,9 @@ rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
 rnModBind ModBind { .. } = pushNamespace (thing mbName) $
-  do n' <- rnPName (DefMod (thing mbName))
+  do n' <- rnLoc (rnPName . DefMod) mbName
      e' <- rnModExpr mbExpr
-     return ModBind { mbName = n' `at` mbName, mbExpr = e' }
+     return ModBind { mbName = n', mbExpr = e' }
 
 rnModExpr :: Rename ModExpr
 rnModExpr (MEName n)           = MEName   <$> rnPName (DefMod n)
@@ -378,7 +378,7 @@ rnSchema  = error "rnSchema"
 
 conflict :: Def -> [Name] -> RN Name
 conflict d ns =
-  do addError (vcat (msg : map ppr ns))
+  do addError ErrRnOverlap (vcat (msg : map ppr ns))
      return (head ns)
   where
   msg = text "the"
@@ -389,7 +389,7 @@ conflict d ns =
 shadows :: Def -> ([Name],[Name]) -> RN ()
 shadows d (new,old)
   | null new || null old = panic "renamer" (text "Invalid use of `shadows`")
-  | otherwise            = addWarning msg
+  | otherwise            = addWarning WarnRnShadowing msg
   where
   msg = text "the definition of"
     <+> pp (head new)
@@ -400,6 +400,6 @@ shadows d (new,old)
 -- identifier.
 unknown :: Def -> RN Name
 unknown d =
-  do addError (text "not in scope:" <+> pp d)
+  do addError ErrRnUnknown (text "not in scope:" <+> pp d)
      loc <- askLoc
      inBase (withSupply (mkUnknown (view defPName d) loc))
