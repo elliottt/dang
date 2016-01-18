@@ -31,10 +31,11 @@ library
                        array,
                        ansi-terminal,
                        monadLib,
-                       pretty,
+                       pretty >= 1.1.3.2,
                        containers,
                        lens,
-                       text
+                       text,
+                       terminal-size
   ghc-options:         -Wall
 
 executable dang

@@ -15,6 +15,11 @@ module Dang.Utils.PP (
 
     -- * Pretty-printer
     Doc(),
+    printDoc, hPrintDoc,
+
+    -- ** Annotations
+    Ann(..),
+    annotate,
 
     -- ** Names
     getNameFormat,
@@ -28,7 +33,8 @@ module Dang.Utils.PP (
     optParens, parens, brackets,
     comma, commas,
     text, char, int, integer,
-    hang, nest
+    hang, nest,
+    emptyDoc,
   ) where
 
 import Dang.Utils.Ident
@@ -40,9 +46,13 @@ import           Data.String (IsString(..))
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
-import qualified Text.PrettyPrint.HughesPJ as PJ
+import qualified System.Console.ANSI as Ansi
+import qualified System.Console.Terminal.Size as Term
+import           System.IO (Handle,hPutStrLn,hPutStr,hPutChar,stdout)
+import qualified Text.PrettyPrint.Annotated.HughesPJ as PJ
 
 
+-- PP Config -------------------------------------------------------------------
 
 data Config = Config { cfgNameDisp :: NameDisp
                      }
@@ -51,6 +61,8 @@ defaultConfig :: Config
 defaultConfig  = Config { cfgNameDisp = mempty
                         }
 
+
+-- Name Display ----------------------------------------------------------------
 
 -- | How to display names, inspired by the GHC `Outputable` module.
 data NameDisp = EmptyNameDisp
@@ -87,7 +99,7 @@ formatName EmptyNameDisp = \ _ _ -> Nothing
 formatName (NameDisp f)  = f
 
 
-
+-- PP Environment --------------------------------------------------------------
 
 data Env = Env { envConfig :: !Config
                , envPrec   :: !Int
@@ -101,18 +113,21 @@ getNameFormat ns i = DocM $
   do Env { .. } <- ask
      return $! formatName (cfgNameDisp envConfig) ns i
 
+
+-- Monad -----------------------------------------------------------------------
+
 newtype DocM a = DocM { unDocM :: ReaderT Env Id a
                       } deriving (Functor,Applicative,Monad)
 
-type Doc = DocM PJ.Doc
+type Doc = DocM (PJ.Doc Ann)
 
-instance IsString (DocM PJ.Doc) where
+instance IsString (DocM (PJ.Doc Ann)) where
   fromString = text
 
-instance Show (DocM PJ.Doc) where
+instance Show (DocM (PJ.Doc Ann)) where
   show doc = show (runDoc defaultConfig doc)
 
-runDoc :: Config -> Doc -> PJ.Doc
+runDoc :: Config -> Doc -> PJ.Doc Ann
 runDoc cfg d = runId (runReaderT (defaultEnv cfg) (unDocM d))
 
 getEnv :: DocM Env
@@ -128,6 +143,58 @@ withPrec :: Int -> DocM a -> DocM a
 withPrec p m =
   do env <- getEnv
      withEnv env { envPrec = p } m
+
+
+-- Annotations -----------------------------------------------------------------
+
+data Ann = AnnKeyword
+         | AnnPunc
+         | AnnLiteral
+         | AnnComment
+           deriving (Show)
+
+sgrFor :: Ann -> [Ansi.SGR]
+sgrFor AnnKeyword = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Green]
+sgrFor AnnPunc    = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Yellow]
+sgrFor AnnLiteral = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Magenta]
+sgrFor AnnComment = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Green]
+
+printDoc :: Config -> Doc -> IO ()
+printDoc  = hPrintDoc stdout
+
+-- | Print the document out, formatted for the console.
+hPrintDoc :: Handle -> Config -> Doc -> IO ()
+hPrintDoc h cfg doc =
+  do mb  <- Term.hSize h
+     len <- case mb of
+              Just Term.Window { .. } -> return width
+              Nothing                 -> return 80
+
+     fst $ PJ.fullRenderAnn PJ.PageMode len 1.5 format (hPutStrLn h "",[])
+         $ runDoc cfg doc
+
+  where
+
+  format PJ.AnnotStart (rest,stack) = (rest',drop 1 stack)
+    where
+    rest' = do Ansi.hSetSGR h []
+               Ansi.hSetSGR h (concat stack)
+               rest
+
+  format (PJ.AnnotEnd ann) (rest,stack) = (rest', sgrFor ann : stack)
+    where
+    rest' = do Ansi.hSetSGR h []
+               rest
+
+  format (PJ.NoAnnot td _) (rest,stack) = (fmt >> rest, stack)
+    where
+    fmt = case td of
+            PJ.Chr  c -> hPutChar h c
+            PJ.Str  s -> hPutStr  h s
+            PJ.PStr s -> hPutStr  h s
+
+annotate :: Ann -> Doc -> Doc
+annotate ann m = PJ.annotate ann <$> m
 
 
 -- Class -----------------------------------------------------------------------
@@ -146,7 +213,7 @@ class PP a where
 instance PP a => PP [a] where
   ppr = pprList
 
-instance PP (DocM PJ.Doc) where
+instance PP (DocM (PJ.Doc Ann)) where
   ppr = id
   {-# INLINE ppr #-}
 
@@ -175,7 +242,7 @@ instance PP Ident where
 
 -- Combinators -----------------------------------------------------------------
 
-liftDoc2 :: (PJ.Doc -> PJ.Doc -> PJ.Doc) -> (Doc -> Doc -> Doc)
+liftDoc2 :: (PJ.Doc Ann -> PJ.Doc Ann -> PJ.Doc Ann) -> (Doc -> Doc -> Doc)
 liftDoc2 f a b = f <$> a <*> b
 
 (<>) :: Doc -> Doc -> Doc
@@ -244,3 +311,6 @@ hang a i b = PJ.hang <$> a <*> pure i <*> b
 
 nest :: Int -> Doc -> Doc
 nest i d = PJ.nest i <$> d
+
+emptyDoc :: Doc
+emptyDoc  = return PJ.empty
