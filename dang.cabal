@@ -14,8 +14,9 @@ library
   default-language:    Haskell2010
   exposed-modules:     Dang
                        Dang.Message
-                       Dang.ModuleSystem.Rename
+                       Dang.ModuleSystem.Env
                        Dang.ModuleSystem.Name
+                       Dang.ModuleSystem.Rename
                        Dang.Monad
                        Dang.Syntax.AST
                        Dang.Syntax.Format

@@ -7,12 +7,14 @@ module Dang.ModuleSystem.Env (
     lookupMod,
     openMod,
     nameList,
+    shadowing,
+    intersectionWith,
   ) where
 
 import Dang.Syntax.AST (PName(..))
 import Dang.Utils.PP
 
-import           Data.List (nub)
+import           Control.Monad (mplus)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text.Lazy as L
 
@@ -33,16 +35,15 @@ instance PP Def where
 newtype NameTrie a = NameTrie (Map.Map Def (NameNode a))
                      deriving (Show)
 
-data NameNode a = NameNode [a] (NameTrie a)
+data NameNode a = NameNode (Maybe a) (NameTrie a)
                   deriving (Show)
 
-instance Eq a => Monoid (NameTrie a) where
+instance Monoid a => Monoid (NameTrie a) where
   mempty                            = NameTrie Map.empty
   mappend (NameTrie a) (NameTrie b) = NameTrie (Map.unionWith merge a b)
     where
-    merge (NameNode xs x) (NameNode ys y)
-      | xs == ys  = NameNode xs               (mappend x y)
-      | otherwise = NameNode (nub (xs ++ ys)) (mappend x y)
+    merge (NameNode xs x) (NameNode ys y) =
+      NameNode (mappend xs ys) (mappend x y)
 
   {-# INLINE mempty #-}
   {-# INLINE mappend #-}
@@ -50,45 +51,46 @@ instance Eq a => Monoid (NameTrie a) where
 -- | Merge the names from the left environment, into the right environment,
 -- allowing shadowing of names in the right environment.
 shadowing :: NameTrie a -> NameTrie a -> NameTrie a
-shadowing (NameTrie l) (NameTrie r) = NameTrie (Map.unionWith const l r)
+shadowing (NameTrie l) (NameTrie r) = NameTrie (Map.unionWith merge l r)
+  where
+  merge (NameNode a l') (NameNode b r') = NameNode (a `mplus` b) (shadowing l' r')
 
 qualify :: [L.Text] -> NameTrie a -> NameTrie a
 qualify ns t = foldr step t ns
   where
-  step n acc = NameTrie (Map.singleton (DefMod n) (NameNode [] acc))
+  step n acc = NameTrie (Map.singleton (DefMod n) (NameNode Nothing acc))
 
-envDecl, envType, envMod :: Eq a => PName -> a -> NameTrie a
+envDecl, envType, envMod :: Monoid a => PName -> a -> NameTrie a
 envDecl = singleton DefDecl
 envType = singleton DefType
 envMod  = singleton DefMod
 
-singleton :: Eq a => (L.Text -> Def) -> PName -> a -> NameTrie a
+singleton :: Monoid a => (L.Text -> Def) -> PName -> a -> NameTrie a
 singleton mkDef pn n =
   case pn of
     PQual ns p -> qualify ns (mk p)
     PUnqual p  ->             mk p
   where
-  mk p = NameTrie (Map.singleton (mkDef p) (NameNode [n] mempty))
+  mk p = NameTrie (Map.singleton (mkDef p) (NameNode (Just n) mempty))
 
-lookupDecl, lookupType :: Eq a => PName -> NameTrie a -> [a]
+lookupDecl, lookupType, lookupMod :: PName -> NameTrie a -> Maybe a
 
 lookupDecl pn t =
   case lookupPName DefDecl pn t of
-    Just (NameNode as _) -> as
-    Nothing              -> []
+    Just (NameNode mb _) -> mb
+    Nothing              -> Nothing
 
 lookupType pn t =
   case lookupPName DefType pn t of
-    Just (NameNode as _) -> as
-    Nothing              -> []
+    Just (NameNode mb _) -> mb
+    Nothing              -> Nothing
 
-lookupMod :: Eq a => PName -> NameTrie a -> Maybe ([a],NameTrie a)
 lookupMod pn t =
-  do NameNode as t' <- lookupPName DefMod pn t
-     return (as,t')
+  case lookupPName DefMod pn t of
+    Just (NameNode mb _) -> mb
+    Nothing              -> Nothing
 
-lookupPName :: Eq a
-            => (L.Text -> Def) -> PName -> NameTrie a -> Maybe (NameNode a)
+lookupPName :: (L.Text -> Def) -> PName -> NameTrie a -> Maybe (NameNode a)
 lookupPName mkDef pn =
   case pn of
     PQual ns p -> go (map DefMod ns ++ [mkDef p])
@@ -104,29 +106,32 @@ lookupPName mkDef pn =
   go [] _ = error "Impossible"
 
 -- | Open the module with the name N in the environment E.
-openMod :: Eq a => PName -> NameTrie a -> NameTrie a
-openMod n e =
-  case lookupMod n e of
-    Just (_,ds) -> ds `shadowing` e
-    Nothing     -> e
+openMod :: PName -> NameTrie a -> NameTrie a
+openMod pn e =
+  case lookupPName DefMod pn e of
+    Just (NameNode _ ds) -> ds `shadowing` e
+    Nothing              -> e
 
 -- | Flatten the environment into parsed names, and their values in the tree.
-nameList :: NameTrie a -> [(PName,[a])]
+nameList :: NameTrie a -> [(PName,a)]
 nameList (NameTrie m) = go id (Map.toList m)
   where
-  go mkNS ((d,NameNode as (NameTrie m')):rest) = names ++ go mkNS rest
+  go mkNS ((d,NameNode mb (NameTrie m')):rest) = names ++ go mkNS rest
     where
     names =
-      case d of
+      case (mb,d) of
 
-        DefMod n ->
+        (Nothing, DefMod n) ->
+          go (mkNS . (n:)) (Map.toList m')
+
+        (Just a, DefMod n) ->
           let ts = go (mkNS . (n:)) (Map.toList m')
-           in if null as
-                 then                        ts
-                 else (mkPName mkNS n, as) : ts
+           in (mkPName mkNS n, a) : ts
 
-        DefDecl n -> [(mkPName mkNS n, as)]
-        DefType n -> [(mkPName mkNS n, as)]
+        (Just a, DefDecl n) -> [(mkPName mkNS n, a)]
+        (Just a, DefType n) -> [(mkPName mkNS n, a)]
+
+        _ -> []
 
   go _ [] = []
 
@@ -134,3 +139,14 @@ nameList (NameTrie m) = go id (Map.toList m)
     case mkNS [] of
       [] -> PUnqual n
       xs -> PQual xs n
+
+
+intersectionWith :: (Maybe a -> Maybe b -> Maybe c)
+                 -> NameTrie a -> NameTrie b -> NameTrie c
+intersectionWith f = go
+  where
+  go (NameTrie l) (NameTrie r) =
+    NameTrie (Map.intersectionWith merge l r)
+
+  merge (NameNode xs l') (NameNode ys r') =
+    NameNode (f xs ys) (go l' r')

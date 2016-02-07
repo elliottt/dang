@@ -46,7 +46,7 @@ formatMessage src txt (Message ty loc doc) = vcat
 -- | Print out a formatted chunk of source code to the console. The returned
 -- value is the size of the line number gutter.
 formatChunk :: Source -> Position -> Maybe Range -> L.Text -> (Doc,Int)
-formatChunk src start mbErr chunk = (go beginRow ls, pad)
+formatChunk src start mbErr chunk = (go beginRow ls, pad + 1)
   where
 
   beginRow = start { posCol = 1

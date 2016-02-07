@@ -20,6 +20,7 @@ module Dang.ModuleSystem.Rename (
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
+import Dang.ModuleSystem.Env
 import Dang.ModuleSystem.Name (Name,mkModName,mkUnknown,mkBinding)
 import Dang.Unique (SupplyM,withSupply)
 import Dang.Utils.Ident (Namespace,packNamespaceLazy)
@@ -32,6 +33,7 @@ import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
 import           Data.List (nub)
 import qualified Data.Map.Strict as Map
+import           Data.Maybe (catMaybes,fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
@@ -44,11 +46,11 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
              PQual ns n -> mkModName (Just ns) n (locRange modName)
              PUnqual n  -> mkModName Nothing   n (locRange modName)
 
-     withNames (singleton (DefMod (thing modName)) n') $
+     withNames (envMod (thing modName) [n']) $
        do declEnv <- mergeNames overlapErrors declNames modDecls
-          io (print declEnv)
           withNames declEnv $
-            do ds <- traverse rnDecl modDecls
+            do RO { .. } <- RN ask
+               ds <- traverse rnDecl modDecls
                return Module { modName = n' `at` modName, modDecls = ds }
 
 
@@ -77,14 +79,16 @@ rename ns m =
         else do putMessages ms
                 return (Right res)
 
-
 data RO = RO { roNS    :: Namespace
              , roNames :: NameMap
              }
 
+pnameToPrefix :: PName -> [L.Text]
+pnameToPrefix (PUnqual n)  = [n]
+pnameToPrefix (PQual ns n) = ns ++ [n]
+
 mkNamespace :: PName -> Namespace
-mkNamespace (PUnqual n)  = L.toStrict n
-mkNamespace (PQual ns n) = packNamespaceLazy (ns ++ [n])
+mkNamespace pn = packNamespaceLazy (pnameToPrefix pn)
 
 -- | Extend the current namespace with the given one.
 pushNamespace :: PName -> RN a -> RN a
@@ -102,96 +106,40 @@ withNames names m =
      names' <- overlapShadows names (roNames ro)
      RN (local ro { roNames = names' } (unRN m))
 
-
--- Name Maps -------------------------------------------------------------------
-
-newtype NameTrie = NameTrie (Map.Map Def NameNode)
-                   deriving (Show)
-
-instance Monoid NameTrie where
-  mempty                            = NameTrie Map.empty
-  mappend (NameTrie a) (NameTrie b) = NameTrie (Map.unionWith merge a b)
-    where
-    merge (NameNode xs x) (NameNode ys y)
-      | xs == ys  = NameNode xs               (mappend x y)
-      | otherwise = NameNode (nub (xs ++ ys)) (mappend x y)
-
-data NameNode = NameNode [Name] NameTrie
-                deriving (Show)
+underMod :: Located PName -> RN a -> RN a
+underMod lmn m = RN $
+  do ro <- ask
+     local (ro { roNames = openMod (thing lmn) (roNames ro) })
+           (unRN m)
 
 
-newtype NameMap = NameMap (Map.Map Def [Name])
-                  deriving (Show)
+-- Naming Environment ----------------------------------------------------------
 
-instance Monoid NameMap where
-  mempty                          = NameMap mempty
-  mappend (NameMap a) (NameMap b) = NameMap (Map.unionWith merge a b)
-    where
-    merge as bs | as == bs  = as
-                | otherwise = as ++ bs
-
-singleton :: Def -> Name -> NameMap
-singleton d n = NameMap (Map.singleton d [n])
+type NameMap = NameTrie [Name]
 
 
 -- | Merge name mappings, but add errors when overlap occurs. For the purposes
 -- of error reporting, the names in both maps are considered to be defined at
 -- the same level.
 overlapErrors :: NameMap -> NameMap -> RN NameMap
-overlapErrors l@(NameMap xs) r@(NameMap ys) =
-  do Map.traverseWithKey conflict (Map.intersectionWith nubMerge xs ys)
+overlapErrors l r =
+  do F.traverse_ (uncurry conflict) (nameList (intersectionWith nubMerge l r))
      return (l `mappend` r)
-
   where
-  nubMerge as bs = nub (as ++ bs)
+  nubMerge Nothing Nothing = Nothing
+  nubMerge as      bs      = Just (nub (concat (catMaybes [as,bs])))
 
 
 -- | Merge names, but issue shadowing warnings when overlap occurs. For the
 -- purposes of warning reporting, the names on the right are assumed to be the
 -- original declarations, with the names on the left being the ones that shadow.
 overlapShadows :: NameMap -> NameMap -> RN NameMap
-overlapShadows l@(NameMap xs) r@(NameMap ys) =
-  do Map.traverseWithKey shadows (Map.intersectionWith (,) xs ys)
-     return (l `mappend` r)
-
-
-data Def = DefMod  PName
-         | DefDecl PName
-         | DefType PName
-           deriving (Eq,Ord,Show)
-
-instance PP Def where
-  ppr (DefMod  n) = ppr n
-  ppr (DefDecl n) = ppr n
-  ppr (DefType n) = ppr n
-
-defType :: Def -> Doc
-defType DefMod{}  = text "module"
-defType DefDecl{} = text "value"
-defType DefType{} = text "type"
-
-defPName :: Lens' Def PName
-defPName f (DefMod  pn) = DefMod  `fmap` (f pn)
-defPName f (DefDecl pn) = DefDecl `fmap` (f pn)
-defPName f (DefType pn) = DefType `fmap` (f pn)
-
-
-data NameResult = Resolved Name
-                | Conflict Def [Name]
-                  -- ^ A non-empty list of conflicting names
-                | Unknown
-                  deriving (Show)
-
-lookupDef :: Def -> NameMap -> NameResult
-lookupDef d (NameMap names) =
-  case Map.lookup d names of
-
-    Just []  -> panic "Dang.Module.Rename:lookupPName"
-                      ("Invalid naming environment" :: String)
-
-    Just [n] -> Resolved n
-    Just ns  -> Conflict d ns
-    Nothing  -> Unknown
+overlapShadows l r =
+  do F.traverse_ (uncurry shadows) (nameList (intersectionWith pair l r))
+     return (l `shadowing` r)
+  where
+  pair Nothing Nothing = Nothing
+  pair a b             = Just (fromMaybe [] a, fromMaybe [] b)
 
 
 type GetNames f = f PName -> RN NameMap
@@ -218,7 +166,7 @@ newName _ = panic "renamer" (text "Qualified name given to `newName`")
 bindName :: GetNames Bind
 bindName Bind { .. } =
   do name <- newName bName
-     return (singleton (DefDecl (thing bName)) name)
+     return (envDecl (thing bName) [name])
 
 -- | Introduce names for 
 letDeclNames :: GetNames LetDecl
@@ -238,7 +186,10 @@ declNames DSig{}        = return mempty
 -- | Names introduced by a module binding.
 modBindNames :: GetNames ModBind
 modBindNames ModBind { .. } =
-  addLoc mbName $ \ ns -> pushNamespace ns $ modExprNames mbExpr
+  addLoc mbName $ \ ns -> pushNamespace ns $
+    do n'    <- newName mbName
+       names <- modExprNames mbExpr
+       return (envMod ns [n'] `mappend` qualify (pnameToPrefix ns) names)
 
 -- | The names introduced by a data declaration.
 dataNames :: GetNames Data
@@ -246,13 +197,13 @@ dataNames Data { .. } =
   do tyName   <- newName dName
      conNames <- traverse (`addLoc` constrName) dConstrs
      return $ mconcat
-            $ singleton (DefType (thing dName)) tyName : conNames
+            $ envType (thing dName) [tyName] : conNames
 
 -- | Names introduced by a constructor.
 constrName :: GetNames Constr
 constrName Constr { .. } =
   do conName <- newName cName
-     return (singleton (DefDecl (thing cName)) conName)
+     return (envDecl (thing cName) [conName])
 
 -- | Names defined by a module expression.
 modExprNames :: GetNames ModExpr
@@ -273,7 +224,7 @@ patNames (PLoc lp)   = addLoc lp patNames
 patNames PWild       = return mempty
 patNames (PVar ln)   =
   do n <- newName ln
-     return (singleton (DefDecl (thing ln)) n)
+     return (envDecl (thing ln) [n])
 
 
 -- Renaming --------------------------------------------------------------------
@@ -285,14 +236,21 @@ rnLoc f Located { .. } = withLoc locRange $
   do b <- f locValue
      return Located { locValue = b, .. }
 
--- | Replace a parsed name with a resolved one.
-rnPName :: Def -> RN Name
-rnPName d =
+
+getName :: (PName -> NameMap -> Maybe [Name]) -> Doc
+        -> PName -> RN Name
+getName lkp ty pn =
   do RO { .. } <- RN ask
-     case lookupDef d roNames of
-       Resolved n    -> return n
-       Conflict n os -> conflict n os
-       Unknown       -> unknown d
+     case lkp pn roNames of
+       Just []  -> unknown ty pn
+       Just [n] -> return n
+       Just ns  -> conflict pn ns
+       Nothing  -> unknown ty pn
+
+rnEName, rnTName, rnMName :: PName -> RN Name
+rnEName  = getName lookupDecl (text "declaration")
+rnTName  = getName lookupDecl (text "type")
+rnMName  = getName lookupMod  (text "module")
 
 
 -- Modules ---------------------------------------------------------------------
@@ -312,12 +270,12 @@ rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
 rnModBind ModBind { .. } = pushNamespace (thing mbName) $
-  do n' <- rnLoc (rnPName . DefMod) mbName
-     e' <- rnModExpr mbExpr
+  do n' <- rnLoc rnMName mbName
+     e' <- underMod mbName (rnModExpr mbExpr)
      return ModBind { mbName = n', mbExpr = e' }
 
 rnModExpr :: Rename ModExpr
-rnModExpr (MEName n)           = MEName   <$> rnPName (DefMod n)
+rnModExpr (MEName n)           = MEName   <$> rnMName n
 rnModExpr (MEApp f x)          = MEApp    <$> rnModExpr f <*> rnModExpr x
 rnModExpr (MEStruct s)         = MEStruct <$> rnModStruct s
 rnModExpr (MEFunctor a sig e)  = undefined
@@ -331,7 +289,7 @@ rnModExpr (MELoc lm)           = MELoc <$> rnLoc rnModExpr lm
 -- externally.
 rnBind :: Rename Bind
 rnBind Bind { .. } =
-  do n'  <- rnLoc (rnPName . DefDecl) bName
+  do n'  <- rnLoc rnEName bName
      mb' <- traverse rnSchema bSchema
      b'  <- rnMatch bBody
      return Bind { bName = n', bSchema = mb', bBody = b' }
@@ -350,8 +308,8 @@ rnPat  = undefined
 
 -- | Rename an expression.
 rnExpr :: Rename Expr
-rnExpr (EVar pn)   = EVar <$> rnPName (DefDecl pn)
-rnExpr (ECon pn)   = ECon <$> rnPName (DefDecl pn)
+rnExpr (EVar pn)   = EVar <$> rnEName pn
+rnExpr (ECon pn)   = ECon <$> rnEName pn
 rnExpr (EApp f xs) = EApp <$> rnExpr f <*> traverse rnExpr xs
 rnExpr (EAbs m)    = EAbs <$> rnMatch m
 rnExpr (ELoc e)    = ELoc <$> rnLoc rnExpr e
@@ -376,17 +334,14 @@ rnSchema  = error "rnSchema"
 
 -- Errors/Warnings -------------------------------------------------------------
 
-conflict :: Def -> [Name] -> RN Name
+conflict :: PName -> [Name] -> RN Name
 conflict d ns =
   do addError ErrRnOverlap (vcat (msg : map ppr ns))
      return (head ns)
   where
-  msg = text "the"
-    <+> defType d
-    <+> pp d
-    <+> text "is defined in multiple places:"
+  msg = pp d <+> text "is defined in multiple places:"
 
-shadows :: Def -> ([Name],[Name]) -> RN ()
+shadows :: PName -> ([Name],[Name]) -> RN ()
 shadows d (new,old)
   | null new || null old = panic "renamer" (text "Invalid use of `shadows`")
   | otherwise            = addWarning WarnRnShadowing msg
@@ -398,8 +353,8 @@ shadows d (new,old)
 
 -- | Invent a name for a parsed name, and record an error about a missing
 -- identifier.
-unknown :: Def -> RN Name
-unknown d =
-  do addError ErrRnUnknown (text "not in scope:" <+> pp d)
+unknown :: Doc -> PName -> RN Name
+unknown ty d =
+  do addError ErrRnUnknown (ty <+> text "not in scope:" <+> pp d)
      loc <- askLoc
-     inBase (withSupply (mkUnknown (view defPName d) loc))
+     inBase (withSupply (mkUnknown d loc))
