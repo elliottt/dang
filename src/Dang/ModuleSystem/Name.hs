@@ -2,6 +2,7 @@
 
 module Dang.ModuleSystem.Name (
     ModInfo(..),
+    ParamSource(..),
     NameSort(..),
     Name(),
     nameSort,
@@ -29,11 +30,15 @@ import qualified Data.Text.Lazy as L
 data ModInfo = ModInfo { modName :: !Namespace
                        } deriving (Eq,Ord,Show)
 
+data ParamSource = FromBind !Name
+                 | FromLambda !Range
+                   deriving (Eq,Ord,Show)
+
 -- | Information about where a name comes from, like in GHC.
 data NameSort = Declaration !ModInfo
                 -- ^ Externally visible, comes from this module
 
-              | Parameter !Name
+              | Parameter !ParamSource
                 -- ^ Type/function parameter to this declaration.
 
               | ModDecl !(Maybe ModInfo)
@@ -101,7 +106,7 @@ mkBinding ns n nFrom s =
    in (s',name)
 
 
-mkParam :: Name -> L.Text -> Range -> Supply -> (Supply,Name)
+mkParam :: ParamSource -> L.Text -> Range -> Supply -> (Supply,Name)
 mkParam d n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Parameter d
@@ -139,15 +144,17 @@ ppNameOrigin Name { .. } =
     Declaration (ModInfo ns) ->
       text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
 
-    Parameter fn ->
+    Parameter (FromBind fn) ->
       text "parameter to" <+> quotes (pp fn) <+> text "at" <+> pp nFrom
+
+    Parameter FromLambda{} ->
+      text "parameter to lambda abstraction at" <+> pp nFrom
 
     ModDecl (Just (ModInfo ns)) ->
       text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
 
     ModDecl Nothing ->
       text "at" <+> pp nFrom
-
 
 instance PP Name where
   ppr Name { .. } =

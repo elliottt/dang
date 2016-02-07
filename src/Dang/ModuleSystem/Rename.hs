@@ -22,8 +22,6 @@ import Dang.Syntax.AST
 import Dang.Syntax.Location
 import Dang.ModuleSystem.Env
 import Dang.ModuleSystem.Name
-           (NameSort(..),ModInfo(..),Name,mkModName,mkUnknown,mkBinding
-           ,mkParam,ppNameOrigin)
 import Dang.Unique (SupplyM,withSupply)
 import Dang.Utils.Ident (Namespace,packNamespaceLazy)
 import Dang.Utils.PP
@@ -170,7 +168,7 @@ newMod Located { locValue = PUnqual t, .. } =
      withSupply (mkModName (Just [L.fromStrict ns]) t locRange)
 newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
 
-newParam :: Name -> Located PName -> RN Name
+newParam :: ParamSource -> Located PName -> RN Name
 newParam d Located { locValue = PUnqual t, .. } =
      withSupply (mkParam d t locRange)
 newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
@@ -231,7 +229,7 @@ modStructNames ModStruct { .. } =
   mergeNames overlapErrors declNames msElems
 
 -- | Names defined by a pattern.
-patNames :: Name -> GetNames Pat
+patNames :: ParamSource -> GetNames Pat
 patNames d = go
   where
   go (PCon _ ps) = mergeNames overlapErrors go ps
@@ -307,7 +305,7 @@ rnBind Bind { .. } =
   do n'  <- rnLoc rnEName bName
      mb' <- traverse rnSchema bSchema
 
-     pats <- mergeNames overlapErrors (patNames (thing n')) bParams
+     pats <- mergeNames overlapErrors (patNames (FromBind (thing n'))) bParams
      withNames pats $
        do ps' <- traverse rnPat bParams
           b'  <- rnExpr bBody
@@ -316,7 +314,7 @@ rnBind Bind { .. } =
                       , bParams = ps'
                       , bBody   = b' }
 
-rnMatch :: Name -> Rename Match
+rnMatch :: ParamSource -> Rename Match
 rnMatch d = go
   where
   go (MSplit l r) = MSplit <$> go l <*> go r
@@ -338,7 +336,11 @@ rnExpr :: Rename Expr
 rnExpr (EVar pn)   = EVar <$> rnEName pn
 rnExpr (ECon pn)   = ECon <$> rnEName pn
 rnExpr (EApp f xs) = EApp <$> rnExpr f <*> traverse rnExpr xs
-rnExpr (EAbs m)    = error "EAbs"
+
+rnExpr (EAbs m)    =
+  do loc <- askLoc
+     EAbs <$> rnMatch (FromLambda loc) m
+
 rnExpr (ELoc e)    = ELoc <$> rnLoc rnExpr e
 rnExpr (ELit l)    = pure (ELit l)
 rnExpr (ELet ds e) =
