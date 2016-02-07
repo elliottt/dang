@@ -291,8 +291,15 @@ rnBind :: Rename Bind
 rnBind Bind { .. } =
   do n'  <- rnLoc rnEName bName
      mb' <- traverse rnSchema bSchema
-     b'  <- rnMatch bBody
-     return Bind { bName = n', bSchema = mb', bBody = b' }
+
+     pats <- mergeNames overlapErrors patNames bParams
+     withNames pats $
+       do ps' <- traverse rnPat bParams
+          b'  <- rnExpr bBody
+          return Bind { bName   = n'
+                      , bSchema = mb'
+                      , bParams = ps'
+                      , bBody   = b' }
 
 rnMatch :: Rename Match
 rnMatch (MSplit l r) = MSplit <$> rnMatch l <*> rnMatch r
@@ -304,7 +311,10 @@ rnMatch (MPat p m)   =
      withNames names (MPat <$> rnPat p <*> rnMatch m)
 
 rnPat :: Rename Pat
-rnPat  = undefined
+rnPat (PCon c ps) = PCon <$> rnLoc rnEName c <*> traverse rnPat ps
+rnPat (PLoc lp)   = PLoc <$> rnLoc rnPat lp
+rnPat PWild       = pure PWild
+rnPat (PVar ln)   = PVar <$> rnLoc rnEName ln
 
 -- | Rename an expression.
 rnExpr :: Rename Expr

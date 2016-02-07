@@ -42,7 +42,8 @@ data Decl name = DBind    (Bind name)
 
 data Bind name = Bind { bName   :: Located name
                       , bSchema :: Maybe (Schema name)
-                      , bBody   :: Match name
+                      , bParams :: [Pat name]
+                      , bBody   :: Expr name
                       } deriving (Eq,Show,Functor,Generic)
 
 data Sig name = Sig { sigNames  :: [Located name]

@@ -182,7 +182,8 @@ bind :: { Located (Bind PName) }
   : ident list(pat) '=' expr
     { Bind { bName   = $1
            , bSchema = Nothing
-           , bBody   = addParams $2 $4 } `at` ($1,$4) }
+           , bParams = $2
+           , bBody   = $4 } `at` ($1,$4) }
 
 pat :: { Pat PName }
   : '_'                    { PLoc (PWild   `at` $1)         }
