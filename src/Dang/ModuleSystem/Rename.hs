@@ -21,7 +21,9 @@ import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
 import Dang.ModuleSystem.Env
-import Dang.ModuleSystem.Name (Name,mkModName,mkUnknown,mkBinding)
+import Dang.ModuleSystem.Name
+           (NameSort(..),ModInfo(..),Name,mkModName,mkUnknown,mkBinding
+           ,mkParam,ppNameOrigin)
 import Dang.Unique (SupplyM,withSupply)
 import Dang.Utils.Ident (Namespace,packNamespaceLazy)
 import Dang.Utils.PP
@@ -31,7 +33,7 @@ import           Control.Applicative (Alternative(..))
 import           Control.Lens (Lens',over,view)
 import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
-import           Data.List (nub)
+import           Data.List (nub,partition)
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (catMaybes,fromMaybe)
 import qualified Data.Text as T
@@ -40,7 +42,7 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 
 -- | Rename a top-level module.
-renameModule :: Module PName -> Dang (Either [Message] (Module Name))
+renameModule :: Module PName -> Dang (Either [Message] (Module Name), [Message])
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -55,7 +57,7 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
 
 
 -- | Rename an expression.
-renameExpr :: Namespace -> Expr PName -> Dang (Either [Message] (Expr Name))
+renameExpr :: Namespace -> Expr PName -> Dang (Either [Message] (Expr Name), [Message])
 renameExpr ns e = rename ns (rnExpr e)
 
 
@@ -71,13 +73,13 @@ instance SupplyM RN where
   withSupply f = inBase (withSupply f)
 
 
-rename :: Namespace -> RN a -> Dang (Either [Message] a)
+rename :: Namespace -> RN a -> Dang (Either [Message] a, [Message])
 rename ns m =
   do (res,ms) <- collectMessages (runM (unRN m) RO { roNS = ns, roNames = mempty })
-     if any isError ms
-        then return (Left ms)
-        else do putMessages ms
-                return (Right res)
+     let (es,ws) = partition isError ms
+     if null es
+        then return (Right res, ws)
+        else return (Left es, ws)
 
 data RO = RO { roNS    :: Namespace
              , roNames :: NameMap
@@ -156,16 +158,27 @@ mergeNames merge f as = F.foldlM step mempty as
 
 
 -- | Introduce a name from a binding site.
-newName :: Located PName -> RN Name
-newName Located { locValue = PUnqual t, .. } =
+newBind :: Located PName -> RN Name
+newBind Located { locValue = PUnqual t, .. } =
   do ns <- getNamespace
      withSupply (mkBinding ns t locRange)
-newName _ = panic "renamer" (text "Qualified name given to `newName`")
+newBind _ = panic "renamer" (text "Qualified name given to `newBind`")
+
+newMod :: Located PName -> RN Name
+newMod Located { locValue = PUnqual t, .. } =
+  do ns <- getNamespace
+     withSupply (mkModName (Just [L.fromStrict ns]) t locRange)
+newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
+
+newParam :: Name -> Located PName -> RN Name
+newParam d Located { locValue = PUnqual t, .. } =
+     withSupply (mkParam d t locRange)
+newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
 
 -- | Introduce names for the given binding.
 bindName :: GetNames Bind
 bindName Bind { .. } =
-  do name <- newName bName
+  do name <- newBind bName
      return (envDecl (thing bName) [name])
 
 -- | Introduce names for 
@@ -187,14 +200,14 @@ declNames DSig{}        = return mempty
 modBindNames :: GetNames ModBind
 modBindNames ModBind { .. } =
   addLoc mbName $ \ ns -> pushNamespace ns $
-    do n'    <- newName mbName
+    do n'    <- newMod mbName
        names <- modExprNames mbExpr
        return (envMod ns [n'] `mappend` qualify (pnameToPrefix ns) names)
 
 -- | The names introduced by a data declaration.
 dataNames :: GetNames Data
 dataNames Data { .. } =
-  do tyName   <- newName dName
+  do tyName   <- newBind dName
      conNames <- traverse (`addLoc` constrName) dConstrs
      return $ mconcat
             $ envType (thing dName) [tyName] : conNames
@@ -202,7 +215,7 @@ dataNames Data { .. } =
 -- | Names introduced by a constructor.
 constrName :: GetNames Constr
 constrName Constr { .. } =
-  do conName <- newName cName
+  do conName <- newBind cName
      return (envDecl (thing cName) [conName])
 
 -- | Names defined by a module expression.
@@ -218,13 +231,15 @@ modStructNames ModStruct { .. } =
   mergeNames overlapErrors declNames msElems
 
 -- | Names defined by a pattern.
-patNames :: GetNames Pat
-patNames (PCon _ ps) = mergeNames overlapErrors patNames ps
-patNames (PLoc lp)   = addLoc lp patNames
-patNames PWild       = return mempty
-patNames (PVar ln)   =
-  do n <- newName ln
-     return (envDecl (thing ln) [n])
+patNames :: Name -> GetNames Pat
+patNames d = go
+  where
+  go (PCon _ ps) = mergeNames overlapErrors go ps
+  go (PLoc lp)   = addLoc lp go
+  go PWild       = return mempty
+  go (PVar ln)   =
+    do n <- newParam d ln
+       return (envDecl (thing ln) [n])
 
 
 -- Renaming --------------------------------------------------------------------
@@ -292,7 +307,7 @@ rnBind Bind { .. } =
   do n'  <- rnLoc rnEName bName
      mb' <- traverse rnSchema bSchema
 
-     pats <- mergeNames overlapErrors patNames bParams
+     pats <- mergeNames overlapErrors (patNames (thing n')) bParams
      withNames pats $
        do ps' <- traverse rnPat bParams
           b'  <- rnExpr bBody
@@ -301,14 +316,16 @@ rnBind Bind { .. } =
                       , bParams = ps'
                       , bBody   = b' }
 
-rnMatch :: Rename Match
-rnMatch (MSplit l r) = MSplit <$> rnMatch l <*> rnMatch r
-rnMatch MFail        = return MFail
-rnMatch (MExpr e)    = MExpr <$> rnExpr e
-rnMatch (MLoc lm)    = MLoc  <$> rnLoc rnMatch lm
-rnMatch (MPat p m)   =
-  do names <- patNames p
-     withNames names (MPat <$> rnPat p <*> rnMatch m)
+rnMatch :: Name -> Rename Match
+rnMatch d = go
+  where
+  go (MSplit l r) = MSplit <$> go l <*> go r
+  go MFail        = return MFail
+  go (MExpr e)    = MExpr <$> rnExpr e
+  go (MLoc lm)    = MLoc  <$> rnLoc go lm
+  go (MPat p m)   =
+    do names <- patNames d p
+       withNames names (MPat <$> rnPat p <*> go m)
 
 rnPat :: Rename Pat
 rnPat (PCon c ps) = PCon <$> rnLoc rnEName c <*> traverse rnPat ps
@@ -321,7 +338,7 @@ rnExpr :: Rename Expr
 rnExpr (EVar pn)   = EVar <$> rnEName pn
 rnExpr (ECon pn)   = ECon <$> rnEName pn
 rnExpr (EApp f xs) = EApp <$> rnExpr f <*> traverse rnExpr xs
-rnExpr (EAbs m)    = EAbs <$> rnMatch m
+rnExpr (EAbs m)    = error "EAbs"
 rnExpr (ELoc e)    = ELoc <$> rnLoc rnExpr e
 rnExpr (ELit l)    = pure (ELit l)
 rnExpr (ELet ds e) =
@@ -346,7 +363,7 @@ rnSchema  = error "rnSchema"
 
 conflict :: PName -> [Name] -> RN Name
 conflict d ns =
-  do addError ErrRnOverlap (vcat (msg : map ppr ns))
+  do addError ErrRnOverlap (hang msg 2 (vcat (map ppNameOrigin ns)))
      return (head ns)
   where
   msg = pp d <+> text "is defined in multiple places:"
@@ -356,10 +373,9 @@ shadows d (new,old)
   | null new || null old = panic "renamer" (text "Invalid use of `shadows`")
   | otherwise            = addWarning WarnRnShadowing msg
   where
-  msg = text "the definition of"
-    <+> pp (head new)
-    <+> text "shadows the definition of"
-    <+> pp (head old)
+  msg = pp d <> char ',' <+> ppNameOrigin (head old)
+    <+> text "is shadowed by"
+    <+> pp d <> char ',' <+> ppNameOrigin (head new)
 
 -- | Invent a name for a parsed name, and record an error about a missing
 -- identifier.
@@ -367,4 +383,5 @@ unknown :: Doc -> PName -> RN Name
 unknown ty d =
   do addError ErrRnUnknown (ty <+> text "not in scope:" <+> pp d)
      loc <- askLoc
-     inBase (withSupply (mkUnknown d loc))
+     ns  <- getNamespace
+     inBase (withSupply (mkUnknown (Declaration (ModInfo ns)) d loc))

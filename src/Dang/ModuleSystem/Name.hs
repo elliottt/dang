@@ -4,18 +4,20 @@ module Dang.ModuleSystem.Name (
     ModInfo(..),
     NameSort(..),
     Name(),
-    nameSource,
     nameSort,
     nameIdent,
     nameUnique,
 
     mkModName,
     mkBinding,
+    mkParam,
     mkUnknown,
+
+    ppNameOrigin,
   ) where
 
 import Dang.Syntax.AST (PName(..))
-import Dang.Syntax.Location (Range)
+import Dang.Syntax.Location (HasLoc(..),Range)
 import Dang.Unique
 import Dang.Utils.Ident
 import Dang.Utils.PP
@@ -31,8 +33,8 @@ data ModInfo = ModInfo { modName :: !Namespace
 data NameSort = Declaration !ModInfo
                 -- ^ Externally visible, comes from this module
 
-              | Parameter
-                -- ^ Type/function parameter.
+              | Parameter !Name
+                -- ^ Type/function parameter to this declaration.
 
               | ModDecl !(Maybe ModInfo)
                 -- ^ A module, declared in this module.
@@ -62,15 +64,13 @@ instance Ord Name where
   compare = compare `on` nUnique
   {-# INLINE compare #-}
 
-
+instance HasLoc Name where
+  getLoc Name { .. } = nFrom
+  {-# INLINE getLoc #-}
 
 -- | Retrieve the text associated with the 'Name'.
 nameIdent :: Name -> Ident
 nameIdent Name { .. } = nName
-
--- | The definition site of the 'Name'.
-nameSource :: Name -> Range
-nameSource Name { .. } = nFrom
 
 -- | Information about what kind of 'Name' this is.
 nameSort :: Name -> NameSort
@@ -101,24 +101,30 @@ mkBinding ns n nFrom s =
    in (s',name)
 
 
+mkParam :: Name -> L.Text -> Range -> Supply -> (Supply,Name)
+mkParam d n nFrom s =
+  let (s',nUnique) = nextUnique s
+      name         = Name { nSort = Parameter d
+                          , nName = mkIdent (L.toStrict n)
+                          , .. }
+   in (s',name)
+
+
 -- | Generate a bogus name from a parsed name. This is useful during renaming
 -- when we need to generate a name to finish the pass, but have already
 -- generated errors, invalidating the output.
-mkUnknown :: PName -> Range -> Supply -> (Supply,Name)
+mkUnknown :: NameSort -> PName -> Range -> Supply -> (Supply,Name)
 
-mkUnknown (PUnqual n) src s =
+mkUnknown nSort (PUnqual n) src s =
   let (s',nUnique) = nextUnique s
-      name         = Name { nSort = Parameter
-                          , nName = mkIdent (L.toStrict n)
+      name         = Name { nName = mkIdent (L.toStrict n)
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)
 
-mkUnknown (PQual ns n) src s =
+mkUnknown nSort (PQual _ n) src s =
   let (s',nUnique) = nextUnique s
-      ns'          = packNamespaceLazy ns
-      name         = Name { nSort = Declaration (ModInfo ns')
-                          , nName = mkIdent (L.toStrict n)
+      name         = Name { nName = mkIdent (L.toStrict n)
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)
@@ -126,6 +132,22 @@ mkUnknown (PQual ns n) src s =
 
 
 -- Pretty-printing -------------------------------------------------------------
+
+ppNameOrigin :: Name -> Doc
+ppNameOrigin Name { .. } =
+  case nSort of
+    Declaration (ModInfo ns) ->
+      text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
+
+    Parameter fn ->
+      text "parameter to" <+> quotes (pp fn) <+> text "at" <+> pp nFrom
+
+    ModDecl (Just (ModInfo ns)) ->
+      text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
+
+    ModDecl Nothing ->
+      text "at" <+> pp nFrom
+
 
 instance PP Name where
   ppr Name { .. } =
@@ -148,5 +170,5 @@ instance PP Name where
       ModDecl Nothing ->
         pp nName
 
-      Parameter ->
+      Parameter _ ->
         pp nName

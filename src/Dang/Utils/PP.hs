@@ -30,7 +30,7 @@ module Dang.Utils.PP (
     -- ** Combinators
     (<>), (<+>), ($$),
     fsep, sep, hsep, cat, vcat, punctuate,
-    optParens, parens, brackets,
+    optParens, parens, brackets, quotes,
     comma, commas,
     text, char, int, integer,
     hang, nest,
@@ -280,6 +280,9 @@ parens  = fmap PJ.parens
 
 brackets :: Doc -> Doc
 brackets  = fmap PJ.brackets
+
+quotes :: Doc -> Doc
+quotes d = char '`' <> d <> char '`'
 
 punctuate :: Doc -> [Doc] -> [Doc]
 punctuate p xs = go xs
