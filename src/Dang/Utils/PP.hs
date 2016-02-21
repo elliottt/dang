@@ -28,7 +28,7 @@ module Dang.Utils.PP (
     PP(..), pretty, pp,
 
     -- ** Combinators
-    (<>), (<+>), ($$),
+    (<>), (<+>), ($$), ($+$),
     fsep, sep, hsep, cat, vcat, punctuate,
     optParens, parens, brackets, quotes,
     comma, commas,
@@ -151,6 +151,7 @@ data Ann = AnnKeyword
          | AnnPunc
          | AnnLiteral
          | AnnComment
+         | AnnError
            deriving (Show)
 
 sgrFor :: Ann -> [Ansi.SGR]
@@ -158,6 +159,7 @@ sgrFor AnnKeyword = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Green]
 sgrFor AnnPunc    = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Yellow]
 sgrFor AnnLiteral = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Magenta]
 sgrFor AnnComment = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Green]
+sgrFor AnnError   = [Ansi.SetColor Ansi.Background Ansi.Dull  Ansi.Red]
 
 printDoc :: Config -> Doc -> IO ()
 printDoc  = hPrintDoc stdout
@@ -253,6 +255,9 @@ liftDoc2 f a b = f <$> a <*> b
 
 ($$) :: Doc -> Doc -> Doc
 ($$)  = liftDoc2 (PJ.$$)
+
+($+$) :: Doc -> Doc -> Doc
+($+$)  = liftDoc2 (PJ.$+$)
 
 fsep :: [Doc] -> Doc
 fsep ds = PJ.fsep <$> sequence ds
