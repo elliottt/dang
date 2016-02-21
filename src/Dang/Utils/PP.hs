@@ -48,7 +48,7 @@ import qualified Data.Text.Lazy as L
 import           MonadLib (ReaderT,Id,runReaderT,runId,ask,local)
 import qualified System.Console.ANSI as Ansi
 import qualified System.Console.Terminal.Size as Term
-import           System.IO (Handle,hPutStrLn,hPutStr,hPutChar,stdout)
+import           System.IO (Handle,hPutStr,hPutChar,stdout)
 import qualified Text.PrettyPrint.Annotated.HughesPJ as PJ
 
 
@@ -172,28 +172,32 @@ hPrintDoc h cfg doc =
               Just Term.Window { .. } -> return width
               Nothing                 -> return 80
 
-     fst $ PJ.fullRenderAnn PJ.PageMode len 1.5 format (hPutStrLn h "",[])
+     useAnsi <- Ansi.hSupportsANSI h
+
+     fst $ PJ.fullRenderAnn PJ.PageMode len 1.5 (format useAnsi) (return (),[])
          $ runDoc cfg doc
 
   where
 
-  format PJ.AnnotStart (rest,stack) = (rest',drop 1 stack)
+  format True PJ.AnnotStart (rest,stack) = (rest',drop 1 stack)
     where
     rest' = do Ansi.hSetSGR h []
                Ansi.hSetSGR h (concat stack)
                rest
 
-  format (PJ.AnnotEnd ann) (rest,stack) = (rest', sgrFor ann : stack)
+  format True (PJ.AnnotEnd ann) (rest,stack) = (rest', sgrFor ann : stack)
     where
     rest' = do Ansi.hSetSGR h []
                rest
 
-  format (PJ.NoAnnot td _) (rest,stack) = (fmt >> rest, stack)
+  format _ (PJ.NoAnnot td _) (rest,stack) = (fmt >> rest, stack)
     where
     fmt = case td of
             PJ.Chr  c -> hPutChar h c
             PJ.Str  s -> hPutStr  h s
             PJ.PStr s -> hPutStr  h s
+
+  format False _ x = x
 
 annotate :: Ann -> Doc -> Doc
 annotate ann m = PJ.annotate ann <$> m

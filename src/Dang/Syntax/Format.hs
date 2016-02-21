@@ -86,7 +86,7 @@ formatChunk src start chunk = (prefix <> go start toks, pad + 1)
 
   moveTo = spaceBetween (fromIntegral pad) gutter
 
-  prefix = moveTo start { posRow = posRow start - 1 } start
+  prefix = gutter (posRow start) <> moveTo start { posCol = 1 } start
 
   go pos (Located { .. }:ts) =
     moveTo pos (rangeStart locRange)
