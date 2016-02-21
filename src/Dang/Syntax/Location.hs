@@ -102,6 +102,11 @@ movePos c p
   | otherwise = p { posCol = posCol p + 1, posOff = posOff p + 1 }
 
 
+inRange :: Range -> Position -> Bool
+inRange Range { .. } = \ pos -> rangeStart <= pos && pos <= rangeEnd
+{-# INLINE inRange #-}
+
+
 zeroPos :: Position
 zeroPos  = Position { posRow = 1, posCol = 1, posOff = 0 }
 
