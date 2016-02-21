@@ -98,7 +98,7 @@ movePos :: Char -> Position -> Position
 movePos c p
   | c == '\t' = p { posCol = posCol p + 8, posOff = posOff p + 8 }
   | c == '\n' = p { posRow = posRow p + 1, posCol = 1, posOff = posOff p + 1 }
-  | c == '\r' = p
+  | c == '\r' = p { posOff = posOff p + 1 }
   | otherwise = p { posCol = posCol p + 1, posOff = posOff p + 1 }
 
 
