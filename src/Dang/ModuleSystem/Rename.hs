@@ -284,16 +284,29 @@ rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
 rnModBind :: Rename ModBind
 rnModBind ModBind { .. } = pushNamespace (thing mbName) $
   do n' <- rnLoc rnMName mbName
-     e' <- underMod mbName (rnModExpr mbExpr)
+     e' <- underMod mbName (rnModExpr (FromBind (thing n')) mbExpr)
      return ModBind { mbName = n', mbExpr = e' }
 
-rnModExpr :: Rename ModExpr
-rnModExpr (MEName n)           = MEName   <$> rnMName n
-rnModExpr (MEApp f x)          = MEApp    <$> rnModExpr f <*> rnModExpr x
-rnModExpr (MEStruct s)         = MEStruct <$> rnModStruct s
-rnModExpr (MEFunctor a sig e)  = undefined
-rnModExpr (MEConstraint n sig) = undefined
-rnModExpr (MELoc lm)           = MELoc <$> rnLoc rnModExpr lm
+rnModExpr :: ParamSource -> Rename ModExpr
+rnModExpr d = go
+  where
+  go (MEName n)           = MEName   <$> rnMName n
+  go (MEApp f x)          = MEApp    <$> go f <*> go x
+  go (MEStruct s)         = MEStruct <$> rnModStruct s
+  go (MEFunctor a sig e)  =
+    do p    <- newParam d a
+       sig' <- rnModType sig
+       withNames (envMod (thing a) [p]) (MEFunctor (p `at` a) sig' <$> go e)
+  go (MEConstraint n sig) = error "rnModExpr"
+  go (MELoc lm)           = MELoc <$> rnLoc go lm
+
+
+rnModType :: Rename ModType
+rnModType (MTVar n)          = MTVar <$> rnMName n
+rnModType (MTSig sig)        = error "rnModType"
+rnModType (MTFunctor n ty e) = error "rnModType"
+rnModType (MTLoc lmt)        = MTLoc <$> rnLoc rnModType lmt
+
 
 
 -- Expressions -----------------------------------------------------------------
