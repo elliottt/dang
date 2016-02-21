@@ -34,13 +34,14 @@ import qualified Data.Foldable as F
 import           Data.List (nub,partition)
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (catMaybes,fromMaybe)
+import qualified Data.Sequence as Seq
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 
 -- | Rename a top-level module.
-renameModule :: Module PName -> Dang (Either [Message] (Module Name), [Message])
+renameModule :: Module PName -> Dang (Either Messages (Module Name), Messages)
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -55,7 +56,7 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
 
 
 -- | Rename an expression.
-renameExpr :: Namespace -> Expr PName -> Dang (Either [Message] (Expr Name), [Message])
+renameExpr :: Namespace -> Expr PName -> Dang (Either Messages (Expr Name), Messages)
 renameExpr ns e = rename ns (rnExpr e)
 
 
@@ -71,10 +72,10 @@ instance SupplyM RN where
   withSupply f = inBase (withSupply f)
 
 
-rename :: Namespace -> RN a -> Dang (Either [Message] a, [Message])
+rename :: Namespace -> RN a -> Dang (Either Messages a, Messages)
 rename ns m =
   do (res,ms) <- collectMessages (runM (unRN m) RO { roNS = ns, roNames = mempty })
-     let (es,ws) = partition isError ms
+     let (es,ws) = Seq.partition isError ms
      if null es
         then return (Right res, ws)
         else return (Left es, ws)

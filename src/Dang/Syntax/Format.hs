@@ -23,7 +23,8 @@ formatMessage src txt (Message ty loc doc) = vcat
   , chunk
   , nest gutterLen (rangeUnderline loc)
   , text ""
-  , doc ]
+  , doc
+  , text "" ]
   where
   (chunk,gutterLen) = formatChunk src startPos (rangeText cxtLines loc txt)
 

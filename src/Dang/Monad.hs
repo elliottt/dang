@@ -14,6 +14,7 @@ module Dang.Monad (
   try,
 
   -- ** Messages
+  Messages,
   module Dang.Message,
   failErrors,
   collectMessages,
@@ -27,9 +28,7 @@ module Dang.Monad (
   ) where
 
 import Dang.Message
-import Dang.Syntax.Location
-           (Source(),Located(..),Range(..),HasLoc(..),rangeText,rangeUnderline
-           ,Position(..),zeroPos)
+import Dang.Syntax.Location (Located(..),Range(..),HasLoc(..))
 import Dang.Unique
 import Dang.Utils.PP
 
@@ -39,21 +38,22 @@ import           Control.Monad (MonadPlus(..),guard)
 import           Data.IORef
                      (IORef,newIORef,readIORef,writeIORef,atomicModifyIORef'
                      ,modifyIORef')
-import           Data.List (partition)
-import qualified Data.Text.Lazy as L
+import qualified Data.Sequence as Seq
 import           Data.Typeable (Typeable)
 import           MonadLib (RunM(..), BaseM(..), ReaderT, ask)
 
 
+type Messages = Seq.Seq Message
+
 data RO = RO { roLoc    :: !(IORef Range)
-             , roMsgs   :: !(IORef [Message])
+             , roMsgs   :: !(IORef Messages)
              , roSupply :: !(IORef Supply)
              }
 
 newRO :: IO RO
 newRO  =
   do roLoc    <- newIORef mempty
-     roMsgs   <- newIORef []
+     roMsgs   <- newIORef Seq.empty
      roSupply <- newIORef initialSupply
      return RO { .. }
 
@@ -144,28 +144,28 @@ withLoc loc body =
 failErrors :: DangM dang => dang a -> dang a
 failErrors m =
   do (a,ms) <- collectMessages m
-     let (es,ws) = partition isError ms
-     guard (null es)
+     let (es,ws) = Seq.partition isError ms
+     guard (Seq.null es)
      putMessages ws
      return a
 
-collectMessages :: DangM dang => dang a -> dang (a,[Message])
+collectMessages :: DangM dang => dang a -> dang (a,Messages)
 collectMessages m =
   do RO { .. } <- inBase (Dang ask)
-     orig      <- io (atomicModifyIORef' roMsgs (\ orig -> ([], orig)))
+     orig      <- io (atomicModifyIORef' roMsgs (\ orig -> (Seq.empty, orig)))
      a         <- m
      msgs      <- io (atomicModifyIORef' roMsgs (\ msgs -> (orig, msgs)))
      return (a,msgs)
 
-putMessages :: DangM dang => [Message] -> dang ()
+putMessages :: DangM dang => Messages -> dang ()
 putMessages ms = inBase $ Dang $
   do RO { .. } <- ask
-     inBase (modifyIORef' roMsgs (ms ++))
+     inBase (modifyIORef' roMsgs (ms Seq.><))
 
 addMessage :: (PP msg, DangM dang) => MessageType -> msg -> dang ()
 addMessage msgType msg = inBase $
   do msgSource <- askLoc
-     putMessages [Message { msgDoc = pp msg, .. }]
+     putMessages (Seq.singleton Message { msgDoc = pp msg, .. })
 
 addError :: (PP msg, DangM dang) => Error -> msg -> dang ()
 addError e = addMessage (Error e)

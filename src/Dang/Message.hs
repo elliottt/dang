@@ -50,6 +50,9 @@ instance Ord Message where
       cmp -> cmp
   {-# INLINE compare #-}
 
+instance HasLoc Message where
+  getLoc = msgSource
+
 
 mkError :: Error -> Range -> Doc -> Message
 mkError err msgSource msgDoc = Message { msgType = Error err, .. }
