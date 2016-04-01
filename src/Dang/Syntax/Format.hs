@@ -16,12 +16,12 @@ import qualified Data.Text.Lazy as L
 
 formatMessage :: Source -> L.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat
-  [ msgAnn (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
+  [ annotate msgAnn (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
   , text ""
   , describeMessageType ty
   , text ""
   , chunk
-  , nest gutterLen (msgAnn (rangeUnderline loc))
+  , nest gutterLen (rangeUnderline msgAnn loc)
   , text ""
   , doc
   , text "" ]
@@ -31,8 +31,8 @@ formatMessage src txt (Message ty loc doc) = vcat
   cxtLines = 3
 
   (tyDoc,msgAnn) = case ty of
-    Error{}   -> (text "[error]",   annotate AnnError)
-    Warning{} -> (text "[warning]", annotate AnnWarning)
+    Error{}   -> (text "[error]",   AnnError)
+    Warning{} -> (text "[warning]", AnnWarning)
 
   startRow = posRow (rangeStart loc) - fromIntegral cxtLines
   startPos = zeroPos { posRow = max 1 startRow }
@@ -42,8 +42,9 @@ formatMessage src txt (Message ty loc doc) = vcat
 
 
 -- | Generate a single underline for the range specified.
-rangeUnderline :: SrcRange -> Doc
-rangeUnderline Range { .. } = text (replicate (start - 1) ' ') <> text line
+rangeUnderline :: Ann -> SrcRange -> Doc
+rangeUnderline ann Range { .. } =
+  text (replicate (start - 1) ' ') <> annotate ann (text line)
   where
   start = fromIntegral (posCol rangeStart)
   end   = fromIntegral (posCol rangeEnd)
