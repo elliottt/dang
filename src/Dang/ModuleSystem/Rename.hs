@@ -17,7 +17,6 @@ module Dang.ModuleSystem.Rename (
     rnBind,
   ) where
 
-import Dang.Message (isError)
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
@@ -33,7 +32,6 @@ import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
 import           Data.List (nub)
 import           Data.Maybe (catMaybes,fromMaybe)
-import qualified Data.Sequence as Seq
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
@@ -169,6 +167,7 @@ newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
 
 newParam :: ParamSource -> SrcLoc PName -> RN Name
 newParam d Located { locValue = PUnqual t, .. } =
+  do io (print (t,pp locRange))
      withSupply (mkParam d t locRange)
 newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
 
@@ -385,7 +384,8 @@ conflict d ns =
 shadows :: PName -> ([Name],[Name]) -> RN ()
 shadows d (new,old)
   | null new || null old = panic "renamer" (text "Invalid use of `shadows`")
-  | otherwise            = addWarning WarnRnShadowing msg
+  | otherwise            =
+    withLoc (getLoc (head new)) (addWarning WarnRnShadowing msg)
   where
   msg = pp d <> char ',' <+> ppNameOrigin (head old)
     <+> text "is shadowed by"
