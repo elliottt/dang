@@ -4,7 +4,7 @@ module Main where
 
 import Dang.Monad
 import Dang.Syntax.Format (formatMessage)
-import Dang.Syntax.Location
+import Dang.Syntax.Location (Source(..),thing,Range(..),getLoc)
 import Dang.Syntax.Parser
 import Dang.ModuleSystem.Rename
 import Dang.Utils.PP

@@ -127,13 +127,16 @@ data Keyword = Kmodule
 
 -- Actions ---------------------------------------------------------------------
 
-type AlexAction = Maybe Source -> Int -> AlexInput -> Mode -> (Mode,[Located Token])
+type AlexAction = Maybe Source -> Int -> AlexInput -> Mode -> (Mode,[SrcLoc Token])
+
+move :: Char -> Position -> Position
+move  = movePos 8
 
 withInput :: (L.Text -> Token) -> Maybe Source -> Int -> AlexInput
-          -> Located Token
+          -> SrcLoc Token
 withInput mk rangeSource len AlexInput { .. } =
   mk txt `at` Range { rangeStart = aiPos
-                    , rangeEnd   = L.foldl' (flip movePos) aiPos txt
+                    , rangeEnd   = L.foldl' (flip move) aiPos txt
                     , .. }
   where
   txt = L.take (fromIntegral len) aiText
@@ -147,18 +150,18 @@ emits mk src len inp st = (st,[withInput mk src len inp])
 
 -- Lexer -----------------------------------------------------------------------
 
-ignoreComments :: [Located Token] -> [Located Token]
+ignoreComments :: [SrcLoc Token] -> [SrcLoc Token]
 ignoreComments  = filter (not . isComment . thing)
 
 lexer :: Source
       -> Maybe Position
       -> L.Text
-      -> [Located Token]
+      -> [SrcLoc Token]
 lexer src mbPos txt =
   go AlexInput { aiPos = startPos, aiText = txt } Normal
   where
 
-  startPos = fromMaybe (Position 1 1 0) mbPos
+  startPos = fromMaybe (Position 1 1) mbPos
 
   go inp st =
     case alexScan inp (modeToInt st) of
@@ -169,7 +172,7 @@ lexer src mbPos txt =
       -- chew up text until the next whitespace character, then continue
       AlexError inp' ->
         let (as,bs) = L.break isSpace (aiText inp')
-            pos'    = L.foldl (flip movePos) (aiPos inp') as
+            pos'    = L.foldl' (flip move) (aiPos inp') as
             inp2    = AlexInput { aiPos = pos', aiText = bs }
             loc     = Range { rangeStart = aiPos inp', rangeEnd = pos', .. }
         in (TError as `at` loc) : go inp2 st
@@ -196,7 +199,7 @@ data AlexInput = AlexInput { aiPos  :: !Position
 alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
 alexGetByte AlexInput { .. } =
   do (c,rest) <- L.uncons aiText
-     return (byteForChar c, AlexInput { aiText = rest, aiPos = movePos c aiPos, .. })
+     return (byteForChar c, AlexInput { aiText = rest, aiPos = move c aiPos, .. })
 
 
 -- Lexer Modes -----------------------------------------------------------------

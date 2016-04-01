@@ -6,8 +6,8 @@ module Dang.Syntax.Format where
 import Dang.Message (Message(..),MessageType(..),describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
 import Dang.Syntax.Location
-           (Source(..),Located(..),Position(..),Range(..),zeroPos,rangeText
-           ,rangeUnderline)
+           (SrcRange,Source(..),Located(..),Position(..),Range(..),zeroPos
+           ,rangeText)
 import Dang.Utils.PP
 
 import           Data.Int (Int64)
@@ -39,6 +39,19 @@ formatMessage src txt (Message ty loc doc) = vcat
 
   ppHeading msg =
     text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
+
+
+-- | Generate a single underline for the range specified.
+rangeUnderline :: SrcRange -> Doc
+rangeUnderline Range { .. } = text (replicate (start - 1) ' ') <> text line
+  where
+  start = fromIntegral (posCol rangeStart)
+  end   = fromIntegral (posCol rangeEnd)
+
+  len   = end - start
+
+  line | len > 1   = replicate len '~'
+       | otherwise = "^"
 
 
 -- | Draw the space defined by two positions. When a new line is started, invoke

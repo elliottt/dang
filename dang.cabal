@@ -20,7 +20,6 @@ library
                        Dang.Monad
                        Dang.Syntax.AST
                        Dang.Syntax.Format
-                       Dang.Syntax.Layout
                        Dang.Syntax.Lexer
                        Dang.Syntax.Location
                        Dang.Syntax.Parser
@@ -36,6 +35,7 @@ library
                        containers,
                        lens,
                        text,
+                       located,
                        terminal-size
   ghc-options:         -Wall
 

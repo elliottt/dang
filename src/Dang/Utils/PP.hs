@@ -37,6 +37,7 @@ module Dang.Utils.PP (
     emptyDoc,
   ) where
 
+import Dang.Syntax.Location
 import Dang.Utils.Ident
 
 
@@ -215,6 +216,19 @@ class PP a where
   ppr     :: a -> Doc
   pprList :: [a] -> Doc
   pprList as = brackets (fsep (commas (map pp as)))
+
+instance PP a => PP (Located src a) where
+  ppr Located { .. } = ppr locValue
+
+instance PP Position where
+  ppr Position { .. } = ppr posRow <> char ':' <> ppr posCol
+
+instance PP (Range src) where
+  ppr Range { .. } = ppr rangeStart <> char '-' <> ppr rangeEnd
+
+instance PP Source where
+  ppr Interactive = text "<interactive>"
+  ppr (File path) = text path
 
 instance PP a => PP [a] where
   ppr = pprList

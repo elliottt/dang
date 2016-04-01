@@ -28,11 +28,9 @@ import Dang.Utils.PP
 import Dang.Utils.Panic (panic)
 
 import           Control.Applicative (Alternative(..))
-import           Control.Lens (Lens',over,view)
 import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
-import           Data.List (nub,partition)
-import qualified Data.Map.Strict as Map
+import           Data.List (nub)
 import           Data.Maybe (catMaybes,fromMaybe)
 import qualified Data.Sequence as Seq
 import qualified Data.Text as T
@@ -107,7 +105,7 @@ withNames names m =
      names' <- overlapShadows names (roNames ro)
      RN (local ro { roNames = names' } (unRN m))
 
-underMod :: Located PName -> RN a -> RN a
+underMod :: SrcLoc PName -> RN a -> RN a
 underMod lmn m = RN $
   do ro <- ask
      local (ro { roNames = openMod (thing lmn) (roNames ro) })
@@ -157,19 +155,19 @@ mergeNames merge f as = F.foldlM step mempty as
 
 
 -- | Introduce a name from a binding site.
-newBind :: Located PName -> RN Name
+newBind :: SrcLoc PName -> RN Name
 newBind Located { locValue = PUnqual t, .. } =
   do ns <- getNamespace
      withSupply (mkBinding ns t locRange)
 newBind _ = panic "renamer" (text "Qualified name given to `newBind`")
 
-newMod :: Located PName -> RN Name
+newMod :: SrcLoc PName -> RN Name
 newMod Located { locValue = PUnqual t, .. } =
   do ns <- getNamespace
      withSupply (mkModName (Just [L.fromStrict ns]) t locRange)
 newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
 
-newParam :: ParamSource -> Located PName -> RN Name
+newParam :: ParamSource -> SrcLoc PName -> RN Name
 newParam d Located { locValue = PUnqual t, .. } =
      withSupply (mkParam d t locRange)
 newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
@@ -245,7 +243,7 @@ patNames d = go
 
 type Rename f = f PName -> RN (f Name)
 
-rnLoc :: (a -> RN b) -> Located a -> RN (Located b)
+rnLoc :: (a -> RN b) -> SrcLoc a -> RN (SrcLoc b)
 rnLoc f Located { .. } = withLoc locRange $
   do b <- f locValue
      return Located { locValue = b, .. }

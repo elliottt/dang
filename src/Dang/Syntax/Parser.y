@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Dang.Syntax.Parser (
     parseModule,
@@ -14,7 +15,6 @@ module Dang.Syntax.Parser (
 
 import Dang.Monad
 import Dang.Syntax.AST
-import Dang.Syntax.Layout
 import Dang.Syntax.Lexer
 import Dang.Syntax.Location
 import Dang.Utils.Ident
@@ -23,11 +23,12 @@ import Dang.Utils.Panic
 
 import           Data.Maybe (fromMaybe)
 import qualified Data.Text.Lazy as L
+import           Text.Location.Layout (Layout(..),layout)
 
 }
 
 
-%tokentype { Located Token }
+%tokentype { SrcLoc Token }
 
 %token
   QUAL_CON { $$ @ Located { locValue = TQualCon _ _    } }
@@ -115,18 +116,18 @@ mod_spec :: { ModSpec PName }
   | data_decl     { MSLoc (MSData        `fmap` $1) }
   | mod_bind_spec { MSLoc (uncurry MSMod `fmap` $1) }
 
-mod_bind_spec :: { Located (Located PName, ModType PName) }
+mod_bind_spec :: { SrcLoc (SrcLoc PName, ModType PName) }
   : 'module' mod_name ':' mod_type { ($2,$4) `at` ($1,$4) }
 
 
 -- Module Expressions ----------------------------------------------------------
 
-mod_bind :: { Located (ModBind PName) }
+mod_bind :: { SrcLoc (ModBind PName) }
   : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
     { ModBind { mbName = $2
               , mbExpr = mkFunctor $3 (restrictMod $4 $6) } `at` ($1,$6) }
 
-mod_param :: { (Located PName, ModType PName) }
+mod_param :: { (SrcLoc PName, ModType PName) }
   : '(' con ':' mod_type ')' { ($2,$4) }
 
 mod_restrict :: { ModType PName }
@@ -150,16 +151,16 @@ mod_aexpr :: { ModExpr PName }
   | qual_con         { MELoc (MEName `fmap` $1) }
   | '(' mod_expr ')' { $2                       }
 
-mod_struct :: { Located (ModStruct PName) }
+mod_struct :: { SrcLoc (ModStruct PName) }
   : 'struct' 'v{' sep('v;', decl) 'v}' { ModStruct $3 `at` ($1,$4) }
 
 
 -- Types -----------------------------------------------------------------------
 
-signature :: { Located (Sig PName) }
+signature :: { SrcLoc (Sig PName) }
   : sep1(',', ident) ':' schema { Sig $1 $3 `at` ($1,$3) }
 
-schema :: { Located (Schema PName) }
+schema :: { SrcLoc (Schema PName) }
   : 'forall' list1(ident) '.' type { Schema $2 $4 `at` ($1,$3) }
   |                           type { Schema [] $1 `at`  $1     }
 
@@ -178,7 +179,7 @@ atype :: { Type PName }
 
 -- Expressions -----------------------------------------------------------------
 
-bind :: { Located (Bind PName) }
+bind :: { SrcLoc (Bind PName) }
   : ident list(pat) '=' expr
     { Bind { bName   = $1
            , bSchema = Nothing
@@ -210,22 +211,22 @@ aexpr :: { Expr PName }
   | lit          { ELoc (ELit `fmap` $1) }
   | '(' expr ')' { $2                    }
 
-lit :: { Located Literal }
+lit :: { SrcLoc Literal }
   : NUM { case thing $1 of TNum base n -> LInt base n `at` $1 }
 
 
 -- Data Declarations -----------------------------------------------------------
 
-data_decl :: { Located (Data PName) }
+data_decl :: { SrcLoc (Data PName) }
   : 'type' con list(ident) opt(data_constrs)
     { Data { dName = $2
            , dParams = $3
            , dConstrs = fromMaybe [] $4 } `at` ($1,$2,$3,$4) }
 
-data_constrs :: { [Located (Constr PName)] }
+data_constrs :: { [SrcLoc (Constr PName)] }
   : '=' sep1('|', data_constr) { $2 }
 
-data_constr :: { Located (Constr PName) }
+data_constr :: { SrcLoc (Constr PName) }
   : con list(atype)
     { Constr { cName = $1
              , cParams = $2 } `at` ($1,$2) }
@@ -233,21 +234,21 @@ data_constr :: { Located (Constr PName) }
 
 -- Names -----------------------------------------------------------------------
 
-mod_name :: { Located PName }
+mod_name :: { SrcLoc PName }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
   | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
-con :: { Located PName }
+con :: { SrcLoc PName }
   : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
 
-qual_con :: { Located PName }
+qual_con :: { SrcLoc PName }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
 
-qual_ident :: { Located PName }
+qual_ident :: { SrcLoc PName }
   : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
 
 -- identifiers are unqualified parsed-names
-ident :: { Located PName }
+ident :: { SrcLoc PName }
   : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
 
 
@@ -284,7 +285,7 @@ list_body(p)
 
 {
 
-lexWithLayout :: Source -> Maybe Position -> L.Text -> [Located Token]
+lexWithLayout :: Source -> Maybe Position -> L.Text -> [SrcLoc Token]
 lexWithLayout src mbStart txt =
   layout Layout { .. } (ignoreComments (lexer src mbStart txt))
   where
@@ -305,7 +306,7 @@ parseModule src txt = failErrors (top_module (lexWithLayout src Nothing txt))
 
 -- Parser Monad ----------------------------------------------------------------
 
-parseError :: [Located Token] -> Dang a
+parseError :: [SrcLoc Token] -> Dang a
 parseError toks =
   do case toks of
        loc : _ -> addLoc loc $ \case
@@ -335,7 +336,7 @@ mkEApp _      = panic "parser" (text "mkEApp: empty list")
 addParams :: [Pat PName] -> Expr PName -> Match PName
 addParams ps e = foldr MPat (MExpr e) ps
 
-mkFunctor :: [(Located PName, ModType PName)] -> ModExpr PName -> ModExpr PName
+mkFunctor :: [(SrcLoc PName, ModType PName)] -> ModExpr PName -> ModExpr PName
 mkFunctor [] e = e
 mkFunctor ps e = foldr (uncurry MEFunctor) e ps
 

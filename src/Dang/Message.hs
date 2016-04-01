@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Dang.Message where
 
@@ -33,7 +34,7 @@ describeMessageType (Error err)    = describeError err
 describeMessageType (Warning warn) = describeWarning warn
 
 data Message = Message { msgType   :: !MessageType
-                       , msgSource :: !Range
+                       , msgSource :: !SrcRange
                        , msgDoc    :: Doc
                        } deriving (Show)
 
@@ -51,10 +52,11 @@ instance Ord Message where
   {-# INLINE compare #-}
 
 instance HasLoc Message where
+  type LocSource Message = Source
   getLoc = msgSource
 
 
-mkError :: Error -> Range -> Doc -> Message
+mkError :: Error -> SrcRange -> Doc -> Message
 mkError err msgSource msgDoc = Message { msgType = Error err, .. }
 {-# INLINE mkError #-}
 
@@ -62,7 +64,7 @@ isError :: Message -> Bool
 isError Message { msgType = Error{} } = True
 isError _                             = False
 
-mkWarning :: Warning -> Range -> Doc -> Message
+mkWarning :: Warning -> SrcRange -> Doc -> Message
 mkWarning warn msgSource msgDoc = Message { msgType = Warning warn, .. }
 {-# INLINE mkWarning #-}
 

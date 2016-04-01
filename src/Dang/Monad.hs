@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ParallelListComp #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Dang.Monad (
   Dang(), runDang,
@@ -28,7 +29,7 @@ module Dang.Monad (
   ) where
 
 import Dang.Message
-import Dang.Syntax.Location (Located(..),Range(..),HasLoc(..))
+import Dang.Syntax.Location (Source,SrcLoc,Located(..),SrcRange,HasLoc(..))
 import Dang.Unique
 import Dang.Utils.PP
 
@@ -45,7 +46,7 @@ import           MonadLib (RunM(..), BaseM(..), ReaderT, ask)
 
 type Messages = Seq.Seq Message
 
-data RO = RO { roLoc    :: !(IORef Range)
+data RO = RO { roLoc    :: !(IORef SrcRange)
              , roMsgs   :: !(IORef Messages)
              , roSupply :: !(IORef Supply)
              }
@@ -118,17 +119,17 @@ try m = (Just <$> m) `mplus` pure Nothing
 -- Location Management ---------------------------------------------------------
 
 -- | Retrieve the current source location.
-askLoc :: DangM dang => dang Range
+askLoc :: DangM dang => dang SrcRange
 askLoc  =
   do RO { .. } <- inBase (Dang ask)
      io (readIORef roLoc)
 
 -- | Examine a located value, in the context of its location.
-addLoc :: DangM dang => Located a -> (a -> dang b) -> dang b
+addLoc :: DangM dang => SrcLoc a -> (a -> dang b) -> dang b
 addLoc Located { .. } f = withLoc locRange (f locValue)
 
 -- | Run a sub-computation with a new source location.
-withLoc :: (HasLoc loc, DangM dang) => loc -> dang a -> dang a
+withLoc :: (LocSource loc ~ Source, HasLoc loc, DangM dang) => loc -> dang a -> dang a
 withLoc loc body =
   do RO { .. } <- inBase (Dang ask)
      orig      <- io (atomicModifyIORef' roLoc (\ orig -> (getLoc loc, orig)))
