@@ -167,7 +167,6 @@ newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
 
 newParam :: ParamSource -> SrcLoc PName -> RN Name
 newParam d Located { locValue = PUnqual t, .. } =
-  do io (print (t,pp locRange))
      withSupply (mkParam d t locRange)
 newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
 
