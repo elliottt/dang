@@ -38,19 +38,6 @@ data Message = Message { msgType   :: !MessageType
                        , msgDoc    :: Doc
                        } deriving (Show)
 
-instance Eq Message where
-  a == b = msgSource a == msgSource b && msgType a == msgType b
-  a /= b = msgSource a /= msgSource b && msgType a /= msgType b
-  {-# INLINE (==) #-}
-  {-# INLINE (/=) #-}
-
-instance Ord Message where
-  compare a b =
-    case compare (msgSource a) (msgSource b) of
-      EQ  -> compare (msgType a) (msgType b)
-      cmp -> cmp
-  {-# INLINE compare #-}
-
 instance HasLoc Message where
   type LocSource Message = Source
   getLoc = msgSource

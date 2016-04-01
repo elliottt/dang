@@ -17,6 +17,7 @@ module Dang.ModuleSystem.Rename (
     rnBind,
   ) where
 
+import Dang.Message (isError)
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
@@ -39,7 +40,7 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
 
 -- | Rename a top-level module.
-renameModule :: Module PName -> Dang (Either Messages (Module Name), Messages)
+renameModule :: Module PName -> Dang (Maybe (Module Name), Messages)
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -54,7 +55,7 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
 
 
 -- | Rename an expression.
-renameExpr :: Namespace -> Expr PName -> Dang (Either Messages (Expr Name), Messages)
+renameExpr :: Namespace -> Expr PName -> Dang (Maybe (Expr Name), Messages)
 renameExpr ns e = rename ns (rnExpr e)
 
 
@@ -70,13 +71,12 @@ instance SupplyM RN where
   withSupply f = inBase (withSupply f)
 
 
-rename :: Namespace -> RN a -> Dang (Either Messages a, Messages)
+rename :: Namespace -> RN a -> Dang (Maybe a, Messages)
 rename ns m =
   do (res,ms) <- collectMessages (runM (unRN m) RO { roNS = ns, roNames = mempty })
-     let (es,ws) = Seq.partition isError ms
-     if null es
-        then return (Right res, ws)
-        else return (Left es, ws)
+     if F.any isError ms
+        then return (Nothing,  ms)
+        else return (Just res, ms)
 
 data RO = RO { roNS    :: Namespace
              , roNames :: NameMap

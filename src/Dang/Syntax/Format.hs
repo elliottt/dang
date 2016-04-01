@@ -3,7 +3,7 @@
 
 module Dang.Syntax.Format where
 
-import Dang.Message (Message(..),MessageType(..),describeMessageType)
+import Dang.Message (Message(..),MessageType(..),isError,describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
 import Dang.Syntax.Location
            (SrcRange,Source(..),Located(..),Position(..),Range(..),zeroPos
@@ -16,12 +16,12 @@ import qualified Data.Text.Lazy as L
 
 formatMessage :: Source -> L.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat
-  [ ppHeading (show (tyDoc <+> pp src <+> pp loc))
+  [ msgAnn (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
   , text ""
   , describeMessageType ty
   , text ""
   , chunk
-  , nest gutterLen (rangeUnderline loc)
+  , nest gutterLen (msgAnn (rangeUnderline loc))
   , text ""
   , doc
   , text "" ]
@@ -30,9 +30,9 @@ formatMessage src txt (Message ty loc doc) = vcat
 
   cxtLines = 3
 
-  tyDoc = case ty of
-    Error{}   -> text "[error]"
-    Warning{} -> text "[warning]"
+  (tyDoc,msgAnn) = case ty of
+    Error{}   -> (text "[error]",   annotate AnnError)
+    Warning{} -> (text "[warning]", annotate AnnWarning)
 
   startRow = posRow (rangeStart loc) - fromIntegral cxtLines
   startPos = zeroPos { posRow = max 1 startRow }
@@ -96,7 +96,7 @@ formatChunk src start chunk = (prefix <> go start toks, pad + 1)
         num = text $ showString (replicate (pad - length str) ' ')
                    $ showString str ""
 
-     in num <> annotate AnnPunc (char '|')
+     in annotate AnnGutter (num <> char '|')
 
   moveTo = spaceBetween (fromIntegral pad) gutter
 

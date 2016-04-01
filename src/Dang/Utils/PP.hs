@@ -153,14 +153,18 @@ data Ann = AnnKeyword
          | AnnLiteral
          | AnnComment
          | AnnError
+         | AnnWarning
+         | AnnGutter
            deriving (Show)
 
 sgrFor :: Ann -> [Ansi.SGR]
 sgrFor AnnKeyword = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Green]
-sgrFor AnnPunc    = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Yellow]
+sgrFor AnnPunc    = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Yellow]
 sgrFor AnnLiteral = [Ansi.SetColor Ansi.Foreground Ansi.Vivid Ansi.Magenta]
 sgrFor AnnComment = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Green]
-sgrFor AnnError   = [Ansi.SetColor Ansi.Background Ansi.Dull  Ansi.Red]
+sgrFor AnnError   = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Red]
+sgrFor AnnWarning = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.Yellow]
+sgrFor AnnGutter  = [Ansi.SetColor Ansi.Foreground Ansi.Dull  Ansi.White]
 
 printDoc :: Config -> Doc -> IO ()
 printDoc  = hPrintDoc stdout

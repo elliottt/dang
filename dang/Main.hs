@@ -42,12 +42,11 @@ main  = runDang $
                Just pMod -> return pMod
                Nothing   -> io exitFailure
 
-     (rnMod,ws) <- renameModule pMod
-     dumpMessages ws
+     (rnMod,ms) <- renameModule pMod
+     dumpMessages ms
      case rnMod of
-       Right m   -> io (print m)
-       Left errs -> do dumpMessages errs
-                       io exitFailure
+       Just m  -> io (print m)
+       Nothing -> io exitFailure
 
      io (print rnMod)
 
