@@ -6,6 +6,7 @@ import Dang.Monad
 import Dang.Syntax.Format (formatMessage)
 import Dang.Syntax.Location (Source(..),thing,Range(..),getLoc)
 import Dang.Syntax.Parser
+import Dang.Syntax.Signatures (resolveSignatures)
 import Dang.ModuleSystem.Rename
 import Dang.Utils.PP
 
@@ -35,19 +36,12 @@ main  = runDang $
               $ sortBy (comparing (rangeStart . getLoc))
               $ F.toList ms
 
-     (mbMod,ms) <- collectMessages (try (parseModule Interactive txt))
+     (mbMod,ms) <- collectMessages $ try $
+       do pMod <- parseModule Interactive txt
+          sMod <- resolveSignatures pMod
+          renameModule sMod
+
      dumpMessages ms
-
-     pMod <- case mbMod of
-               Just pMod -> return pMod
-               Nothing   -> io exitFailure
-
-     (rnMod,ms) <- renameModule pMod
-     dumpMessages ms
-     case rnMod of
-       Just m  -> io (print m)
-       Nothing -> io exitFailure
-
-     io (print rnMod)
+     io (print mbMod)
 
 

@@ -9,15 +9,19 @@ import Dang.Utils.PP
 
 data Error = ErrLexer
            | ErrParser
+           | ErrDuplicateSig
+           | ErrNoDeclForSig
            | ErrRnOverlap
            | ErrRnUnknown
              deriving (Show,Eq,Ord)
 
 describeError :: Error -> Doc
-describeError ErrLexer     = text "Lexcial error"
-describeError ErrParser    = text "Parse error"
-describeError ErrRnOverlap = text "Names overlap"
-describeError ErrRnUnknown = text "Name not in scope"
+describeError ErrLexer        = text "Lexcial error"
+describeError ErrParser       = text "Parse error"
+describeError ErrDuplicateSig = text "Duplicate type signature for declaration"
+describeError ErrNoDeclForSig = text "Type signature is missing a declaration"
+describeError ErrRnOverlap    = text "Names overlap"
+describeError ErrRnUnknown    = text "Name not in scope"
 
 data Warning = WarnRnShadowing
                deriving (Show,Eq,Ord)
