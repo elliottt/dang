@@ -22,12 +22,13 @@ instance X.Exception Panic
 instance PP Panic where
   ppr (Panic cxt msg) =
     vcat [ line "PANIC"
-         , hang (vcat (map ppCxt stack) <> char ':') 2 msg
+         , msg
+         , text ""
+         , hang (text "from") 2 (vcat (map ppCxt stack))
          , line "PANIC"
          ]
     where
-    -- remove the use of `panic`
-    stack = drop 1 (getCallStack cxt)
+    stack = getCallStack cxt
 
     line str =
       let len = 80 - length str - 4
@@ -35,9 +36,10 @@ instance PP Panic where
 
     ppCxt (fun,SrcLoc { .. }) = text srcLocModule
                              <> char ':'
-                             <> text fun
-                             <> parens(ppr srcLocStartLine <> char ','
-                                       <> ppr srcLocStartCol)
+                             <> ppr srcLocStartLine
+                             <> char ','
+                             <> ppr srcLocStartCol
+                             <+> text fun
 
 
 panic :: (HasCallStack, PP msg) => msg -> a

@@ -32,6 +32,7 @@ data ModInfo = ModInfo { modName :: !Namespace
                        } deriving (Eq,Ord,Show)
 
 data ParamSource = FromBind !Name
+                 | FromSig !Name
                  | FromFunctor !Name
                  | FromLambda !SrcRange
                    deriving (Eq,Ord,Show)
@@ -149,6 +150,9 @@ ppNameOrigin Name { .. } =
 
     Parameter (FromBind fn) ->
       text "parameter to" <+> quotes (pp fn) <+> text "at" <+> pp nFrom
+
+    Parameter (FromSig sig) ->
+      text "type parameter to" <+> quotes (pp sig) <+> text "at" <+> pp nFrom
 
     Parameter (FromFunctor f) ->
       text "parameter to functor" <+> quotes (pp f) <+> text "at" <+> pp nFrom

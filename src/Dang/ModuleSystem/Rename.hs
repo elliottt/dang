@@ -10,13 +10,13 @@ module Dang.ModuleSystem.Rename (
 
     rnLoc,
     rnModStruct,
-    rnModBind,
     rnSchema,
     rnMatch,
     rnDecl,
     rnBind,
   ) where
 
+import Dang.AST
 import Dang.Monad
 import Dang.Syntax.AST
 import Dang.Syntax.Location
@@ -25,12 +25,12 @@ import Dang.ModuleSystem.Name
 import Dang.Unique (SupplyM,withSupply)
 import Dang.Utils.Ident (Namespace,packNamespaceLazy)
 import Dang.Utils.PP
-import Dang.Utils.Panic (panic)
+import Dang.Utils.Panic
 
 import           Control.Applicative (Alternative(..))
 import           Control.Monad (MonadPlus)
 import qualified Data.Foldable as F
-import           Data.List (nub)
+import           Data.List (nub,partition)
 import           Data.Maybe (catMaybes,fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
@@ -39,7 +39,7 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 type RNModule = Module (Parsed Name)
 
 -- | Rename a top-level module.
-renameModule :: PModule -> Dang RNModule
+renameModule :: HasCallStack => PModule -> Dang RNModule
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -136,7 +136,7 @@ overlapShadows l r =
   pair a b             = Just (fromMaybe [] a, fromMaybe [] b)
 
 
-type GetNames f = f (Parsed (SrcLoc PName)) -> RN NameMap
+type GetNames f = f P -> RN NameMap
 
 -- | Merge names, with a monadic implementation of 'mappend'.
 mergeNames :: Traversable f
@@ -184,13 +184,14 @@ letDeclNames LDSig{}        = return mempty
 -- traverse into module definitions, introducing names for visible bindings.
 declNames :: GetNames Decl
 declNames (DBind  l b)     = withLoc l (bindName b)
-declNames (DModBind l mb)  = withLoc l (modBindNames mb)
+declNames (DModBind l n t) = withLoc l (modBindNames n t)
 declNames (DData l d)      = withLoc l (dataNames d)
 declNames DSig{}           = return mempty
+declNames DModType{}       = return mempty
 
 -- | Names introduced by a module binding.
-modBindNames :: GetNames ModBind
-modBindNames ModBind { .. } =
+modBindNames :: IdentOf P -> ModExpr P -> RN NameMap
+modBindNames mbName mbExpr =
   addLoc mbName $ \ ns -> pushNamespace ns $
     do n'    <- newMod mbName
        names <- modExprNames mbExpr
@@ -232,6 +233,10 @@ patNames d = go
     do n <- newParam d ln
        return (envDecl (thing ln) [n])
 
+-- | Introduce parameters for this schema.
+schemaNames :: GetNames Schema
+schemaNames  = undefined
+
 
 -- Renaming --------------------------------------------------------------------
 
@@ -263,20 +268,30 @@ rnModStruct :: Rename ModStruct
 rnModStruct (ModStruct l ds) = withLoc l (ModStruct l <$> traverse rnDecl ds)
 
 -- | Rename a declaration.
-rnDecl :: Rename Decl
-rnDecl (DBind l b)     = withLoc l (DBind    l <$> rnBind b)
-rnDecl (DModBind l mb) = withLoc l (DModBind l <$> rnModBind mb)
-rnDecl (DSig l s)      = panic $ text "Unexpected signature found"
-                              $$ text (show s)
+rnDecl :: HasCallStack => Rename Decl
+rnDecl (DBind l b)      = withLoc l (DBind    l <$> rnBind b)
+rnDecl (DSig l s)       = withLoc l (DSig     l <$> rnSig s)
+rnDecl (DData l d)      = withLoc l (DData    l <$> rnData d)
 
--- | Rename a module binding.
-rnModBind :: Rename ModBind
-rnModBind ModBind { .. } = pushNamespace (thing mbName) $
-  do n' <- rnLoc rnMName mbName
-     e' <- underMod mbName (rnModExpr (FromBind n') mbExpr)
-     return ModBind { mbName = n', mbExpr = e', .. }
+rnDecl (DModType l m t) = withLoc l $
+  do n' <- rnLoc rnMName m
+     t' <- underMod m (rnModType (FromBind n') t)
+     return (DModType l n' t')
 
-rnModExpr :: ParamSource -> Rename ModExpr
+rnDecl (DModBind l m e) = withLoc l $
+  do n' <- rnLoc rnMName m
+     e' <- underMod m (rnModExpr (FromBind n') e)
+     return (DModBind l n' e')
+
+-- | Rename a signature.
+rnSig :: HasCallStack => Rename Sig
+rnSig Sig { .. } = withLoc sigMeta $
+  do n'     <- rnLoc rnEName sigName
+     schema <- rnSchema sigSchema
+     return Sig { sigName = n', sigSchema = schema, .. }
+
+
+rnModExpr :: HasCallStack => ParamSource -> Rename ModExpr
 rnModExpr d = go
   where
   go (MEName l n)           = withLoc l (MEName   l <$> rnLoc rnMName n)
@@ -284,16 +299,23 @@ rnModExpr d = go
   go (MEStruct l s)         = withLoc l (MEStruct l <$> rnModStruct s)
   go (MEFunctor l a sig e)  = withLoc l $
     do p    <- newParam d a
-       sig' <- rnModType sig
+       sig' <- rnModType d sig
        withNames (envMod (thing a) [p]) (MEFunctor l p sig' <$> go e)
-  go (MEConstraint l n sig) = error "rnModExpr"
+
+  go (MEConstraint l n sig) = panic (text "rnModExpr")
 
 
-rnModType :: Rename ModType
-rnModType (MTVar l n)          = withLoc l (MTVar l <$> rnLoc rnMName n)
-rnModType (MTSig l sig)        = error "rnModType"
-rnModType (MTFunctor l n ty e) = error "rnModType"
+rnModType :: HasCallStack => ParamSource -> Rename ModType
+rnModType d = go
+  where
+  go :: Rename ModType
+  go (MTVar l n)          = withLoc l (MTVar l <$> rnLoc rnMName n)
+  go (MTSig l sig)        = panic (text "rnModType")
+  go (MTFunctor l n ty e) = panic (text "rnModType")
 
+
+rnData :: HasCallStack => Rename Data
+rnData  = panic (text "rnData")
 
 
 -- Expressions -----------------------------------------------------------------
@@ -355,7 +377,8 @@ rnLetDecl (LDSig l s)  = panic (text "signature found in let binding")
 -- Types -----------------------------------------------------------------------
 
 rnSchema :: Rename Schema
-rnSchema  = error "rnSchema"
+rnSchema (Schema l ps ty) = withLoc l $
+  do undefined
 
 
 -- Errors/Warnings -------------------------------------------------------------

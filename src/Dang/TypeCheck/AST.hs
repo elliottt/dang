@@ -10,7 +10,7 @@ module Dang.TypeCheck.AST where
 import Dang.AST
 import Dang.ModuleSystem.Name
 import Dang.Syntax.AST hiding (Type(..),Schema,TVar)
-import Dang.Syntax.Location (SrcRange)
+import Dang.Syntax.Location
 import Dang.Utils.PP
 
 import GHC.Generics (Generic)
@@ -29,6 +29,13 @@ data Type = TFree !TVar
           | TFun !Type !Type
             deriving (Eq,Ord,Show,Generic)
 
+data BindMeta = BindMeta SrcRange Schema
+                deriving (Show)
+
+instance HasLoc BindMeta where
+  type LocSource BindMeta = Source
+  getLoc (BindMeta l _) = l
+
 
 -- AST -------------------------------------------------------------------------
 
@@ -42,9 +49,8 @@ instance Syn Checked where
   type MetaOf   Checked Module    = SrcRange
   type MetaOf   Checked ModStruct = SrcRange
   type MetaOf   Checked Decl      = SrcRange
-  type MetaOf   Checked Bind      = SrcRange
+  type MetaOf   Checked Bind      = BindMeta
   type MetaOf   Checked Sig       = SrcRange
-  type MetaOf   Checked ModBind   = SrcRange
   type MetaOf   Checked ModType   = SrcRange
   type MetaOf   Checked ModSpec   = SrcRange
   type MetaOf   Checked ModExpr   = SrcRange

@@ -38,7 +38,6 @@ instance Syn (Parsed ident) where
   type MetaOf   (Parsed ident) Decl      = SrcRange
   type MetaOf   (Parsed ident) Bind      = SrcRange
   type MetaOf   (Parsed ident) Sig       = SrcRange
-  type MetaOf   (Parsed ident) ModBind   = SrcRange
   type MetaOf   (Parsed ident) ModType   = SrcRange
   type MetaOf   (Parsed ident) ModSpec   = SrcRange
   type MetaOf   (Parsed ident) ModExpr   = SrcRange
@@ -78,8 +77,8 @@ data ModStruct syn = ModStruct { msMeta  :: MetaOf syn ModStruct
 data Decl syn = DBind    (MetaOf syn Decl) (Bind syn)
               | DSig     (MetaOf syn Decl) (Sig syn)
               | DData    (MetaOf syn Decl) (Data syn)
-              | DModBind (MetaOf syn Decl) (ModBind syn)
-              | DModType (MetaOf syn Decl) (ModType syn)
+              | DModBind (MetaOf syn Decl) (IdentOf syn) (ModExpr syn)
+              | DModType (MetaOf syn Decl) (IdentOf syn) (ModType syn)
                 deriving (Generic)
 
 data Bind syn = Bind { bMeta   :: MetaOf syn Bind
@@ -89,14 +88,9 @@ data Bind syn = Bind { bMeta   :: MetaOf syn Bind
                      } deriving (Generic)
 
 data Sig syn = Sig { sigMeta   :: MetaOf syn Sig
-                   , sigNames  :: [IdentOf syn]
+                   , sigName   :: IdentOf syn
                    , sigSchema :: SchemaOf syn
                    } deriving (Generic)
-
-data ModBind syn = ModBind { mbMeta :: MetaOf syn ModBind
-                           , mbName :: IdentOf syn
-                           , mbExpr :: ModExpr syn
-                           } deriving (Generic)
 
 data ModType syn = MTVar     (MetaOf syn ModType) (IdentOf syn)
                  | MTSig     (MetaOf syn ModType) [ModSpec syn]
@@ -165,15 +159,28 @@ data Type syn = TCon (MetaOf syn Type) (IdentOf syn)
                 deriving (Generic)
 
 
+-- Helpers ---------------------------------------------------------------------
+
+class HasSig f where
+  isSig :: f syn -> Bool
+
+instance HasSig Decl where
+  isSig DSig{} = True
+  isSig _      = False
+
+instance HasSig LetDecl where
+  isSig LDSig{} = True
+  isSig _       = False
+
+
 -- Instances -------------------------------------------------------------------
 
 type Cxt f syn = All f syn '[Bind,Expr,LetDecl,Sig,Match,Pat,Literal,Data,Constr
-                            ,Decl,ModType,ModSpec,ModBind,ModExpr,ModStruct
+                            ,Decl,ModType,ModSpec,ModExpr,ModStruct
                             ,Module]
 
 deriving instance Cxt Show syn => Show (Module    syn)
 deriving instance Cxt Show syn => Show (ModStruct syn)
-deriving instance Cxt Show syn => Show (ModBind   syn)
 deriving instance Cxt Show syn => Show (ModSpec   syn)
 deriving instance Cxt Show syn => Show (ModExpr   syn)
 deriving instance Cxt Show syn => Show (ModType   syn)
@@ -220,10 +227,6 @@ instance HasLoc (Data (Parsed ident)) where
 instance HasLoc (Constr (Parsed ident)) where
   type LocSource (Constr (Parsed ident)) = Source
   getLoc Constr { .. } = cMeta
-
-instance HasLoc (ModBind (Parsed ident)) where
-  type LocSource (ModBind (Parsed ident)) = Source
-  getLoc ModBind { .. } = mbMeta
 
 instance HasLoc (ModExpr (Parsed ident)) where
   type LocSource (ModExpr (Parsed ident)) = Source

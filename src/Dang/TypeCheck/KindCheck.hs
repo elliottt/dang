@@ -4,14 +4,15 @@ module Dang.TypeCheck.KindCheck (checkModule) where
 
 import Dang.ModuleSystem.Name (Name)
 import Dang.Monad
+import Dang.Syntax.AST
 import Dang.TypeCheck.AST as TC
 import Dang.TypeCheck.Monad
 import Dang.Utils.Panic
 
-import Dang.Syntax.AST
+import Data.List (partition)
 
 
-checkModule :: Module (Parsed Name) -> Dang (Module Checked)
+checkModule :: HasCallStack => Module (Parsed Name) -> Dang (Module Checked)
 checkModule m = runTC (kcModule m)
 
 
@@ -19,10 +20,13 @@ checkModule m = runTC (kcModule m)
 
 type KindCheck f = f (Parsed Name) -> TC (f Checked)
 
-kcModule :: KindCheck Module
+kcModule :: HasCallStack => KindCheck Module
 kcModule Module { .. } = withLoc modMeta $
-  do decls' <- traverse kcDecl modDecls
+  do decls' <- kcStructDecls modDecls
      return Module { modDecls = decls', .. }
 
-kcDecl :: HasCallStack => KindCheck Decl
-kcDecl  = panic "foobers"
+kcStructDecls :: HasCallStack => [Decl (Parsed Name)] -> TC [Decl Checked]
+kcStructDecls ds =
+  do let (sigs,rest) = partition isSig ds
+
+     panic ("not done" ++ show sigs)

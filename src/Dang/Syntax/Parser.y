@@ -89,49 +89,52 @@ top_module :: { Module P }
              , modDecls = $5 } }
 
 top_decls :: { [Decl P] } -- { ([Import],[Decl P]) }
-  : {- empty -}      { [] }
-  | sep1('v;', decl) { $1 }
+  : {- empty -}      { []        }
+  | sep1('v;', decl) { concat $1 }
 
 -- Declarations ----------------------------------------------------------------
 
-decl :: { Decl P }
-  : signature { DSig     (getLoc $1) $1 }
-  | bind      { DBind    (getLoc $1) $1 }
-  | data_decl { DData    (getLoc $1) $1 }
-  | mod_bind  { DModBind (getLoc $1) $1 }
+decl :: { [Decl P] }
+  : signature     { [ DSig (getLoc sig) sig | sig <- $1 ] }
+  | bind          { [DBind (getLoc $1) $1] }
+  | data_decl     { [DData (getLoc $1) $1] }
+  | mod_bind      { [$1] }
+  | mod_type_bind { [$1] }
 
 
 -- Module Types ----------------------------------------------------------------
+
+mod_type_bind :: { Decl P }
+  : 'module' 'type' con '=' mod_type
+    { DModType (getLoc ($1,$5)) $3 $5 }
 
 mod_type :: { ModType P }
   : con
     { MTVar (getLoc $1) $1 }
 
   | 'sig' 'v{' sep1('v;', mod_spec) 'v}'
-    { MTSig (getLoc ($1,$4)) $3 }
+    { MTSig (getLoc ($1,$4)) (concat $3) }
 
   | 'functor' list1(mod_param) '->' mod_type
     { let { mk (p,ty) r = MTFunctor (getLoc (p,r)) p ty r
           } in foldr mk $4 $2 }
 
-mod_spec :: { ModSpec P }
+mod_spec :: { [ModSpec P] }
   : signature
-    { MSSig (getLoc $1) $1 }
+    { [ MSSig (getLoc sig) sig | sig <- $1 ] }
 
   | data_decl
-    { MSData (getLoc $1) $1 }
+    { [MSData (getLoc $1) $1] }
 
   | 'module' mod_name ':' mod_type
-    { MSMod (getLoc ($1,$4)) $2 $4 }
+    { [MSMod (getLoc ($1,$4)) $2 $4] }
 
 
 -- Module Expressions ----------------------------------------------------------
 
-mod_bind :: { ModBind P }
+mod_bind :: { Decl P }
   : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
-    { ModBind { mbMeta = getLoc ($1,$6)
-              , mbName = $2
-              , mbExpr = mkFunctor $3 (restrictMod $4 $6) } }
+    { DModBind (getLoc ($1,$6)) $2 (mkFunctor $3 (restrictMod $4 $6)) }
 
 mod_param :: { (IdentOf P, ModType P) }
   : '(' con ':' mod_type ')'
@@ -163,17 +166,18 @@ mod_aexpr :: { ModExpr P }
 
 mod_struct :: { ModStruct P }
   : 'struct' 'v{' sep('v;', decl) 'v}'
-    { ModStruct (getLoc ($1,$4)) $3 }
+    { ModStruct (getLoc ($1,$4)) (concat $3) }
 
 
 -- Types -----------------------------------------------------------------------
 
-signature :: { Sig P }
+signature :: { [Sig P] }
   : sep1(',', ident) ':' schema
-    { Sig { sigMeta   = listLoc $1 `mappend` getLoc $3
-          , sigNames  = $1
-          , sigSchema = $3
-          } }
+    { let { schemaLoc = getLoc $3
+          } in [ Sig { sigMeta   = getLoc sig `mappend` schemaLoc
+                     , sigName   = sig
+                     , sigSchema = $3
+                     } | sig <- $1 ] }
 
 schema :: { Schema P }
   : 'forall' list1(ident) '.' type { Schema (mappend $1 (getLoc $4)) $2 $4 }
@@ -212,11 +216,11 @@ expr :: { Expr P }
     { mkEApp $1 }
 
   | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
-    { ELet (getLoc ($1,$6)) $3 $6 }
+    { ELet (getLoc ($1,$6)) (concat $3) $6 }
 
-let_decl :: { LetDecl P }
-  : bind      { LDBind (getLoc $1) $1 }
-  | signature { LDSig  (getLoc $1) $1 }
+let_decl :: { [LetDecl P] }
+  : bind      { [LDBind (getLoc $1) $1] }
+  | signature { [LDSig (getLoc sig) sig | sig <- $1 ] }
 
 aexpr :: { Expr P }
   : ident        { EVar (getLoc $1) $1 }
