@@ -6,6 +6,8 @@ module Dang.Unique (
     Unique(),
   ) where
 
+import MonadLib (StateT, ExceptionT, lift)
+
 
 -- Unique Generation -----------------------------------------------------------
 
@@ -22,6 +24,12 @@ nextUnique (Supply i) =
 
 class SupplyM m where
   withSupply :: (Supply -> (Supply,a)) -> m a
+
+instance (Monad m, SupplyM m) => SupplyM (StateT i m) where
+  withSupply f = lift (withSupply f)
+
+instance (Monad m, SupplyM m) => SupplyM (ExceptionT i m) where
+  withSupply f = lift (withSupply f)
 
 
 -- Uniques ---------------------------------------------------------------------

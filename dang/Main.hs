@@ -6,7 +6,6 @@ import Dang.Monad
 import Dang.Syntax.Format (formatMessage)
 import Dang.Syntax.Location (Source(..),thing,Range(..),getLoc)
 import Dang.Syntax.Parser
-import Dang.Syntax.Signatures (resolveSignatures)
 import Dang.ModuleSystem.Rename
 import Dang.Utils.PP
 
@@ -38,8 +37,7 @@ main  = runDang $
 
      (mbMod,ms) <- collectMessages $ try $
        do pMod <- parseModule Interactive txt
-          sMod <- resolveSignatures pMod
-          renameModule sMod
+          renameModule pMod
 
      dumpMessages ms
      io (print mbMod)

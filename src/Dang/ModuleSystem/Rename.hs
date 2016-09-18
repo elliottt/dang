@@ -36,9 +36,10 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 
+type RNModule = Module (Parsed Name)
 
 -- | Rename a top-level module.
-renameModule :: Module PName -> Dang (Maybe (Module Name), Messages)
+renameModule :: PModule -> Dang (Maybe RNModule, Messages)
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -49,11 +50,12 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
           withNames declEnv $
             do RO { .. } <- RN ask
                ds <- traverse rnDecl modDecls
-               return Module { modName = n' `at` modName, modDecls = ds }
+               return Module { modName = n', modDecls = ds, .. }
 
 
 -- | Rename an expression.
-renameExpr :: Namespace -> Expr PName -> Dang (Maybe (Expr Name), Messages)
+renameExpr :: Namespace -> Expr (Parsed (SrcLoc PName))
+           -> Dang (Maybe (Expr (Parsed Name)), Messages)
 renameExpr ns e = rename ns (rnExpr e)
 
 
@@ -139,7 +141,7 @@ overlapShadows l r =
   pair a b             = Just (fromMaybe [] a, fromMaybe [] b)
 
 
-type GetNames f = f PName -> RN NameMap
+type GetNames f = f (Parsed (SrcLoc PName)) -> RN NameMap
 
 -- | Merge names, with a monadic implementation of 'mappend'.
 mergeNames :: Traversable f
@@ -177,19 +179,19 @@ bindName Bind { .. } =
      return (envDecl (thing bName) [name])
 
 -- | Introduce names for 
+--
+-- XXX: do signatures need to bind names?
 letDeclNames :: GetNames LetDecl
-letDeclNames (LDBind b) = bindName b
-letDeclNames (LDLoc l)  = addLoc l letDeclNames
-letDeclNames LDSig{}    = return mempty
+letDeclNames (LDBind loc b) = withLoc loc (bindName b)
+letDeclNames LDSig{}        = return mempty
 
 -- | Introduce names for all bindings within a declaration. NOTE: this will
 -- traverse into module definitions, introducing names for visible bindings.
 declNames :: GetNames Decl
-declNames (DBind b)     = bindName b
-declNames (DModBind mb) = modBindNames mb
-declNames (DData d)     = dataNames d
-declNames (DLoc dl)     = addLoc dl declNames
-declNames DSig{}        = return mempty
+declNames (DBind  l b)     = withLoc l (bindName b)
+declNames (DModBind l mb)  = withLoc l (modBindNames mb)
+declNames (DData l d)      = withLoc l (dataNames d)
+declNames DSig{}           = return mempty
 
 -- | Names introduced by a module binding.
 modBindNames :: GetNames ModBind
@@ -203,22 +205,21 @@ modBindNames ModBind { .. } =
 dataNames :: GetNames Data
 dataNames Data { .. } =
   do tyName   <- newBind dName
-     conNames <- traverse (`addLoc` constrName) dConstrs
+     conNames <- traverse constrName dConstrs
      return $ mconcat
             $ envType (thing dName) [tyName] : conNames
 
 -- | Names introduced by a constructor.
 constrName :: GetNames Constr
-constrName Constr { .. } =
+constrName Constr { .. } = withLoc cMeta $
   do conName <- newBind cName
      return (envDecl (thing cName) [conName])
 
 -- | Names defined by a module expression.
 modExprNames :: GetNames ModExpr
-modExprNames (MEStruct ms)       = modStructNames ms
-modExprNames (MEConstraint me _) = modExprNames me
-modExprNames (MELoc ml)          = addLoc ml modExprNames
-modExprNames _                   = return mempty
+modExprNames (MEStruct l ms)       = withLoc l (modStructNames ms)
+modExprNames (MEConstraint l me _) = withLoc l (modExprNames me)
+modExprNames _                     = return mempty
 
 -- | Names defined by a module structure.
 modStructNames :: GetNames ModStruct
@@ -229,23 +230,20 @@ modStructNames ModStruct { .. } =
 patNames :: ParamSource -> GetNames Pat
 patNames d = go
   where
-  go (PCon _ ps) = mergeNames overlapErrors go ps
-  go (PLoc lp)   = addLoc lp go
-  go PWild       = return mempty
-  go (PVar ln)   =
+  go :: GetNames Pat
+  go (PCon l _ ps) = withLoc l (mergeNames overlapErrors go ps)
+  go (PWild _)     = return mempty
+  go (PVar l ln)   = withLoc l $
     do n <- newParam d ln
        return (envDecl (thing ln) [n])
 
 
 -- Renaming --------------------------------------------------------------------
 
-type Rename f = f PName -> RN (f Name)
+type Rename f = f (Parsed (SrcLoc PName)) -> RN (f (Parsed Name))
 
-rnLoc :: (a -> RN b) -> SrcLoc a -> RN (SrcLoc b)
-rnLoc f Located { .. } = withLoc locRange $
-  do b <- f locValue
-     return Located { locValue = b, .. }
-
+rnLoc :: (a -> RN b) -> SrcLoc a -> RN b
+rnLoc f Located { .. } = withLoc locRange (f locValue)
 
 getName :: (PName -> NameMap -> Maybe [Name]) -> Doc
         -> PName -> RN Name
@@ -267,42 +265,39 @@ rnMName  = getName lookupMod  (text "module")
 
 -- | Qualify all of the declarations in the struct.
 rnModStruct :: Rename ModStruct
-rnModStruct (ModStruct ds) = ModStruct <$> traverse rnDecl ds
+rnModStruct (ModStruct l ds) = withLoc l (ModStruct l <$> traverse rnDecl ds)
 
 -- | Rename a declaration.
 rnDecl :: Rename Decl
-rnDecl (DBind b)     = DBind    <$> rnBind b
-rnDecl (DModBind mb) = DModBind <$> rnModBind mb
-rnDecl (DLoc d)      = DLoc     <$> rnLoc rnDecl d
-rnDecl (DSig s)      = panic "rename" $ text "Unexpected signature found"
+rnDecl (DBind l b)     = withLoc l (DBind    l <$> rnBind b)
+rnDecl (DModBind l mb) = withLoc l (DModBind l <$> rnModBind mb)
+rnDecl (DSig l s)      = panic "rename" $ text "Unexpected signature found"
                                      $$ text (show s)
 
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
 rnModBind ModBind { .. } = pushNamespace (thing mbName) $
   do n' <- rnLoc rnMName mbName
-     e' <- underMod mbName (rnModExpr (FromBind (thing n')) mbExpr)
-     return ModBind { mbName = n', mbExpr = e' }
+     e' <- underMod mbName (rnModExpr (FromBind n') mbExpr)
+     return ModBind { mbName = n', mbExpr = e', .. }
 
 rnModExpr :: ParamSource -> Rename ModExpr
 rnModExpr d = go
   where
-  go (MEName n)           = MEName   <$> rnMName n
-  go (MEApp f x)          = MEApp    <$> go f <*> go x
-  go (MEStruct s)         = MEStruct <$> rnModStruct s
-  go (MEFunctor a sig e)  =
+  go (MEName l n)           = withLoc l (MEName   l <$> rnLoc rnMName n)
+  go (MEApp l f x)          = withLoc l (MEApp    l <$> go f <*> go x)
+  go (MEStruct l s)         = withLoc l (MEStruct l <$> rnModStruct s)
+  go (MEFunctor l a sig e)  = withLoc l $
     do p    <- newParam d a
        sig' <- rnModType sig
-       withNames (envMod (thing a) [p]) (MEFunctor (p `at` a) sig' <$> go e)
-  go (MEConstraint n sig) = error "rnModExpr"
-  go (MELoc lm)           = MELoc <$> rnLoc go lm
+       withNames (envMod (thing a) [p]) (MEFunctor l p sig' <$> go e)
+  go (MEConstraint l n sig) = error "rnModExpr"
 
 
 rnModType :: Rename ModType
-rnModType (MTVar n)          = MTVar <$> rnMName n
-rnModType (MTSig sig)        = error "rnModType"
-rnModType (MTFunctor n ty e) = error "rnModType"
-rnModType (MTLoc lmt)        = MTLoc <$> rnLoc rnModType lmt
+rnModType (MTVar l n)          = withLoc l (MTVar l <$> rnLoc rnMName n)
+rnModType (MTSig l sig)        = error "rnModType"
+rnModType (MTFunctor l n ty e) = error "rnModType"
 
 
 
@@ -311,58 +306,55 @@ rnModType (MTLoc lmt)        = MTLoc <$> rnLoc rnModType lmt
 -- | Rename a binding. This assumes that new names have already been introduced
 -- externally.
 rnBind :: Rename Bind
-rnBind Bind { .. } =
-  do n'  <- rnLoc rnEName bName
-     mb' <- traverse rnSchema bSchema
-
-     pats <- mergeNames overlapErrors (patNames (FromBind (thing n'))) bParams
+rnBind Bind { .. } = withLoc bMeta $
+  do n'   <- rnLoc rnEName bName
+     pats <- mergeNames overlapErrors (patNames (FromBind n')) bParams
      withNames pats $
        do ps' <- traverse rnPat bParams
           b'  <- rnExpr bBody
           return Bind { bName   = n'
-                      , bSchema = mb'
                       , bParams = ps'
-                      , bBody   = b' }
+                      , bBody   = b'
+                      , .. }
 
 rnMatch :: ParamSource -> Rename Match
 rnMatch d = go
   where
-  go (MSplit l r) = MSplit <$> go l <*> go r
-  go MFail        = return MFail
-  go (MExpr e)    = MExpr <$> rnExpr e
-  go (MLoc lm)    = MLoc  <$> rnLoc go lm
-  go (MPat p m)   =
+  go (MSplit l a b) = withLoc l (MSplit l <$> go a <*> go b)
+  go (MFail l)      = return (MFail l)
+  go (MExpr l e)    = withLoc l (MExpr  l <$> rnExpr e)
+  go (MPat l p m)   = withLoc l $
     do names <- patNames d p
-       withNames names (MPat <$> rnPat p <*> go m)
+       withNames names (MPat l <$> rnPat p <*> go m)
 
 rnPat :: Rename Pat
-rnPat (PCon c ps) = PCon <$> rnLoc rnEName c <*> traverse rnPat ps
-rnPat (PLoc lp)   = PLoc <$> rnLoc rnPat lp
-rnPat PWild       = pure PWild
-rnPat (PVar ln)   = PVar <$> rnLoc rnEName ln
+rnPat (PCon l c ps) = withLoc l (PCon l <$> rnLoc rnEName c <*> traverse rnPat ps)
+rnPat (PWild l)     = pure (PWild l)
+rnPat (PVar l n)    = withLoc l (PVar l <$> rnLoc rnEName n)
 
 -- | Rename an expression.
 rnExpr :: Rename Expr
-rnExpr (EVar pn)   = EVar <$> rnEName pn
-rnExpr (ECon pn)   = ECon <$> rnEName pn
-rnExpr (EApp f xs) = EApp <$> rnExpr f <*> traverse rnExpr xs
+rnExpr (EVar l pn)   = withLoc l (EVar l <$> rnLoc rnEName pn)
+rnExpr (ECon l pn)   = withLoc l (ECon l <$> rnLoc rnEName pn)
+rnExpr (EApp l f xs) = withLoc l (EApp l <$> rnExpr f <*> traverse rnExpr xs)
 
-rnExpr (EAbs m)    =
+rnExpr (EAbs l m)    = withLoc l $
   do loc <- askLoc
-     EAbs <$> rnMatch (FromLambda loc) m
+     EAbs l <$> rnMatch (FromLambda loc) m
 
-rnExpr (ELoc e)    = ELoc <$> rnLoc rnExpr e
-rnExpr (ELit l)    = pure (ELit l)
-rnExpr (ELet ds e) =
+rnExpr (ELit l m)    = withLoc l (ELit l <$> rnLit m)
+rnExpr (ELet l ds e) = withLoc l $
   do names <- mergeNames overlapErrors letDeclNames ds
-     withNames names (ELet <$> traverse rnLetDecl ds <*> rnExpr e)
+     withNames names (ELet l <$> traverse rnLetDecl ds <*> rnExpr e)
+
+rnLit :: Rename Literal
+rnLit (LInt l i b) = pure (LInt l i b)
 
 
 
 rnLetDecl :: Rename LetDecl
-rnLetDecl (LDBind b) = LDBind <$> rnBind b
-rnLetDecl (LDLoc ld) = LDLoc  <$> rnLoc rnLetDecl ld
-rnLetDecl LDSig{}    = panic "renamer" (text "signature found in let binding")
+rnLetDecl (LDBind l b) = withLoc l (LDBind l <$> rnBind b)
+rnLetDecl (LDSig l s)  = panic "renamer" (text "signature found in let binding")
 
 
 -- Types -----------------------------------------------------------------------

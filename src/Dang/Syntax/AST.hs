@@ -1,20 +1,59 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RecordWildCards #-}
+
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 module Dang.Syntax.AST where
 
 
+import Dang.AST
 import Dang.Syntax.Location
 import Dang.Utils.PP
 
-import           Control.Lens.Plated (Plated(..),gplate)
 import           Data.List (intersperse)
 import qualified Data.Text.Lazy as L
 import           GHC.Generics (Generic)
 
+
+-- Syntax and Metadata ---------------------------------------------------------
+
+-- | The syntax descriptor for parsed modules.
+data Parsed ident
+
+instance Syn (Parsed ident) where
+  type IdentOf  (Parsed ident)   = ident
+  type TypeOf   (Parsed ident)   = Type (Parsed ident)
+  type SchemaOf (Parsed ident)   = Schema (Parsed ident)
+
+  type MetaOf   (Parsed ident) Module    = SrcRange
+  type MetaOf   (Parsed ident) ModStruct = SrcRange
+  type MetaOf   (Parsed ident) Decl      = SrcRange
+  type MetaOf   (Parsed ident) Bind      = SrcRange
+  type MetaOf   (Parsed ident) Sig       = SrcRange
+  type MetaOf   (Parsed ident) ModBind   = SrcRange
+  type MetaOf   (Parsed ident) ModType   = SrcRange
+  type MetaOf   (Parsed ident) ModSpec   = SrcRange
+  type MetaOf   (Parsed ident) ModExpr   = SrcRange
+  type MetaOf   (Parsed ident) Match     = SrcRange
+  type MetaOf   (Parsed ident) Pat       = SrcRange
+  type MetaOf   (Parsed ident) Expr      = SrcRange
+  type MetaOf   (Parsed ident) LetDecl   = SrcRange
+  type MetaOf   (Parsed ident) Schema    = SrcRange
+  type MetaOf   (Parsed ident) Type      = SrcRange
+  type MetaOf   (Parsed ident) Literal   = SrcRange
+  type MetaOf   (Parsed ident) Data      = SrcRange
+  type MetaOf   (Parsed ident) Constr    = SrcRange
+
+
+-- AST -------------------------------------------------------------------------
 
 -- | Parsed names, either qualified or unqualified.
 data PName = PUnqual !L.Text
@@ -22,182 +61,218 @@ data PName = PUnqual !L.Text
              deriving (Eq,Show,Ord,Generic)
 
 -- | A parsed top-level module.
-type PModule = Module PName
+type PModule = Module (Parsed (SrcLoc PName))
 
-data Module name = Module { modName  :: SrcLoc name
-                          -- , modImports :: ?
-                          , modDecls :: [Decl name]
-                          } deriving (Show)
+type P = Parsed (SrcLoc PName)
 
-newtype ModStruct name = ModStruct { msElems :: [Decl name]
-                                   } deriving (Eq,Show,Functor,Generic)
+data Module syn = Module { modMeta  :: MetaOf syn Module
+                         , modName  :: IdentOf syn
+                         -- , modImports :: ?
+                         , modDecls :: [Decl syn]
+                         } deriving (Generic)
 
-data Decl name = DBind    (Bind name)
-               | DSig     (Sig name)
-               | DData    (Data name)
-               | DModBind (ModBind name)
-               | DModType (ModType name)
-                 -- XXX add open declarations
-               | DLoc     (SrcLoc (Decl name))
-                 deriving (Eq,Show,Functor,Generic)
+data ModStruct syn = ModStruct { msMeta  :: MetaOf syn ModStruct
+                               , msElems :: [Decl syn]
+                               } deriving (Generic)
 
-data Bind name = Bind { bName   :: SrcLoc name
-                      , bSchema :: Maybe (Schema name)
-                      , bParams :: [Pat name]
-                      , bBody   :: Expr name
-                      } deriving (Eq,Show,Functor,Generic)
+data Decl syn = DBind    (MetaOf syn Decl) (Bind syn)
+              | DSig     (MetaOf syn Decl) (Sig syn)
+              | DData    (MetaOf syn Decl) (Data syn)
+              | DModBind (MetaOf syn Decl) (ModBind syn)
+              | DModType (MetaOf syn Decl) (ModType syn)
+                deriving (Generic)
 
-data Sig name = Sig { sigNames  :: [SrcLoc name]
-                    , sigSchema :: SrcLoc (Schema name)
-                    } deriving (Eq,Show,Functor,Generic)
+data Bind syn = Bind { bMeta   :: MetaOf syn Bind
+                     , bName   :: IdentOf syn
+                     , bParams :: [Pat syn]
+                     , bBody   :: Expr syn
+                     } deriving (Generic)
 
-data ModBind name = ModBind { mbName :: SrcLoc name
-                            , mbExpr :: ModExpr name
-                            } deriving (Eq,Show,Functor,Generic)
+data Sig syn = Sig { sigMeta   :: MetaOf syn Sig
+                   , sigNames  :: [IdentOf syn]
+                   , sigSchema :: SchemaOf syn
+                   } deriving (Generic)
 
-data ModType name = MTVar name
-                  | MTSig [ModSpec name]
-                  | MTFunctor (SrcLoc name) (ModType name) (ModType name)
-                    -- XXX add with-constraints
-                  | MTLoc (SrcLoc (ModType name))
-                    deriving (Eq,Show,Functor,Generic)
+data ModBind syn = ModBind { mbMeta :: MetaOf syn ModBind
+                           , mbName :: IdentOf syn
+                           , mbExpr :: ModExpr syn
+                           } deriving (Generic)
 
-data ModSpec name = MSSig (Sig name)
-                  | MSData (Data name)
-                  | MSMod (SrcLoc name) (ModType name)
-                  | MSLoc (SrcLoc (ModSpec name))
-                    deriving (Eq,Show,Functor,Generic)
+data ModType syn = MTVar     (MetaOf syn ModType) (IdentOf syn)
+                 | MTSig     (MetaOf syn ModType) [ModSpec syn]
+                 | MTFunctor (MetaOf syn ModType) (IdentOf syn) (ModType syn) (ModType syn)
+                   -- XXX add with-constraints
+                   deriving (Generic)
 
-data ModExpr name = MEName name
-                  | MEApp (ModExpr name) (ModExpr name)
-                  | MEStruct (ModStruct name)
-                  | MEFunctor (SrcLoc name) (ModType name) (ModExpr name)
-                  | MEConstraint (ModExpr name) (ModType name)
-                  | MELoc (SrcLoc (ModExpr name))
-                    deriving (Eq,Show,Functor,Generic)
+data ModSpec syn = MSSig  (MetaOf syn ModSpec) (Sig syn)
+                 | MSData (MetaOf syn ModSpec) (Data syn)
+                 | MSMod  (MetaOf syn ModSpec) (IdentOf syn) (ModType syn)
+                   deriving (Generic)
 
-data Match name = MPat (Pat name) (Match name)
-                | MSplit (Match name) (Match name)
-                | MFail
-                | MExpr (Expr name)
-                | MLoc (SrcLoc (Match name))
-                  deriving (Eq,Show,Functor,Generic)
+data ModExpr syn = MEName       (MetaOf syn ModExpr) (IdentOf syn)
+                 | MEApp        (MetaOf syn ModExpr) (ModExpr syn) (ModExpr syn)
+                 | MEStruct     (MetaOf syn ModExpr) (ModStruct syn)
+                 | MEFunctor    (MetaOf syn ModExpr) (IdentOf syn) (ModType syn) (ModExpr syn)
+                 | MEConstraint (MetaOf syn ModExpr) (ModExpr syn) (ModType syn)
+                   deriving (Generic)
 
-data Pat name = PVar (SrcLoc name)
-              | PWild
-              | PCon (SrcLoc name) [Pat name]
-              | PLoc (SrcLoc (Pat name))
-                deriving (Eq,Show,Functor,Generic)
+data Match syn = MPat   (MetaOf syn Match) (Pat syn) (Match syn)
+               | MSplit (MetaOf syn Match) (Match syn) (Match syn)
+               | MFail  (MetaOf syn Match)
+               | MExpr  (MetaOf syn Match) (Expr syn)
+                 deriving (Generic)
 
-data Expr name = EVar name
-               | ECon name
-               | EApp (Expr name) [Expr name]
-               | EAbs (Match name)
-               | ELit Literal
-               | ELet [LetDecl name] (Expr name)
-               | ELoc (SrcLoc (Expr name))
-                 deriving (Eq,Show,Functor,Generic)
+data Pat syn = PVar  (MetaOf syn Pat) (IdentOf syn)
+             | PWild (MetaOf syn Pat)
+             | PCon  (MetaOf syn Pat) (IdentOf syn) [Pat syn]
+               deriving (Generic)
 
-data LetDecl name = LDBind (Bind name)
-                  | LDSig (Sig name)
-                    -- XXX add open declarations
-                  | LDLoc (SrcLoc (LetDecl name))
-                    deriving (Eq,Show,Functor,Generic)
+data Expr syn = EVar (MetaOf syn Expr) (IdentOf syn)
+              | ECon (MetaOf syn Expr) (IdentOf syn)
+              | EApp (MetaOf syn Expr) (Expr syn) [Expr syn]
+              | EAbs (MetaOf syn Expr) (Match syn)
+              | ELit (MetaOf syn Expr) (Literal syn)
+              | ELet (MetaOf syn Expr) [LetDecl syn] (Expr syn)
+                deriving (Generic)
 
-data Schema name = Schema [SrcLoc name] (Type name)
-                   deriving (Eq,Show,Functor,Generic)
+data LetDecl syn = LDBind (MetaOf syn LetDecl) (Bind syn)
+                 | LDSig  (MetaOf syn LetDecl) (Sig syn)
+                   -- XXX add open declarations
+                   deriving (Generic)
 
-data Type name = TCon name
-               | TVar name
-               | TApp (Type name) [Type name]
-               | TFun (Type name) (Type name)
-               | TLoc (SrcLoc (Type name))
-                 deriving (Eq,Show,Functor,Generic)
+data Literal syn = LInt (MetaOf syn Literal) Integer Int -- ^ value and base
+                   deriving (Generic)
 
-data Literal = LInt Integer Int -- ^ value and base
-               deriving (Eq,Show,Generic)
+data Data syn = Data { dMeta    :: MetaOf syn Data
+                     , dName    :: IdentOf syn
+                     , dParams  :: [IdentOf syn]
+                     , dConstrs :: [Constr syn]
+                     } deriving (Generic)
 
-data Data name = Data { dName    :: SrcLoc name
-                      , dParams  :: [SrcLoc name]
-                      , dConstrs :: [SrcLoc (Constr name)]
-                      } deriving (Eq,Show,Functor,Generic)
+data Constr syn = Constr { cMeta   :: MetaOf syn Constr
+                         , cName   :: IdentOf syn
+                         , cParams :: [TypeOf syn]
+                         } deriving (Generic)
 
-data Constr name = Constr { cName   :: SrcLoc name
-                          , cParams :: [Type name]
-                          } deriving (Eq,Show,Functor,Generic)
+
+data Schema syn = Schema (MetaOf syn Schema) [IdentOf syn] (TypeOf syn)
+                  deriving (Generic)
+
+data Type syn = TCon (MetaOf syn Type) (IdentOf syn)
+              | TVar (MetaOf syn Type) (IdentOf syn)
+              | TApp (MetaOf syn Type) (Type syn) [Type syn]
+              | TFun (MetaOf syn Type) (Type syn) (Type syn)
+                deriving (Generic)
+
+
+-- Instances -------------------------------------------------------------------
+
+type Cxt f syn = All f syn '[Bind,Expr,LetDecl,Sig,Match,Pat,Literal,Data,Constr
+                            ,Decl,ModType,ModSpec,ModBind,ModExpr,ModStruct
+                            ,Module]
+
+deriving instance Cxt Show syn => Show (Module    syn)
+deriving instance Cxt Show syn => Show (ModStruct syn)
+deriving instance Cxt Show syn => Show (ModBind   syn)
+deriving instance Cxt Show syn => Show (ModSpec   syn)
+deriving instance Cxt Show syn => Show (ModExpr   syn)
+deriving instance Cxt Show syn => Show (ModType   syn)
+deriving instance Cxt Show syn => Show (Decl      syn)
+deriving instance Cxt Show syn => Show (Bind      syn)
+deriving instance Cxt Show syn => Show (Sig       syn)
+deriving instance Cxt Show syn => Show (Match     syn)
+deriving instance Cxt Show syn => Show (Pat       syn)
+deriving instance Cxt Show syn => Show (Expr      syn)
+deriving instance Cxt Show syn => Show (LetDecl   syn)
+deriving instance Cxt Show syn => Show (Literal   syn)
+deriving instance Cxt Show syn => Show (Data      syn)
+deriving instance Cxt Show syn => Show (Constr    syn)
+
+-- front-end specific types and schemas
+deriving instance All Show syn '[Schema,Type] => Show (Schema  syn)
+deriving instance All Show syn '[Type]        => Show (Type    syn)
 
 
 -- Locations -------------------------------------------------------------------
 
-instance HasLoc (ModType name) where
-  type LocSource (ModType name) = Source
-  getLoc (MTLoc loc) = getLoc loc
-  getLoc _           = mempty
+instance HasLoc (Module (Parsed ident)) where
+  type LocSource (Module (Parsed ident)) = Source
+  getLoc = modMeta
 
-instance HasLoc (ModExpr name) where
-  type LocSource (ModExpr name) = Source
-  getLoc (MELoc loc) = getLoc loc
-  getLoc _           = mempty
+instance HasLoc (ModType (Parsed ident)) where
+  type LocSource (ModType (Parsed ident)) = Source
+  getLoc (MTVar     l _)     = l
+  getLoc (MTSig     l _)     = l
+  getLoc (MTFunctor l _ _ _) = l
 
-instance HasLoc (Type name) where
-  type LocSource (Type name) = Source
-  getLoc (TLoc loc) = getLoc loc
-  getLoc _          = mempty
+instance HasLoc (Sig (Parsed ident)) where
+  type LocSource (Sig (Parsed ident)) = Source
+  getLoc Sig { .. } = sigMeta
 
-instance HasLoc (Pat name) where
-  type LocSource (Pat name) = Source
-  getLoc (PLoc loc) = getLoc loc
-  getLoc _          = mempty
+instance HasLoc (Bind (Parsed ident)) where
+  type LocSource (Bind (Parsed ident)) = Source
+  getLoc Bind { .. } = bMeta
 
-instance HasLoc (Match name) where
-  type LocSource (Match name) = Source
-  getLoc (MLoc loc) = getLoc loc
-  getLoc _          = mempty
+instance HasLoc (Data (Parsed ident)) where
+  type LocSource (Data (Parsed ident)) = Source
+  getLoc Data { .. } = dMeta
 
-instance HasLoc (Expr name) where
-  type LocSource (Expr name) = Source
-  getLoc (ELoc loc) = getLoc loc
-  getLoc _          = mempty
+instance HasLoc (Constr (Parsed ident)) where
+  type LocSource (Constr (Parsed ident)) = Source
+  getLoc Constr { .. } = cMeta
 
-instance UnLoc (Decl name) where
-  unLoc (DLoc l) = thing l
-  unLoc d        = d
+instance HasLoc (ModBind (Parsed ident)) where
+  type LocSource (ModBind (Parsed ident)) = Source
+  getLoc ModBind { .. } = mbMeta
 
-instance UnLoc (ModType name) where
-  unLoc (MTLoc l) = thing l
-  unLoc mt        = mt
+instance HasLoc (ModExpr (Parsed ident)) where
+  type LocSource (ModExpr (Parsed ident)) = Source
+  getLoc (MEName       l _)     = l
+  getLoc (MEApp        l _ _)   = l
+  getLoc (MEStruct     l _)     = l
+  getLoc (MEFunctor    l _ _ _) = l
+  getLoc (MEConstraint l _ _)   = l
 
-instance UnLoc (ModSpec name) where
-  unLoc (MSLoc l) = thing l
-  unLoc ms        = ms
+instance HasLoc (Match (Parsed ident)) where
+  type LocSource (Match (Parsed ident)) = Source
+  getLoc (MPat   l _ _) = l
+  getLoc (MSplit l _ _) = l
+  getLoc (MFail  l)     = l
+  getLoc (MExpr  l _)   = l
 
-instance UnLoc (ModExpr name) where
-  unLoc (MELoc l) = thing l
-  unLoc me        = me
+instance HasLoc (Schema (Parsed ident)) where
+  type LocSource (Schema (Parsed ident)) = Source
+  getLoc (Schema l _ _) = l
 
-instance UnLoc (Pat name) where
-  unLoc (PLoc l) = thing l
-  unLoc p        = p
+instance HasLoc (Type (Parsed ident)) where
+  type LocSource (Type (Parsed ident)) = Source
+  getLoc (TCon l _)   = l
+  getLoc (TVar l _)   = l
+  getLoc (TApp l _ _) = l
+  getLoc (TFun l _ _) = l
 
-instance UnLoc (Expr name) where
-  unLoc (ELoc l) = thing l
-  unLoc e        = e
+instance HasLoc (Expr (Parsed ident)) where
+  type LocSource (Expr (Parsed ident)) = Source
+  getLoc (EVar l _)   = l
+  getLoc (ECon l _)   = l
+  getLoc (EApp l _ _) = l
+  getLoc (EAbs l _)   = l
+  getLoc (ELit l _)   = l
+  getLoc (ELet l _ _) = l
 
-instance UnLoc (Type name) where
-  unLoc (TLoc l) = thing l
-  unLoc t        = t
+instance HasLoc (Pat (Parsed ident)) where
+  type LocSource (Pat (Parsed ident)) = Source
+  getLoc (PVar  l _)   = l
+  getLoc (PWild l)     = l
+  getLoc (PCon  l _ _) = l
 
+instance HasLoc (ModStruct (Parsed ident)) where
+  type LocSource (ModStruct (Parsed ident)) = Source
+  getLoc (ModStruct l _) = l
 
--- Traversal -------------------------------------------------------------------
-
-instance Plated (Decl    name) where plate = gplate
-instance Plated (ModType name) where plate = gplate
-instance Plated (ModSpec name) where plate = gplate
-instance Plated (ModExpr name) where plate = gplate
-instance Plated (Match   name) where plate = gplate
-instance Plated (Pat     name) where plate = gplate
-instance Plated (Expr    name) where plate = gplate
-instance Plated (Type    name) where plate = gplate
+instance HasLoc (Literal (Parsed ident)) where
+  type LocSource (Literal (Parsed ident)) = Source
+  getLoc (LInt l _ _) = l
 
 
 -- Pretty-printing -------------------------------------------------------------

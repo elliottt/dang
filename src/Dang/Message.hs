@@ -13,6 +13,8 @@ data Error = ErrLexer
            | ErrNoDeclForSig
            | ErrRnOverlap
            | ErrRnUnknown
+           | ErrUnification
+           | ErrInfiniteType
              deriving (Show,Eq,Ord)
 
 describeError :: Error -> Doc
@@ -22,6 +24,8 @@ describeError ErrDuplicateSig = text "Duplicate type signature for declaration"
 describeError ErrNoDeclForSig = text "Type signature is missing a declaration"
 describeError ErrRnOverlap    = text "Names overlap"
 describeError ErrRnUnknown    = text "Name not in scope"
+describeError ErrUnification  = text "Unification failed"
+describeError ErrInfiniteType = text "Cannot construct the infinite type"
 
 data Warning = WarnRnShadowing
                deriving (Show,Eq,Ord)

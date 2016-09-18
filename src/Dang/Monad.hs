@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Dang.Monad (
-  Dang(), runDang,
+  Dang(), DangM, runDang,
   io,
   askLoc, addLoc, withLoc,
   try,
@@ -39,8 +39,6 @@ import           Control.Monad (MonadPlus(..),guard)
 import           Data.IORef
                      (IORef,newIORef,readIORef,writeIORef,atomicModifyIORef'
                      ,modifyIORef')
-import           Data.List (sortBy)
-import           Data.Ord (comparing)
 import qualified Data.Sequence as Seq
 import           Data.Typeable (Typeable)
 import           MonadLib (RunM(..), BaseM(..), ReaderT, ask)

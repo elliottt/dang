@@ -25,7 +25,7 @@ module Dang.Utils.PP (
     getNameFormat,
 
     -- ** Class
-    PP(..), pretty, pp,
+    PP(..), pretty, ppPrec, pp,
 
     -- ** Combinators
     (<>), (<+>), ($$), ($+$),
@@ -213,8 +213,12 @@ annotate ann m = PJ.annotate ann <$> m
 pretty :: PP a => a -> String
 pretty a = PJ.render (runDoc defaultConfig (pp a))
 
+ppPrec :: PP a => Int -> a -> Doc
+ppPrec p a = withPrec p (ppr a)
+
 pp :: PP a => a -> Doc
-pp a = withPrec 0 (ppr a)
+pp  = ppPrec 0
+
 
 class PP a where
   ppr     :: a -> Doc

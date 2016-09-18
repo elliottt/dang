@@ -14,6 +14,7 @@ module Dang.Syntax.Parser (
   ) where
 
 import Dang.Monad
+import Dang.AST
 import Dang.Syntax.AST
 import Dang.Syntax.Lexer
 import Dang.Syntax.Location
@@ -81,174 +82,190 @@ import           Text.Location.Layout (Layout(..),layout)
 
 -- Top-level Module ------------------------------------------------------------
 
-top_module :: { PModule }
+top_module :: { Module P }
   : 'module' mod_name 'where' 'v{' top_decls 'v}'
-    { Module { modName  = $2
+    { Module { modMeta  = mappend $1 $6
+             , modName  = $2
              , modDecls = $5 } }
 
-top_decls :: { [Decl PName] } -- { ([Import],[Decl PName]) }
+top_decls :: { [Decl P] } -- { ([Import],[Decl P]) }
   : {- empty -}      { [] }
   | sep1('v;', decl) { $1 }
 
 -- Declarations ----------------------------------------------------------------
 
-decl :: { Decl PName }
-  : signature { DLoc (DSig     `fmap` $1) }
-  | bind      { DLoc (DBind    `fmap` $1) }
-  | data_decl { DLoc (DData    `fmap` $1) }
-  | mod_bind  { DLoc (DModBind `fmap` $1) }
+decl :: { Decl P }
+  : signature { DSig     (getLoc $1) $1 }
+  | bind      { DBind    (getLoc $1) $1 }
+  | data_decl { DData    (getLoc $1) $1 }
+  | mod_bind  { DModBind (getLoc $1) $1 }
 
 
 -- Module Types ----------------------------------------------------------------
 
-mod_type :: { ModType PName }
+mod_type :: { ModType P }
   : con
-    { MTLoc (MTVar `fmap` $1) }
+    { MTVar (getLoc $1) $1 }
 
   | 'sig' 'v{' sep1('v;', mod_spec) 'v}'
-    { MTLoc (MTSig $3 `at` ($1,$4)) }
+    { MTSig (getLoc ($1,$4)) $3 }
 
   | 'functor' list1(mod_param) '->' mod_type
-    { MTLoc (foldr (uncurry MTFunctor) $4 $2 `at` ($1,$4)) }
+    { let { mk (p,ty) r = MTFunctor (getLoc (p,r)) p ty r
+          } in foldr mk $4 $2 }
 
-mod_spec :: { ModSpec PName }
-  : signature     { MSLoc (MSSig         `fmap` $1) }
-  | data_decl     { MSLoc (MSData        `fmap` $1) }
-  | mod_bind_spec { MSLoc (uncurry MSMod `fmap` $1) }
+mod_spec :: { ModSpec P }
+  : signature
+    { MSSig (getLoc $1) $1 }
 
-mod_bind_spec :: { SrcLoc (SrcLoc PName, ModType PName) }
-  : 'module' mod_name ':' mod_type { ($2,$4) `at` ($1,$4) }
+  | data_decl
+    { MSData (getLoc $1) $1 }
+
+  | 'module' mod_name ':' mod_type
+    { MSMod (getLoc ($1,$4)) $2 $4 }
 
 
 -- Module Expressions ----------------------------------------------------------
 
-mod_bind :: { SrcLoc (ModBind PName) }
+mod_bind :: { ModBind P }
   : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
-    { ModBind { mbName = $2
-              , mbExpr = mkFunctor $3 (restrictMod $4 $6) } `at` ($1,$6) }
+    { ModBind { mbMeta = getLoc ($1,$6)
+              , mbName = $2
+              , mbExpr = mkFunctor $3 (restrictMod $4 $6) } }
 
-mod_param :: { (SrcLoc PName, ModType PName) }
-  : '(' con ':' mod_type ')' { ($2,$4) }
+mod_param :: { (IdentOf P, ModType P) }
+  : '(' con ':' mod_type ')'
+    { ($2,$4) }
 
-mod_restrict :: { ModType PName }
+mod_restrict :: { ModType P }
   : ':' mod_type { $2 }
 
-mod_expr :: { ModExpr PName }
+mod_expr :: { ModExpr P }
   : mod_bexpr opt(mod_constraint)
     { case $2 of
         Nothing -> $1
-        Just ty -> MELoc (MEConstraint $1 ty `at` ($1,ty)) }
+        Just ty -> MEConstraint (getLoc ($1,ty)) $1 ty }
 
-mod_constraint :: { ModType PName }
+mod_constraint :: { ModType P }
   : ':' mod_type { $2 }
 
-mod_bexpr :: { ModExpr PName }
-  : list1(mod_aexpr) { MELoc (foldl1 MEApp $1 `at` $1) }
-  | mod_struct       { MELoc (MEStruct `fmap` $1)      }
+mod_bexpr :: { ModExpr P }
+  : list1(mod_aexpr)
+    { foldl1 (\ e x -> MEApp (getLoc (e,x)) e x) $1 }
 
-mod_aexpr :: { ModExpr PName }
-  : con              { MELoc (MEName `fmap` $1) }
-  | qual_con         { MELoc (MEName `fmap` $1) }
-  | '(' mod_expr ')' { $2                       }
+  | mod_struct
+    { MEStruct (getLoc $1) $1 }
 
-mod_struct :: { SrcLoc (ModStruct PName) }
-  : 'struct' 'v{' sep('v;', decl) 'v}' { ModStruct $3 `at` ($1,$4) }
+mod_aexpr :: { ModExpr P }
+  : con              { MEName (getLoc $1) $1 }
+  | qual_con         { MEName (getLoc $1) $1 }
+  | '(' mod_expr ')' { $2                    }
+
+mod_struct :: { ModStruct P }
+  : 'struct' 'v{' sep('v;', decl) 'v}'
+    { ModStruct (getLoc ($1,$4)) $3 }
 
 
 -- Types -----------------------------------------------------------------------
 
-signature :: { SrcLoc (Sig PName) }
-  : sep1(',', ident) ':' schema { Sig $1 $3 `at` ($1,$3) }
+signature :: { Sig P }
+  : sep1(',', ident) ':' schema
+    { Sig { sigMeta   = listLoc $1 `mappend` getLoc $3
+          , sigNames  = $1
+          , sigSchema = $3
+          } }
 
-schema :: { SrcLoc (Schema PName) }
-  : 'forall' list1(ident) '.' type { Schema $2 $4 `at` ($1,$3) }
-  |                           type { Schema [] $1 `at`  $1     }
+schema :: { Schema P }
+  : 'forall' list1(ident) '.' type { Schema (mappend $1 (getLoc $4)) $2 $4 }
+  |                           type { Schema (getLoc  $1)             [] $1 }
 
-type :: { Type PName }
+type :: { Type P }
   : sep1('->', app_type) { mkTFun $1 }
 
-app_type :: { Type PName }
+app_type :: { Type P }
   : list1(atype) { mkTApp $1 }
 
-atype :: { Type PName }
-  : ident        { TLoc (TVar `fmap` $1) }
-  | con          { TLoc (TCon `fmap` $1) }
-  | qual_con     { TLoc (TCon `fmap` $1) }
-  | '(' type ')' { $2                    }
+atype :: { Type P }
+  : ident        { TVar (getLoc $1) $1 }
+  | con          { TCon (getLoc $1) $1 }
+  | qual_con     { TCon (getLoc $1) $1 }
+  | '(' type ')' { $2                  }
 
 
 -- Expressions -----------------------------------------------------------------
 
-bind :: { SrcLoc (Bind PName) }
+bind :: { Bind P }
   : ident list(pat) '=' expr
-    { Bind { bName   = $1
-           , bSchema = Nothing
+    { Bind { bMeta   = getLoc ($1,$4)
+           , bName   = $1
            , bParams = $2
-           , bBody   = $4 } `at` ($1,$4) }
+           , bBody   = $4 } }
 
-pat :: { Pat PName }
-  : '_'                    { PLoc (PWild   `at` $1)         }
-  | ident                  { PLoc (PVar $1 `at` $1)         }
-  | con                    { PLoc (PCon $1 [] `at` $1)      }
-  | '(' con list1(pat) ')' { PLoc (PCon $2 $3 `at` ($1,$4)) }
+pat :: { Pat P }
+  : '_'                    { PWild  $1                     }
+  | ident                  { PVar   (getLoc $1) $1         }
+  | con                    { PCon   (getLoc $1) $1 []      }
+  | '(' con list1(pat) ')' { PCon   (getLoc ($1,$4)) $2 $3 }
 
-expr :: { Expr PName }
+expr :: { Expr P }
   : list1(aexpr)
     { mkEApp $1 }
 
   | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
-    { ELoc (ELet $3 $6 `at` ($1,$6)) }
+    { ELet (getLoc ($1,$6)) $3 $6 }
 
-let_decl :: { LetDecl PName }
-  : bind      { LDLoc (LDBind `fmap` $1) }
-  | signature { LDLoc (LDSig  `fmap` $1) }
+let_decl :: { LetDecl P }
+  : bind      { LDBind (getLoc $1) $1 }
+  | signature { LDSig  (getLoc $1) $1 }
 
-aexpr :: { Expr PName }
-  : ident        { ELoc (EVar `fmap` $1) }
-  | qual_ident   { ELoc (EVar `fmap` $1) }
-  | con          { ELoc (ECon `fmap` $1) }
-  | qual_con     { ELoc (ECon `fmap` $1) }
-  | lit          { ELoc (ELit `fmap` $1) }
-  | '(' expr ')' { $2                    }
+aexpr :: { Expr P }
+  : ident        { EVar (getLoc $1) $1 }
+  | qual_ident   { EVar (getLoc $1) $1 }
+  | con          { ECon (getLoc $1) $1 }
+  | qual_con     { ECon (getLoc $1) $1 }
+  | lit          { ELit (getLoc $1) $1 }
+  | '(' expr ')' { $2                  }
 
-lit :: { SrcLoc Literal }
-  : NUM { case thing $1 of TNum base n -> LInt base n `at` $1 }
+lit :: { Literal P }
+  : NUM { case thing $1 of TNum base n -> LInt (getLoc $1) base n }
 
 
 -- Data Declarations -----------------------------------------------------------
 
-data_decl :: { SrcLoc (Data PName) }
+data_decl :: { Data P }
   : 'type' con list(ident) opt(data_constrs)
-    { Data { dName = $2
+    { Data { dMeta = getLoc ($1, $2, $3, $4)
+           , dName = $2
            , dParams = $3
-           , dConstrs = fromMaybe [] $4 } `at` ($1,$2,$3,$4) }
+           , dConstrs = fromMaybe [] $4 } }
 
-data_constrs :: { [SrcLoc (Constr PName)] }
+data_constrs :: { [Constr P] }
   : '=' sep1('|', data_constr) { $2 }
 
-data_constr :: { SrcLoc (Constr PName) }
+data_constr :: { Constr P }
   : con list(atype)
-    { Constr { cName = $1
-             , cParams = $2 } `at` ($1,$2) }
+    { Constr { cMeta = getLoc ($1,$2)
+             , cName = $1
+             , cParams = $2 } }
 
 
 -- Names -----------------------------------------------------------------------
 
-mod_name :: { SrcLoc PName }
+mod_name :: { IdentOf P }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
   | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
-con :: { SrcLoc PName }
+con :: { IdentOf P }
   : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
 
-qual_con :: { SrcLoc PName }
+qual_con :: { IdentOf P }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
 
-qual_ident :: { SrcLoc PName }
+qual_ident :: { IdentOf P }
   : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
 
 -- identifiers are unqualified parsed-names
-ident :: { SrcLoc PName }
+ident :: { IdentOf P }
   : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
 
 
@@ -320,27 +337,34 @@ parseError toks =
 
 -- Utilities -------------------------------------------------------------------
 
-mkTApp :: [Type PName] -> Type PName
+mkTApp :: [Type P] -> Type P
 mkTApp [t]    = t
-mkTApp (t:ts) = TLoc (TApp t ts `at` (t,ts))
+mkTApp (t:ts) = TApp (getLoc (t,ts)) t ts
 mkTApp _      = panic "parser" (text "mkTApp: empty list")
 
-mkTFun :: [Type PName] -> Type PName
-mkTFun ts = TLoc (foldr1 TFun ts `at` ts)
+mkTFun :: [Type P] -> Type P
+mkTFun  = foldr1 $ \ty r -> TFun (getLoc (ty,r)) ty r
 
-mkEApp :: [Expr PName] -> Expr PName
+mkEApp :: [Expr P] -> Expr P
 mkEApp [e]    = e
-mkEApp (e:es) = ELoc (EApp e es `at` (e,es))
+mkEApp (e:es) = EApp (getLoc (e,es)) e es
 mkEApp _      = panic "parser" (text "mkEApp: empty list")
 
-addParams :: [Pat PName] -> Expr PName -> Match PName
-addParams ps e = foldr MPat (MExpr e) ps
+addParams :: [Pat P] -> Expr P -> Match P
+addParams ps e = foldr step (MExpr (getLoc e) e) ps
+  where
+  step p r = MPat (getLoc (p,r)) p r
 
-mkFunctor :: [(SrcLoc PName, ModType PName)] -> ModExpr PName -> ModExpr PName
+mkFunctor :: [(IdentOf P, ModType P)] -> ModExpr P -> ModExpr P
 mkFunctor [] e = e
-mkFunctor ps e = foldr (uncurry MEFunctor) e ps
+mkFunctor ps e = foldr step e ps
+  where
+  step (p,ty) r = MEFunctor (getLoc (p,ty,r)) p ty r
 
-restrictMod :: Maybe (ModType PName) -> ModExpr PName -> ModExpr PName
-restrictMod Nothing   = id
-restrictMod (Just ty) = (`MEConstraint` ty)
+restrictMod :: Maybe (ModType P) -> ModExpr P -> ModExpr P
+restrictMod Nothing   e = e
+restrictMod (Just ty) e = MEConstraint (getLoc (e,ty)) e ty
+
+listLoc :: (LocSource a ~ Source, HasLoc a) => [a] -> SrcRange
+listLoc ls = getLoc (head ls)
 }
