@@ -154,18 +154,18 @@ newBind :: SrcLoc PName -> RN Name
 newBind Located { locValue = PUnqual t, .. } =
   do ns <- getNamespace
      withSupply (mkBinding ns t locRange)
-newBind _ = panic "renamer" (text "Qualified name given to `newBind`")
+newBind _ = panic (text "Qualified name given to `newBind`")
 
 newMod :: SrcLoc PName -> RN Name
 newMod Located { locValue = PUnqual t, .. } =
   do ns <- getNamespace
      withSupply (mkModName (Just [L.fromStrict ns]) t locRange)
-newMod _ = panic "renamer" (text "Qualified name given to `newMod`")
+newMod _ = panic (text "Qualified name given to `newMod`")
 
 newParam :: ParamSource -> SrcLoc PName -> RN Name
 newParam d Located { locValue = PUnqual t, .. } =
      withSupply (mkParam d t locRange)
-newParam _ _ = panic "renamer" (text "Qualified name given to `newParam`")
+newParam _ _ = panic (text "Qualified name given to `newParam`")
 
 -- | Introduce names for the given binding.
 bindName :: GetNames Bind
@@ -266,8 +266,8 @@ rnModStruct (ModStruct l ds) = withLoc l (ModStruct l <$> traverse rnDecl ds)
 rnDecl :: Rename Decl
 rnDecl (DBind l b)     = withLoc l (DBind    l <$> rnBind b)
 rnDecl (DModBind l mb) = withLoc l (DModBind l <$> rnModBind mb)
-rnDecl (DSig l s)      = panic "rename" $ text "Unexpected signature found"
-                                     $$ text (show s)
+rnDecl (DSig l s)      = panic $ text "Unexpected signature found"
+                              $$ text (show s)
 
 -- | Rename a module binding.
 rnModBind :: Rename ModBind
@@ -349,7 +349,7 @@ rnLit (LInt l i b) = pure (LInt l i b)
 
 rnLetDecl :: Rename LetDecl
 rnLetDecl (LDBind l b) = withLoc l (LDBind l <$> rnBind b)
-rnLetDecl (LDSig l s)  = panic "renamer" (text "signature found in let binding")
+rnLetDecl (LDSig l s)  = panic (text "signature found in let binding")
 
 
 -- Types -----------------------------------------------------------------------
@@ -369,7 +369,7 @@ conflict d ns =
 
 shadows :: PName -> ([Name],[Name]) -> RN ()
 shadows d (new,old)
-  | null new || null old = panic "renamer" (text "Invalid use of `shadows`")
+  | null new || null old = panic (text "Invalid use of `shadows`")
   | otherwise            =
     withLoc (getLoc (head new)) (addWarning WarnRnShadowing msg)
   where

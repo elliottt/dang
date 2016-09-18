@@ -6,6 +6,7 @@ import Dang.ModuleSystem.Name (Name)
 import Dang.Monad
 import Dang.TypeCheck.AST as TC
 import Dang.TypeCheck.Monad
+import Dang.Utils.Panic
 
 import Dang.Syntax.AST
 
@@ -23,5 +24,5 @@ kcModule Module { .. } = withLoc modMeta $
   do decls' <- traverse kcDecl modDecls
      return Module { modDecls = decls', .. }
 
-kcDecl :: KindCheck Decl
-kcDecl  = undefined
+kcDecl :: HasCallStack => KindCheck Decl
+kcDecl  = panic "foobers"

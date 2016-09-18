@@ -32,6 +32,7 @@ import Dang.Message
 import Dang.Syntax.Location (Source,SrcLoc,Located(..),SrcRange,HasLoc(..))
 import Dang.Unique
 import Dang.Utils.PP
+import Dang.Utils.Panic
 
 import           Control.Applicative (Alternative(..))
 import qualified Control.Exception as X
@@ -107,7 +108,13 @@ runDang m =
      runDang' ro m
 
 runDang' :: RO -> Dang a -> IO a
-runDang' ro m = runM (unDang m) ro
+runDang' ro m =
+  do res <- X.try (runM (unDang m) ro)
+     case res of
+       Right a -> return a
+       Left p  ->
+         do print (ppr (p :: Panic))
+            X.throwIO DangError
 
 io :: BaseM m Dang => IO a -> m a
 io m = inBase (Dang (inBase m))

@@ -340,7 +340,7 @@ parseError toks =
 mkTApp :: [Type P] -> Type P
 mkTApp [t]    = t
 mkTApp (t:ts) = TApp (getLoc (t,ts)) t ts
-mkTApp _      = panic "parser" (text "mkTApp: empty list")
+mkTApp _      = panic (text "mkTApp: empty list")
 
 mkTFun :: [Type P] -> Type P
 mkTFun  = foldr1 $ \ty r -> TFun (getLoc (ty,r)) ty r
@@ -348,7 +348,7 @@ mkTFun  = foldr1 $ \ty r -> TFun (getLoc (ty,r)) ty r
 mkEApp :: [Expr P] -> Expr P
 mkEApp [e]    = e
 mkEApp (e:es) = EApp (getLoc (e,es)) e es
-mkEApp _      = panic "parser" (text "mkEApp: empty list")
+mkEApp _      = panic (text "mkEApp: empty list")
 
 addParams :: [Pat P] -> Expr P -> Match P
 addParams ps e = foldr step (MExpr (getLoc e) e) ps
