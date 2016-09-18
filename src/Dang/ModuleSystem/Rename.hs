@@ -233,10 +233,6 @@ patNames d = go
     do n <- newParam d ln
        return (envDecl (thing ln) [n])
 
--- | Introduce parameters for this schema.
-schemaNames :: GetNames Schema
-schemaNames  = undefined
-
 
 -- Renaming --------------------------------------------------------------------
 
@@ -257,7 +253,7 @@ getName lkp ty pn =
 
 rnEName, rnTName, rnMName :: PName -> RN Name
 rnEName  = getName lookupDecl (text "declaration")
-rnTName  = getName lookupDecl (text "type")
+rnTName  = getName lookupType (text "type")
 rnMName  = getName lookupMod  (text "module")
 
 
@@ -287,7 +283,7 @@ rnDecl (DModBind l m e) = withLoc l $
 rnSig :: HasCallStack => Rename Sig
 rnSig Sig { .. } = withLoc sigMeta $
   do n'     <- rnLoc rnEName sigName
-     schema <- rnSchema sigSchema
+     schema <- rnSchema (FromSig n') sigSchema
      return Sig { sigName = n', sigSchema = schema, .. }
 
 
@@ -376,9 +372,19 @@ rnLetDecl (LDSig l s)  = panic (text "signature found in let binding")
 
 -- Types -----------------------------------------------------------------------
 
-rnSchema :: Rename Schema
-rnSchema (Schema l ps ty) = withLoc l $
-  do undefined
+rnSchema :: HasCallStack => ParamSource -> Rename Schema
+rnSchema src (Schema l ps ty) = withLoc l $
+  do ps' <- traverse (newParam src) ps
+     env <- mergeNames overlapErrors mkEnv (zip ps ps')
+     withNames env (Schema l ps' <$> rnType ty)
+  where
+  mkEnv (p,p') = return (envType (thing p) [p'])
+
+rnType :: HasCallStack => Rename Type
+rnType (TCon l n)    = withLoc l (TCon l <$> rnLoc rnTName n)
+rnType (TVar l n)    = withLoc l (TVar l <$> rnLoc rnTName n)
+rnType (TApp l f xs) = withLoc l (TApp l <$> rnType f <*> traverse rnType xs)
+rnType (TFun l a b)  = withLoc l (TFun l <$> rnType a <*> rnType b)
 
 
 -- Errors/Warnings -------------------------------------------------------------

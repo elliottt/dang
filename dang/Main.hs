@@ -43,5 +43,3 @@ main  = runDang $
 
      dumpMessages ms
      io (print mbMod)
-
-

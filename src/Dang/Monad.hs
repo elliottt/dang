@@ -22,6 +22,7 @@ module Dang.Monad (
   addError,
   addWarning,
   putMessages,
+  getMessages,
 
   -- ** Re-exported
   mzero,
@@ -148,13 +149,11 @@ withLoc loc body =
 -- Errors and Warnings ---------------------------------------------------------
 
 -- | Fail if errors are produced by the action given. Any warnings generated are
--- left in the environment when the action succeeds.
 failErrors :: DangM dang => dang a -> dang a
 failErrors m =
-  do (a,ms) <- collectMessages m
-     let (es,ws) = Seq.partition isError ms
-     guard (Seq.null es)
-     putMessages ws
+  do a  <- m
+     ms <- getMessages
+     guard (not (any isError ms))
      return a
 
 collectMessages :: DangM dang => dang a -> dang (a,Messages)
@@ -164,6 +163,11 @@ collectMessages m =
      a         <- m
      msgs      <- io (atomicModifyIORef' roMsgs (\ msgs -> (orig, msgs)))
      return (a,msgs)
+
+getMessages :: DangM dang => dang Messages
+getMessages  = inBase $ Dang $
+  do RO { .. } <- ask
+     inBase (readIORef roMsgs)
 
 putMessages :: DangM dang => Messages -> dang ()
 putMessages ms = inBase $ Dang $
