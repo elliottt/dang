@@ -30,7 +30,7 @@ module Dang.Utils.PP (
     -- ** Combinators
     (<>), (<+>), ($$), ($+$),
     fsep, sep, hsep, cat, vcat, punctuate,
-    optParens, parens, brackets, quotes,
+    optParens, parens, brackets, angles, quotes,
     comma, commas,
     text, char, int, integer,
     hang, nest,
@@ -241,6 +241,10 @@ instance PP Source where
 instance PP a => PP [a] where
   ppr = pprList
 
+instance PP a => PP (Maybe a) where
+  ppr (Just a) = ppr a
+  ppr Nothing  = angles (text "nothing")
+
 instance PP (DocM (PJ.Doc Ann)) where
   ppr = id
   {-# INLINE ppr #-}
@@ -311,6 +315,9 @@ parens  = fmap PJ.parens
 
 brackets :: Doc -> Doc
 brackets  = fmap PJ.brackets
+
+angles :: Doc -> Doc
+angles d = char '<' <> d <> char '>'
 
 quotes :: Doc -> Doc
 quotes d = char '`' <> d <> char '`'

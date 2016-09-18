@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Dang.TypeCheck.Subst (
     Subst(), emptySubst,
@@ -12,12 +13,13 @@ module Dang.TypeCheck.Subst (
     Unify(), unify,
   ) where
 
-import Dang.ModuleSystem.Name (Name)
+import Dang.ModuleSystem.Name (Name,mkBinding,mkParam,ParamSource(..))
 import Dang.Monad
-import Dang.TypeCheck.AST (TVar,Type(..))
+import Dang.TypeCheck.AST (TVar(..),Type(..))
 import Dang.Utils.PP
+import Dang.Unique (withSupply)
 
-import           Control.Monad (mzero)
+import           Control.Monad (mzero,unless)
 import qualified Data.Set as Set
 import qualified Data.IntMap.Strict as IM
 import qualified Data.Map.Strict as Map
@@ -78,8 +80,16 @@ insertType a ty Subst { .. } =
 
 type M = StateT Subst Dang
 
+-- | Lookup the binding for a type variable, if it exists.
+lookupType :: TVar -> M (Maybe Type)
+lookupType var =
+  do Subst { .. } <- get
+     case Map.lookup var suCanon of
+       Just i  -> return (IM.lookup i suEnv)
+       Nothing -> return Nothing
+
 -- | The two types failed to unify.
-unificationFailed :: Type -> Type -> M a
+unificationFailed :: (PP a, PP b) => a -> b -> M r
 unificationFailed expected found =
   do addError ErrUnification msg
      mzero
@@ -96,8 +106,8 @@ occursCheckFailed var ty =
 -- Zonking ---------------------------------------------------------------------
 
 -- | Remove type variables from a type.
-zonk :: (Zonk a, DangM m) => Subst -> a -> m (a,Subst)
-zonk su a = inBase (runStateT su (zonk' Set.empty a))
+zonk :: (Zonk a, DangM m) => Subst -> a -> m a
+zonk su a = inBase (fst `fmap` runStateT su (zonk' Set.empty a))
 
 class Zonk a where
   zonk' :: Set.Set TVar -> a -> M a
@@ -108,6 +118,7 @@ class Zonk a where
 instance Zonk () where
   zonk' _ () = return ()
 
+instance Zonk a => Zonk (Maybe a)
 instance Zonk a => Zonk [a]
 
 instance Zonk Type where
@@ -123,10 +134,10 @@ instance Zonk Type where
 
          Nothing -> return ty
 
-  zonk' seen ty@TGen{} =
+  zonk' _ ty@TGen{} =
     return ty
 
-  zonk' seen ty@TCon{} =
+  zonk' _ ty@TCon{} =
     return ty
 
   zonk' seen (TApp f x) =
@@ -137,7 +148,7 @@ instance Zonk Type where
   zonk' seen (TFun a b) =
     do a' <- zonk' seen a
        b' <- zonk' seen b
-       return (TApp a' b')
+       return (TFun a' b')
 
 
 
@@ -169,8 +180,68 @@ instance (GZonk f, GZonk g) => GZonk (f :*: g) where
 unify :: (Unify a, DangM m) => Subst -> a -> a -> m Subst
 unify su a b = inBase (snd `fmap` runStateT su (unify' a b))
 
-class Zonk a => Unify a where
+class (PP a, Zonk a) => Unify a where
   unify' :: a -> a -> M ()
+
+  default unify' :: (Generic a, GUnify (Rep a)) => a -> a -> M ()
+  unify' a b =
+    do success <- gunify' (from a) (from b)
+       unless success (unificationFailed a b)
+
+instance (PP a, Unify a) => Unify (Maybe a)
+instance (PP a, Unify a) => Unify [a]
+
+instance Unify Type where
+  unify' (TFree a) ty =
+    do mb <- lookupType a
+       case mb of
+         Just ty' -> unify' ty' ty
+         Nothing  -> bindVar a ty
+
+  unify' ty (TFree a) =
+    do mb <- lookupType a
+       case mb of
+         Just ty' -> unify' ty ty'
+         Nothing  -> bindVar a ty
+
+  unify' (TCon a) (TCon b) | a == b = return ()
+
+  unify' (TGen a) (TGen b) | a == b = return ()
+
+  unify' (TApp a b) (TApp x y) =
+    do unify' a x
+       unify' b y
+
+  unify' (TFun a b) (TFun x y) =
+    do unify' a x
+       unify' b y
+
+  unify' a b = unificationFailed a b
+
+class GZonk f => GUnify f where
+  gunify' :: f a -> f b -> M Bool
+
+instance GUnify U1 where
+  gunify' U1 U1 = return True
+
+instance Unify a => GUnify (K1 i a) where
+  gunify' (K1 a) (K1 b) =
+    do unify' a b
+       return True
+
+instance GUnify f => GUnify (M1 i c f) where
+  gunify' (M1 a) (M1 b) = gunify' a b
+
+instance (GUnify f, GUnify g) => GUnify (f :+: g) where
+  gunify' (L1 a) (L1 b) = gunify' a b
+  gunify' (R1 a) (R1 b) = gunify' a b
+  gunify' _      _      = return False
+
+instance (GUnify f, GUnify g) => GUnify (f :*: g) where
+  gunify' (x :*: y) (a :*: b) =
+    do r <- gunify' x a
+       if r then gunify' y b
+            else return r
 
 bindVar :: TVar -> Type -> M ()
 bindVar var ty
@@ -190,3 +261,14 @@ bindVar var ty
   | otherwise =
     do su <- get
        set $! insertType var ty su
+
+
+test = runDang $
+  do cxt  <- withSupply (mkBinding "Main" "cxt" mempty)
+     fooC <- withSupply (mkBinding "Main" "Foo" mempty)
+     a    <- withSupply (mkParam (FromBind cxt) "a" mempty)
+     b    <- withSupply (mkParam (FromBind cxt) "b" mempty)
+     su   <- unify emptySubst (TFree (TVar a)) (TCon fooC)
+     su'  <- unify su (TFree (TVar a)) (TFree (TVar b))
+
+     pretty `fmap` zonk su' (TFun (TFree (TVar a)) (TFree (TVar b)))
