@@ -39,7 +39,7 @@ import           MonadLib (runM,BaseM(..),ReaderT,ask,local)
 type RNModule = Module (Parsed Name)
 
 -- | Rename a top-level module.
-renameModule :: PModule -> Dang (Maybe RNModule, Messages)
+renameModule :: PModule -> Dang RNModule
 renameModule Module { .. } = rename (mkNamespace (thing modName)) $
   do n' <- withSupply $ case thing modName of
              PQual ns n -> mkModName (Just ns) n (locRange modName)
@@ -54,8 +54,7 @@ renameModule Module { .. } = rename (mkNamespace (thing modName)) $
 
 
 -- | Rename an expression.
-renameExpr :: Namespace -> Expr (Parsed (SrcLoc PName))
-           -> Dang (Maybe (Expr (Parsed Name)), Messages)
+renameExpr :: Namespace -> Expr (Parsed (SrcLoc PName)) -> Dang (Expr (Parsed Name))
 renameExpr ns e = rename ns (rnExpr e)
 
 
@@ -71,12 +70,8 @@ instance SupplyM RN where
   withSupply f = inBase (withSupply f)
 
 
-rename :: Namespace -> RN a -> Dang (Maybe a, Messages)
-rename ns m =
-  do (res,ms) <- collectMessages (runM (unRN m) RO { roNS = ns, roNames = mempty })
-     if F.any isError ms
-        then return (Nothing,  ms)
-        else return (Just res, ms)
+rename :: Namespace -> RN a -> Dang a
+rename ns m = failErrors (runM (unRN m) RO { roNS = ns, roNames = mempty })
 
 data RO = RO { roNS    :: Namespace
              , roNames :: NameMap

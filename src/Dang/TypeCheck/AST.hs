@@ -1,9 +1,16 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeFamilies #-}
+
+-- this is for the pass through of the MetaOf instance for Checked
+{-# LANGUAGE UndecidableInstances #-}
 
 module Dang.TypeCheck.AST where
 
+import Dang.AST
 import Dang.ModuleSystem.Name
+import Dang.Syntax.AST hiding (Type(..),Schema,TVar)
+import Dang.Syntax.Location (SrcRange)
 import Dang.Utils.PP
 
 import GHC.Generics (Generic)
@@ -11,7 +18,6 @@ import GHC.Generics (Generic)
 
 newtype TVar = TVar { tvName :: Name
                     } deriving (Eq,Ord,Show,Generic)
-
 
 data Schema = Forall [TVar] Type
               deriving (Eq,Ord,Show,Generic)
@@ -22,6 +28,35 @@ data Type = TFree !TVar
           | TApp !Type !Type
           | TFun !Type !Type
             deriving (Eq,Ord,Show,Generic)
+
+
+-- AST -------------------------------------------------------------------------
+
+data Checked
+
+instance Syn Checked where
+  type IdentOf  Checked           = Name
+  type TypeOf   Checked           = Type
+  type SchemaOf Checked           = Schema
+
+  type MetaOf   Checked Module    = SrcRange
+  type MetaOf   Checked ModStruct = SrcRange
+  type MetaOf   Checked Decl      = SrcRange
+  type MetaOf   Checked Bind      = SrcRange
+  type MetaOf   Checked Sig       = SrcRange
+  type MetaOf   Checked ModBind   = SrcRange
+  type MetaOf   Checked ModType   = SrcRange
+  type MetaOf   Checked ModSpec   = SrcRange
+  type MetaOf   Checked ModExpr   = SrcRange
+  type MetaOf   Checked Match     = SrcRange
+  type MetaOf   Checked Pat       = SrcRange
+  type MetaOf   Checked Expr      = SrcRange
+  type MetaOf   Checked LetDecl   = SrcRange
+  type MetaOf   Checked Schema    = SrcRange
+  type MetaOf   Checked Type      = SrcRange
+  type MetaOf   Checked Literal   = SrcRange
+  type MetaOf   Checked Data      = SrcRange
+  type MetaOf   Checked Constr    = SrcRange
 
 
 -- Pretty-printing -------------------------------------------------------------

@@ -2,12 +2,13 @@
 
 module Main where
 
-import Dang.Monad
-import Dang.Syntax.Format (formatMessage)
-import Dang.Syntax.Location (Source(..),thing,Range(..),getLoc)
-import Dang.Syntax.Parser
-import Dang.ModuleSystem.Rename
-import Dang.Utils.PP
+import           Dang.ModuleSystem.Rename
+import           Dang.Monad
+import           Dang.Syntax.Format (formatMessage)
+import           Dang.Syntax.Location (Source(..),thing,Range(..),getLoc)
+import           Dang.Syntax.Parser
+import qualified Dang.TypeCheck.KindCheck as KC
+import           Dang.Utils.PP
 
 import qualified Data.Foldable as F
 import           Data.List (sortBy)
@@ -36,8 +37,9 @@ main  = runDang $
               $ F.toList ms
 
      (mbMod,ms) <- collectMessages $ try $
-       do pMod <- parseModule Interactive txt
-          renameModule pMod
+       do pMod  <- parseModule Interactive txt
+          rnMod <- renameModule pMod
+          KC.checkModule rnMod
 
      dumpMessages ms
      io (print mbMod)
