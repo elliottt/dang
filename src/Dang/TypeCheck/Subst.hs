@@ -9,7 +9,7 @@
 
 module Dang.TypeCheck.Subst (
     Subst(), emptySubst, modifySkolems,
-    Zonk(), zonk,
+    Zonk(), zonk, ftvs,
     Unify(), unify,
   ) where
 
@@ -121,30 +121,44 @@ occursCheckFailed var ty =
 zonk :: (Zonk a, DangM m) => Subst -> a -> m a
 zonk su a = inBase (fst `fmap` runStateT su (zonk' Set.empty a))
 
+ftvs :: (Zonk a, DangM m) => Subst -> a -> m (Set.Set TVar)
+ftvs su a = inBase (fst `fmap` runStateT su (ftvs' Set.empty a))
+
 class Zonk a where
   zonk' :: Set.Set TVar -> a -> M a
+  ftvs' :: Set.Set TVar -> a -> M (Set.Set TVar)
 
   default zonk' :: (Generic a, GZonk (Rep a)) => Set.Set TVar -> a -> M a
   zonk' seen a = to `fmap` gzonk' seen (from a)
 
-instance Zonk () where
-  zonk' _ () = return ()
+  default ftvs' :: (Generic a, GZonk (Rep a)) => Set.Set TVar -> a -> M (Set.Set TVar)
+  ftvs' seen a = gftvs' seen (from a)
 
+
+instance Zonk ()
 instance Zonk a => Zonk (Maybe a)
 instance Zonk a => Zonk [a]
 
+
+resolve :: Set.Set TVar -> TVar -> M (Maybe (Set.Set TVar,Type))
+resolve seen v =
+  do Subst { .. } <- get
+     case Map.lookup v suCanon of
+       Just i ->
+         case IM.lookup i suEnv of
+           Just ty' | v `Set.member` seen -> occursCheckFailed v ty'
+                    | otherwise           -> return (Just (Set.insert v seen,ty'))
+
+           Nothing -> return Nothing
+
+       Nothing -> return Nothing
+
 instance Zonk Type where
   zonk' seen ty@(TFree v) =
-    do Subst { .. } <- get
-       case Map.lookup v suCanon of
-         Just i ->
-           case IM.lookup i suEnv of
-             Just ty' | v `Set.member` seen -> occursCheckFailed v ty'
-                      | otherwise           -> zonk' (Set.insert v seen) ty'
-
-             Nothing -> return ty
-
-         Nothing -> return ty
+    do mb <- resolve seen v
+       case mb of
+         Just (seen',ty') -> zonk' seen' ty'
+         Nothing          -> return ty
 
   zonk' _ ty@TGen{} =
     return ty
@@ -163,28 +177,62 @@ instance Zonk Type where
        return (TFun a' b')
 
 
+  ftvs' seen (TFree v) =
+    do mb <- resolve seen v
+       case mb of
+         Just (seen', ty') -> ftvs' seen' ty'
+         Nothing           -> return Set.empty
+
+  ftvs' _ TGen{} =
+    return Set.empty
+
+  ftvs' _ TCon{} =
+    return Set.empty
+
+  ftvs' seen (TApp a b) =
+    do as <- ftvs' seen a
+       bs <- ftvs' seen b
+       return (as `Set.union` bs)
+
+  ftvs' seen (TFun a b) =
+    do as <- ftvs' seen a
+       bs <- ftvs' seen b
+       return (as `Set.union` bs)
+
 
 class GZonk (f :: * -> *) where
   gzonk' :: Set.Set TVar -> f a -> M (f a)
+  gftvs' :: Set.Set TVar -> f a -> M (Set.Set TVar)
 
 instance GZonk U1 where
   gzonk' _ u = return u
+  gftvs' _ _ = return Set.empty
 
 instance Zonk a => GZonk (K1 i a) where
   gzonk' seen (K1 a) = K1 `fmap` zonk' seen a
+  gftvs' seen (K1 a) = ftvs' seen a
 
 instance GZonk f => GZonk (M1 i c f) where
   gzonk' seen (M1 f) = M1 `fmap` gzonk' seen f
+  gftvs' seen (M1 f) = gftvs' seen f
 
 instance (GZonk f, GZonk g) => GZonk (f :+: g) where
   gzonk' seen (L1 f) = L1 `fmap` gzonk' seen f
   gzonk' seen (R1 g) = R1 `fmap` gzonk' seen g
+
+  gftvs' seen (L1 f) = gftvs' seen f
+  gftvs' seen (R1 g) = gftvs' seen g
 
 instance (GZonk f, GZonk g) => GZonk (f :*: g) where
   gzonk' seen (f :*: g) =
     do f' <- gzonk' seen f
        g' <- gzonk' seen g
        return (f' :*: g')
+
+  gftvs' seen (f :*: g) =
+    do fs <- gftvs' seen f
+       gs <- gftvs' seen g
+       return (fs `Set.union` gs)
 
 
 -- Unification -----------------------------------------------------------------
