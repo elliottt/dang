@@ -25,7 +25,7 @@ describeError ErrNoDeclForSig = text "Type signature is missing a declaration"
 describeError ErrRnOverlap    = text "Names overlap"
 describeError ErrRnUnknown    = text "Name not in scope"
 describeError ErrUnification  = text "Unification failed"
-describeError ErrInfiniteType = text "Cannot construct the infinite type"
+describeError ErrInfiniteType = text "Occurs check failed"
 
 data Warning = WarnRnShadowing
                deriving (Show,Eq,Ord)

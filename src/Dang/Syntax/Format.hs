@@ -3,7 +3,7 @@
 
 module Dang.Syntax.Format where
 
-import Dang.Message (Message(..),MessageType(..),isError,describeMessageType)
+import Dang.Message (Message(..),MessageType(..),describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
 import Dang.Syntax.Location
            (SrcRange,Source(..),Located(..),Position(..),Range(..),zeroPos
@@ -20,13 +20,16 @@ formatMessage src txt (Message ty loc doc) = vcat
   , text ""
   , describeMessageType ty
   , text ""
-  , chunk
-  , nest gutterLen (rangeUnderline msgAnn loc)
-  , text ""
+  , source
   , doc
   , text "" ]
   where
   (chunk,gutterLen) = formatChunk src startPos (rangeText cxtLines loc txt)
+
+  source | L.null txt = emptyDoc
+         | otherwise  = chunk
+                     $$ nest gutterLen (rangeUnderline msgAnn loc)
+                     $$ text ""
 
   cxtLines = 3
 

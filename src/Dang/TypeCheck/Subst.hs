@@ -8,16 +8,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Dang.TypeCheck.Subst (
-    Subst(), emptySubst,
+    Subst(), emptySubst, modifySkolems,
     Zonk(), zonk,
     Unify(), unify,
   ) where
 
-import Dang.ModuleSystem.Name (Name,mkBinding,mkParam,ParamSource(..))
+import Dang.ModuleSystem.Name (mkBinding,mkParam,ParamSource(..))
 import Dang.Monad
 import Dang.TypeCheck.AST (TVar(..),Type(..))
 import Dang.Utils.PP
 import Dang.Unique (withSupply)
+import Dang.Syntax.Format (formatMessage)
+import Dang.Syntax.Location (Source(..))
 
 import           Control.Monad (mzero,unless)
 import qualified Data.Set as Set
@@ -38,10 +40,13 @@ data Subst = Subst { suCanon :: !(Map.Map TVar Int)
 
                    , suNext :: !Int
                      -- ^ The next canonical name available.
+
+                   , suSkolems :: !(Set.Set TVar)
+                     -- ^ The set of Skolemized variables
                    }
 
 emptySubst :: Subst
-emptySubst  = Subst Map.empty IM.empty 0
+emptySubst  = Subst Map.empty IM.empty 0 Set.empty
 
 -- | Merge two variables in the substitution environment.
 merge :: TVar -> TVar -> Subst -> Maybe Subst
@@ -73,7 +78,13 @@ insertType a ty Subst { .. } =
     Nothing ->
       Subst { suCanon = Map.insert a suNext suCanon
             , suEnv   = IM.insert suNext ty suEnv
-            , suNext  = suNext + 1 }
+            , suNext  = suNext + 1
+            , .. }
+
+
+-- | Modify the set of Skolem variables
+modifySkolems :: (Set.Set TVar -> Set.Set TVar) -> (Subst -> Subst)
+modifySkolems f Subst { .. } = Subst { suSkolems = f suSkolems, .. }
 
 
 -- Monad -----------------------------------------------------------------------
@@ -91,15 +102,16 @@ lookupType var =
 -- | The two types failed to unify.
 unificationFailed :: (PP a, PP b) => a -> b -> M r
 unificationFailed expected found =
-  do addError ErrUnification msg
+  do addError ErrUnification $
+       vcat [ hang (text "Expected type:") 2 (pp expected)
+            , hang (text "   Found type:") 2 (pp found) ]
      mzero
-  where
-  msg = vcat [ hang (text "Expected type:") 2 (pp expected)
-             , hang (text "   Found type:") 2 (pp found) ]
 
 occursCheckFailed :: TVar -> Type -> M a
 occursCheckFailed var ty =
-  do addError ErrInfiniteType (undefined :: Doc)
+  do addError ErrInfiniteType $
+       hang (text "Cannot construct the infinite type:")
+          2 (pp (TFree var) <+> char '~' <+> pp ty)
      mzero
 
 
@@ -271,4 +283,16 @@ test = runDang $
      su   <- unify emptySubst (TFree (TVar a)) (TCon fooC)
      su'  <- unify su (TFree (TVar a)) (TFree (TVar b))
 
-     pretty `fmap` zonk su' (TFun (TFree (TVar a)) (TFree (TVar b)))
+     fun <- zonk su' (TFun (TFree (TVar a)) (TFree (TVar b)))
+     io (print (pp fun))
+
+     c   <- withSupply (mkParam (FromBind cxt) "c" mempty)
+     let var = TFree (TVar c)
+     su'' <- unify su' var (TFun var var)
+
+     (c',ms) <- collectMessages (try (zonk su'' var))
+
+     io (mapM_ (print . formatMessage Interactive "") ms)
+     io (print c')
+
+     return ()
