@@ -14,6 +14,7 @@
 module Dang.Syntax.AST where
 
 
+
 import Dang.AST
 import Dang.Syntax.Location
 import Dang.Utils.PP
@@ -28,28 +29,10 @@ import           GHC.Generics (Generic)
 -- | The syntax descriptor for parsed modules.
 data Parsed ident
 
-instance Syn (Parsed ident) where
-  type IdentOf  (Parsed ident)   = ident
-  type TypeOf   (Parsed ident)   = Type (Parsed ident)
-  type SchemaOf (Parsed ident)   = Schema (Parsed ident)
-
-  type MetaOf   (Parsed ident) Module    = SrcRange
-  type MetaOf   (Parsed ident) ModStruct = SrcRange
-  type MetaOf   (Parsed ident) Decl      = SrcRange
-  type MetaOf   (Parsed ident) Bind      = SrcRange
-  type MetaOf   (Parsed ident) Sig       = SrcRange
-  type MetaOf   (Parsed ident) ModType   = SrcRange
-  type MetaOf   (Parsed ident) ModSpec   = SrcRange
-  type MetaOf   (Parsed ident) ModExpr   = SrcRange
-  type MetaOf   (Parsed ident) Match     = SrcRange
-  type MetaOf   (Parsed ident) Pat       = SrcRange
-  type MetaOf   (Parsed ident) Expr      = SrcRange
-  type MetaOf   (Parsed ident) LetDecl   = SrcRange
-  type MetaOf   (Parsed ident) Schema    = SrcRange
-  type MetaOf   (Parsed ident) Type      = SrcRange
-  type MetaOf   (Parsed ident) Literal   = SrcRange
-  type MetaOf   (Parsed ident) Data      = SrcRange
-  type MetaOf   (Parsed ident) Constr    = SrcRange
+type instance IdentOf  (Parsed ident)   = ident
+type instance TypeOf   (Parsed ident)   = Type (Parsed ident)
+type instance SchemaOf (Parsed ident)   = Schema (Parsed ident)
+type instance MetaOf   (Parsed ident)   = SrcRange
 
 
 -- AST -------------------------------------------------------------------------
@@ -64,98 +47,100 @@ type PModule = Module (Parsed (SrcLoc PName))
 
 type P = Parsed (SrcLoc PName)
 
-data Module syn = Module { modMeta  :: MetaOf syn Module
+data Module syn = Module { modMeta  :: MetaOf syn
                          , modName  :: IdentOf syn
                          -- , modImports :: ?
                          , modDecls :: [Decl syn]
                          } deriving (Generic)
 
-data ModStruct syn = ModStruct { msMeta  :: MetaOf syn ModStruct
+data ModStruct syn = ModStruct { msMeta  :: MetaOf syn
                                , msElems :: [Decl syn]
                                } deriving (Generic)
 
-data Decl syn = DBind    (MetaOf syn Decl) (Bind syn)
-              | DSig     (MetaOf syn Decl) (Sig syn)
-              | DData    (MetaOf syn Decl) (Data syn)
-              | DModBind (MetaOf syn Decl) (IdentOf syn) (ModExpr syn)
-              | DModType (MetaOf syn Decl) (IdentOf syn) (ModType syn)
+data Decl syn = DBind    (MetaOf syn) (Bind syn)
+              | DSig     (MetaOf syn) (Sig syn)
+              | DData    (MetaOf syn) (Data syn)
+              | DModBind (MetaOf syn) (IdentOf syn) (ModExpr syn)
+              | DModType (MetaOf syn) (IdentOf syn) (ModType syn)
                 deriving (Generic)
 
-data Bind syn = Bind { bMeta   :: MetaOf syn Bind
+data Bind syn = Bind { bMeta   :: MetaOf syn
                      , bName   :: IdentOf syn
                      , bParams :: [Pat syn]
                      , bBody   :: Expr syn
                      } deriving (Generic)
 
-data Sig syn = Sig { sigMeta   :: MetaOf syn Sig
+data Sig syn = Sig { sigMeta   :: MetaOf syn
                    , sigName   :: IdentOf syn
                    , sigSchema :: SchemaOf syn
                    } deriving (Generic)
 
-data ModType syn = MTVar     (MetaOf syn ModType) (IdentOf syn)
-                 | MTSig     (MetaOf syn ModType) [ModSpec syn]
-                 | MTFunctor (MetaOf syn ModType) (IdentOf syn) (ModType syn) (ModType syn)
+data ModType syn = MTVar     (MetaOf syn) (IdentOf syn)
+                 | MTSig     (MetaOf syn) (ModSig syn)
+                 | MTFunctor (MetaOf syn) (IdentOf syn) (ModType syn) (ModType syn)
                    -- XXX add with-constraints
                    deriving (Generic)
 
-data ModSpec syn = MSSig  (MetaOf syn ModSpec) (Sig syn)
-                 | MSData (MetaOf syn ModSpec) (Data syn)
-                 | MSMod  (MetaOf syn ModSpec) (IdentOf syn) (ModType syn)
+type ModSig syn = [ModSpec syn]
+
+data ModSpec syn = MSSig  (MetaOf syn) (Sig syn)
+                 | MSData (MetaOf syn) (Data syn)
+                 | MSMod  (MetaOf syn) (IdentOf syn) (ModType syn)
                    deriving (Generic)
 
-data ModExpr syn = MEName       (MetaOf syn ModExpr) (IdentOf syn)
-                 | MEApp        (MetaOf syn ModExpr) (ModExpr syn) (ModExpr syn)
-                 | MEStruct     (MetaOf syn ModExpr) (ModStruct syn)
-                 | MEFunctor    (MetaOf syn ModExpr) (IdentOf syn) (ModType syn) (ModExpr syn)
-                 | MEConstraint (MetaOf syn ModExpr) (ModExpr syn) (ModType syn)
+data ModExpr syn = MEName       (MetaOf syn) (IdentOf syn)
+                 | MEApp        (MetaOf syn) (ModExpr syn) (ModExpr syn)
+                 | MEStruct     (MetaOf syn) (ModStruct syn)
+                 | MEFunctor    (MetaOf syn) (IdentOf syn) (ModType syn) (ModExpr syn)
+                 | MEConstraint (MetaOf syn) (ModExpr syn) (ModType syn)
                    deriving (Generic)
 
-data Match syn = MPat   (MetaOf syn Match) (Pat syn) (Match syn)
-               | MSplit (MetaOf syn Match) (Match syn) (Match syn)
-               | MFail  (MetaOf syn Match)
-               | MExpr  (MetaOf syn Match) (Expr syn)
+data Match syn = MPat   (MetaOf syn) (Pat syn) (Match syn)
+               | MSplit (MetaOf syn) (Match syn) (Match syn)
+               | MFail  (MetaOf syn)
+               | MExpr  (MetaOf syn) (Expr syn)
                  deriving (Generic)
 
-data Pat syn = PVar  (MetaOf syn Pat) (IdentOf syn)
-             | PWild (MetaOf syn Pat)
-             | PCon  (MetaOf syn Pat) (IdentOf syn) [Pat syn]
+data Pat syn = PVar  (MetaOf syn) (IdentOf syn)
+             | PWild (MetaOf syn)
+             | PCon  (MetaOf syn) (IdentOf syn) [Pat syn]
                deriving (Generic)
 
-data Expr syn = EVar (MetaOf syn Expr) (IdentOf syn)
-              | ECon (MetaOf syn Expr) (IdentOf syn)
-              | EApp (MetaOf syn Expr) (Expr syn) [Expr syn]
-              | EAbs (MetaOf syn Expr) (Match syn)
-              | ELit (MetaOf syn Expr) (Literal syn)
-              | ELet (MetaOf syn Expr) [LetDecl syn] (Expr syn)
+data Expr syn = EVar (MetaOf syn) (IdentOf syn)
+              | ECon (MetaOf syn) (IdentOf syn)
+              | EApp (MetaOf syn) (Expr syn) [Expr syn]
+              | EAbs (MetaOf syn) (Match syn)
+              | ELit (MetaOf syn) (Literal syn)
+              | ELet (MetaOf syn) [LetDecl syn] (Expr syn)
                 deriving (Generic)
 
-data LetDecl syn = LDBind (MetaOf syn LetDecl) (Bind syn)
-                 | LDSig  (MetaOf syn LetDecl) (Sig syn)
+data LetDecl syn = LDBind (MetaOf syn) (Bind syn)
+                 | LDSig  (MetaOf syn) (Sig syn)
                    -- XXX add open declarations
                    deriving (Generic)
 
-data Literal syn = LInt (MetaOf syn Literal) Integer Int -- ^ value and base
+data Literal syn = LInt (MetaOf syn) Integer Int -- ^ value and base
                    deriving (Generic)
 
-data Data syn = Data { dMeta    :: MetaOf syn Data
+data Data syn = Data { dMeta    :: MetaOf syn
                      , dName    :: IdentOf syn
                      , dParams  :: [IdentOf syn]
                      , dConstrs :: [Constr syn]
                      } deriving (Generic)
 
-data Constr syn = Constr { cMeta   :: MetaOf syn Constr
+data Constr syn = Constr { cMeta   :: MetaOf syn
                          , cName   :: IdentOf syn
                          , cParams :: [TypeOf syn]
                          } deriving (Generic)
 
 
-data Schema syn = Schema (MetaOf syn Schema) [IdentOf syn] (TypeOf syn)
+data Schema syn = Schema (MetaOf syn) [IdentOf syn] (TypeOf syn)
                   deriving (Generic)
 
-data Type syn = TCon (MetaOf syn Type) (IdentOf syn)
-              | TVar (MetaOf syn Type) (IdentOf syn)
-              | TApp (MetaOf syn Type) (Type syn) [Type syn]
-              | TFun (MetaOf syn Type) (Type syn) (Type syn)
+data Type syn = TCon (MetaOf syn) (IdentOf syn)
+              | TVar (MetaOf syn) (IdentOf syn)
+              | TApp (MetaOf syn) (Type syn) [Type syn]
+              | TFun (MetaOf syn) (Type syn) (Type syn)
                 deriving (Generic)
 
 
@@ -175,10 +160,6 @@ instance HasSig LetDecl where
 
 -- Instances -------------------------------------------------------------------
 
-type Cxt f syn = All f syn '[Bind,Expr,LetDecl,Sig,Match,Pat,Literal,Data,Constr
-                            ,Decl,ModType,ModSpec,ModExpr,ModStruct
-                            ,Module]
-
 deriving instance Cxt Show syn => Show (Module    syn)
 deriving instance Cxt Show syn => Show (ModStruct syn)
 deriving instance Cxt Show syn => Show (ModSpec   syn)
@@ -196,8 +177,8 @@ deriving instance Cxt Show syn => Show (Data      syn)
 deriving instance Cxt Show syn => Show (Constr    syn)
 
 -- front-end specific types and schemas
-deriving instance All Show syn '[Schema,Type] => Show (Schema  syn)
-deriving instance All Show syn '[Type]        => Show (Type    syn)
+deriving instance Cxt Show syn => Show (Schema  syn)
+deriving instance Cxt Show syn => Show (Type    syn)
 
 
 -- Locations -------------------------------------------------------------------
