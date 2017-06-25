@@ -275,29 +275,29 @@ ident :: { IdentOf P }
 
 -- Utilities -------------------------------------------------------------------
 
-opt(p)
+opt(p) :: { Maybe p }
   : {- empty -} { Nothing }
   | p           { Just $1 }
 
-sep(p,q)
+sep(p,q) :: { [p] }
   : {- empty -}   { []         }
   | sep_body(p,q) { reverse $1 }
 
-sep1(p,q)
+sep1(p,q) :: { [p] }
   : sep_body(p,q) { reverse $1 }
 
-sep_body(p,q)
+sep_body(p,q) :: { [p] }
   : q                 { [$1]    }
   | sep_body(p,q) p q { $3 : $1 }
 
-list(p)
+list(p) :: { [p] }
   : {- empty -}  { []         }
   | list_body(p) { reverse $1 }
 
-list1(p)
+list1(p) :: { [p] }
   : list_body(p) { reverse $1 }
 
-list_body(p)
+list_body(p) :: { [p] }
   : p              { [$1]    }
   | list_body(p) p { $2 : $1 }
 

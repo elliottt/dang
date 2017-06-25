@@ -41,28 +41,10 @@ instance HasLoc BindMeta where
 
 data Checked
 
-instance Syn Checked where
-  type IdentOf  Checked           = Name
-  type TypeOf   Checked           = Type
-  type SchemaOf Checked           = Schema
-
-  type MetaOf   Checked Module    = SrcRange
-  type MetaOf   Checked ModStruct = SrcRange
-  type MetaOf   Checked Decl      = SrcRange
-  type MetaOf   Checked Bind      = BindMeta
-  type MetaOf   Checked Sig       = SrcRange
-  type MetaOf   Checked ModType   = SrcRange
-  type MetaOf   Checked ModSpec   = SrcRange
-  type MetaOf   Checked ModExpr   = SrcRange
-  type MetaOf   Checked Match     = SrcRange
-  type MetaOf   Checked Pat       = SrcRange
-  type MetaOf   Checked Expr      = SrcRange
-  type MetaOf   Checked LetDecl   = SrcRange
-  type MetaOf   Checked Schema    = SrcRange
-  type MetaOf   Checked Type      = SrcRange
-  type MetaOf   Checked Literal   = SrcRange
-  type MetaOf   Checked Data      = SrcRange
-  type MetaOf   Checked Constr    = SrcRange
+type instance IdentOf  Checked = Name
+type instance TypeOf   Checked = Type
+type instance SchemaOf Checked = Schema
+type instance MetaOf   Checked = SrcRange
 
 
 -- Pretty-printing -------------------------------------------------------------
