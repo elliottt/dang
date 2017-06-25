@@ -82,19 +82,19 @@ import           Text.Location.Layout (Layout(..),layout)
 
 -- Top-level Module ------------------------------------------------------------
 
-top_module :: { Module P }
+top_module :: { Module Parsed }
   : 'module' mod_name 'where' 'v{' top_decls 'v}'
     { Module { modMeta  = mappend $1 $6
              , modName  = $2
              , modDecls = $5 } }
 
-top_decls :: { [Decl P] } -- { ([Import],[Decl P]) }
+top_decls :: { [Decl Parsed] } -- { ([Import],[Decl Parsed]) }
   : {- empty -}      { []        }
   | sep1('v;', decl) { concat $1 }
 
 -- Declarations ----------------------------------------------------------------
 
-decl :: { [Decl P] }
+decl :: { [Decl Parsed] }
   : signature     { [ DSig (getLoc sig) sig | sig <- $1 ] }
   | bind          { [DBind (getLoc $1) $1] }
   | data_decl     { [DData (getLoc $1) $1] }
@@ -104,11 +104,11 @@ decl :: { [Decl P] }
 
 -- Module Types ----------------------------------------------------------------
 
-mod_type_bind :: { Decl P }
+mod_type_bind :: { Decl Parsed }
   : 'module' 'type' con '=' mod_type
     { DModType (getLoc ($1,$5)) $3 $5 }
 
-mod_type :: { ModType P }
+mod_type :: { ModType Parsed }
   : con
     { MTVar (getLoc $1) $1 }
 
@@ -119,7 +119,7 @@ mod_type :: { ModType P }
     { let { mk (p,ty) r = MTFunctor (getLoc (p,r)) p ty r
           } in foldr mk $4 $2 }
 
-mod_spec :: { [ModSpec P] }
+mod_spec :: { [ModSpec Parsed] }
   : signature
     { [ MSSig (getLoc sig) sig | sig <- $1 ] }
 
@@ -132,46 +132,46 @@ mod_spec :: { [ModSpec P] }
 
 -- Module Expressions ----------------------------------------------------------
 
-mod_bind :: { Decl P }
+mod_bind :: { Decl Parsed }
   : 'module' mod_name list(mod_param) opt(mod_restrict) '=' mod_expr
     { DModBind (getLoc ($1,$6)) $2 (mkFunctor $3 (restrictMod $4 $6)) }
 
-mod_param :: { (IdentOf P, ModType P) }
+mod_param :: { (IdentOf Parsed, ModType Parsed) }
   : '(' con ':' mod_type ')'
     { ($2,$4) }
 
-mod_restrict :: { ModType P }
+mod_restrict :: { ModType Parsed }
   : ':' mod_type { $2 }
 
-mod_expr :: { ModExpr P }
+mod_expr :: { ModExpr Parsed }
   : mod_bexpr opt(mod_constraint)
     { case $2 of
         Nothing -> $1
         Just ty -> MEConstraint (getLoc ($1,ty)) $1 ty }
 
-mod_constraint :: { ModType P }
+mod_constraint :: { ModType Parsed }
   : ':' mod_type { $2 }
 
-mod_bexpr :: { ModExpr P }
+mod_bexpr :: { ModExpr Parsed }
   : list1(mod_aexpr)
     { foldl1 (\ e x -> MEApp (getLoc (e,x)) e x) $1 }
 
   | mod_struct
     { MEStruct (getLoc $1) $1 }
 
-mod_aexpr :: { ModExpr P }
+mod_aexpr :: { ModExpr Parsed }
   : con              { MEName (getLoc $1) $1 }
   | qual_con         { MEName (getLoc $1) $1 }
   | '(' mod_expr ')' { $2                    }
 
-mod_struct :: { ModStruct P }
+mod_struct :: { ModStruct Parsed }
   : 'struct' 'v{' sep('v;', decl) 'v}'
     { ModStruct (getLoc ($1,$4)) (concat $3) }
 
 
 -- Types -----------------------------------------------------------------------
 
-signature :: { [Sig P] }
+signature :: { [Sig Parsed] }
   : sep1(',', ident) ':' schema
     { let { schemaLoc = getLoc $3
           } in [ Sig { sigMeta   = getLoc sig `mappend` schemaLoc
@@ -179,17 +179,17 @@ signature :: { [Sig P] }
                      , sigSchema = $3
                      } | sig <- $1 ] }
 
-schema :: { Schema P }
+schema :: { Schema Parsed }
   : 'forall' list1(ident) '.' type { Schema (mappend $1 (getLoc $4)) $2 $4 }
   |                           type { Schema (getLoc  $1)             [] $1 }
 
-type :: { Type P }
+type :: { Type Parsed }
   : sep1('->', app_type) { mkTFun $1 }
 
-app_type :: { Type P }
+app_type :: { Type Parsed }
   : list1(atype) { mkTApp $1 }
 
-atype :: { Type P }
+atype :: { Type Parsed }
   : ident        { TVar (getLoc $1) $1 }
   | con          { TCon (getLoc $1) $1 }
   | qual_con     { TCon (getLoc $1) $1 }
@@ -198,31 +198,31 @@ atype :: { Type P }
 
 -- Expressions -----------------------------------------------------------------
 
-bind :: { Bind P }
+bind :: { Bind Parsed }
   : ident list(pat) '=' expr
     { Bind { bMeta   = getLoc ($1,$4)
            , bName   = $1
            , bParams = $2
            , bBody   = $4 } }
 
-pat :: { Pat P }
+pat :: { Pat Parsed }
   : '_'                    { PWild  $1                     }
   | ident                  { PVar   (getLoc $1) $1         }
   | con                    { PCon   (getLoc $1) $1 []      }
   | '(' con list1(pat) ')' { PCon   (getLoc ($1,$4)) $2 $3 }
 
-expr :: { Expr P }
+expr :: { Expr Parsed }
   : list1(aexpr)
     { mkEApp $1 }
 
   | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
     { ELet (getLoc ($1,$6)) (concat $3) $6 }
 
-let_decl :: { [LetDecl P] }
+let_decl :: { [LetDecl Parsed] }
   : bind      { [LDBind (getLoc $1) $1] }
   | signature { [LDSig (getLoc sig) sig | sig <- $1 ] }
 
-aexpr :: { Expr P }
+aexpr :: { Expr Parsed }
   : ident        { EVar (getLoc $1) $1 }
   | qual_ident   { EVar (getLoc $1) $1 }
   | con          { ECon (getLoc $1) $1 }
@@ -230,23 +230,23 @@ aexpr :: { Expr P }
   | lit          { ELit (getLoc $1) $1 }
   | '(' expr ')' { $2                  }
 
-lit :: { Literal P }
+lit :: { Literal Parsed }
   : NUM { case thing $1 of TNum base n -> LInt (getLoc $1) base n }
 
 
 -- Data Declarations -----------------------------------------------------------
 
-data_decl :: { Data P }
+data_decl :: { Data Parsed }
   : 'type' con list(ident) opt(data_constrs)
     { Data { dMeta = getLoc ($1, $2, $3, $4)
            , dName = $2
            , dParams = $3
            , dConstrs = fromMaybe [] $4 } }
 
-data_constrs :: { [Constr P] }
+data_constrs :: { [Constr Parsed] }
   : '=' sep1('|', data_constr) { $2 }
 
-data_constr :: { Constr P }
+data_constr :: { Constr Parsed }
   : con list(atype)
     { Constr { cMeta = getLoc ($1,$2)
              , cName = $1
@@ -255,21 +255,21 @@ data_constr :: { Constr P }
 
 -- Names -----------------------------------------------------------------------
 
-mod_name :: { IdentOf P }
+mod_name :: { IdentOf Parsed }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
   | CON      { case thing $1 of TUnqualCon n  -> PUnqual n  <$ $1 }
 
-con :: { IdentOf P }
+con :: { IdentOf Parsed }
   : CON { case thing $1 of TUnqualCon n -> PUnqual n <$ $1 }
 
-qual_con :: { IdentOf P }
+qual_con :: { IdentOf Parsed }
   : QUAL_CON { case thing $1 of TQualCon ns n -> PQual ns n <$ $1 }
 
-qual_ident :: { IdentOf P }
+qual_ident :: { IdentOf Parsed }
   : QUAL { case thing $1 of TQualIdent ns n -> PQual ns n <$ $1 }
 
 -- identifiers are unqualified parsed-names
-ident :: { IdentOf P }
+ident :: { IdentOf Parsed }
   : UNQUAL { case thing $1 of TUnqualIdent n -> PUnqual n <$ $1 }
 
 
@@ -341,31 +341,31 @@ parseError toks =
 
 -- Utilities -------------------------------------------------------------------
 
-mkTApp :: [Type P] -> Type P
+mkTApp :: [Type Parsed] -> Type Parsed
 mkTApp [t]    = t
 mkTApp (t:ts) = TApp (getLoc (t,ts)) t ts
 mkTApp _      = panic (text "mkTApp: empty list")
 
-mkTFun :: [Type P] -> Type P
+mkTFun :: [Type Parsed] -> Type Parsed
 mkTFun  = foldr1 $ \ty r -> TFun (getLoc (ty,r)) ty r
 
-mkEApp :: [Expr P] -> Expr P
+mkEApp :: [Expr Parsed] -> Expr Parsed
 mkEApp [e]    = e
 mkEApp (e:es) = EApp (getLoc (e,es)) e es
 mkEApp _      = panic (text "mkEApp: empty list")
 
-addParams :: [Pat P] -> Expr P -> Match P
+addParams :: [Pat Parsed] -> Expr Parsed -> Match Parsed
 addParams ps e = foldr step (MExpr (getLoc e) e) ps
   where
   step p r = MPat (getLoc (p,r)) p r
 
-mkFunctor :: [(IdentOf P, ModType P)] -> ModExpr P -> ModExpr P
+mkFunctor :: [(IdentOf Parsed, ModType Parsed)] -> ModExpr Parsed -> ModExpr Parsed
 mkFunctor [] e = e
 mkFunctor ps e = foldr step e ps
   where
   step (p,ty) r = MEFunctor (getLoc (p,ty,r)) p ty r
 
-restrictMod :: Maybe (ModType P) -> ModExpr P -> ModExpr P
+restrictMod :: Maybe (ModType Parsed) -> ModExpr Parsed -> ModExpr Parsed
 restrictMod Nothing   e = e
 restrictMod (Just ty) e = MEConstraint (getLoc (e,ty)) e ty
 

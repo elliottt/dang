@@ -27,3 +27,7 @@ mkIdent  = Ident
 
 identText :: Ident -> S.Text
 identText (Ident t) = t
+
+dot :: Namespace -> Namespace -> Namespace
+dot l r = S.concat [l, ".", r]
+{-# INLINE dot #-}

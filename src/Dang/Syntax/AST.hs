@@ -27,12 +27,12 @@ import           GHC.Generics (Generic)
 -- Syntax and Metadata ---------------------------------------------------------
 
 -- | The syntax descriptor for parsed modules.
-data Parsed ident
+data Parsed
 
-type instance IdentOf  (Parsed ident)   = ident
-type instance TypeOf   (Parsed ident)   = Type (Parsed ident)
-type instance SchemaOf (Parsed ident)   = Schema (Parsed ident)
-type instance MetaOf   (Parsed ident)   = SrcRange
+type instance IdentOf  Parsed = SrcLoc PName
+type instance TypeOf   Parsed = Type Parsed
+type instance SchemaOf Parsed = Schema Parsed
+type instance MetaOf   Parsed = SrcRange
 
 
 -- AST -------------------------------------------------------------------------
@@ -42,10 +42,12 @@ data PName = PUnqual !L.Text
            | PQual   ![L.Text] !L.Text
              deriving (Eq,Show,Ord,Generic)
 
--- | A parsed top-level module.
-type PModule = Module (Parsed (SrcLoc PName))
+pnameNamespace :: PName -> [L.Text]
+pnameNamespace (PUnqual i)  = [i]
+pnameNamespace (PQual ns i) = ns ++ [i]
 
-type P = Parsed (SrcLoc PName)
+-- | A parsed top-level module.
+type PModule = Module Parsed
 
 data Module syn = Module { modMeta  :: MetaOf syn
                          , modName  :: IdentOf syn
@@ -183,60 +185,60 @@ deriving instance Cxt Show syn => Show (Type    syn)
 
 -- Locations -------------------------------------------------------------------
 
-instance HasLoc (Module (Parsed ident)) where
-  type LocSource (Module (Parsed ident)) = Source
+instance HasLoc (Module Parsed) where
+  type LocSource (Module Parsed) = Source
   getLoc = modMeta
 
-instance HasLoc (ModType (Parsed ident)) where
-  type LocSource (ModType (Parsed ident)) = Source
+instance HasLoc (ModType Parsed) where
+  type LocSource (ModType Parsed) = Source
   getLoc (MTVar     l _)     = l
   getLoc (MTSig     l _)     = l
   getLoc (MTFunctor l _ _ _) = l
 
-instance HasLoc (Sig (Parsed ident)) where
-  type LocSource (Sig (Parsed ident)) = Source
+instance HasLoc (Sig Parsed) where
+  type LocSource (Sig Parsed) = Source
   getLoc Sig { .. } = sigMeta
 
-instance HasLoc (Bind (Parsed ident)) where
-  type LocSource (Bind (Parsed ident)) = Source
+instance HasLoc (Bind Parsed) where
+  type LocSource (Bind Parsed) = Source
   getLoc Bind { .. } = bMeta
 
-instance HasLoc (Data (Parsed ident)) where
-  type LocSource (Data (Parsed ident)) = Source
+instance HasLoc (Data Parsed) where
+  type LocSource (Data Parsed) = Source
   getLoc Data { .. } = dMeta
 
-instance HasLoc (Constr (Parsed ident)) where
-  type LocSource (Constr (Parsed ident)) = Source
+instance HasLoc (Constr Parsed) where
+  type LocSource (Constr Parsed) = Source
   getLoc Constr { .. } = cMeta
 
-instance HasLoc (ModExpr (Parsed ident)) where
-  type LocSource (ModExpr (Parsed ident)) = Source
+instance HasLoc (ModExpr Parsed) where
+  type LocSource (ModExpr Parsed) = Source
   getLoc (MEName       l _)     = l
   getLoc (MEApp        l _ _)   = l
   getLoc (MEStruct     l _)     = l
   getLoc (MEFunctor    l _ _ _) = l
   getLoc (MEConstraint l _ _)   = l
 
-instance HasLoc (Match (Parsed ident)) where
-  type LocSource (Match (Parsed ident)) = Source
+instance HasLoc (Match Parsed) where
+  type LocSource (Match Parsed) = Source
   getLoc (MPat   l _ _) = l
   getLoc (MSplit l _ _) = l
   getLoc (MFail  l)     = l
   getLoc (MExpr  l _)   = l
 
-instance HasLoc (Schema (Parsed ident)) where
-  type LocSource (Schema (Parsed ident)) = Source
+instance HasLoc (Schema Parsed) where
+  type LocSource (Schema Parsed) = Source
   getLoc (Schema l _ _) = l
 
-instance HasLoc (Type (Parsed ident)) where
-  type LocSource (Type (Parsed ident)) = Source
+instance HasLoc (Type Parsed) where
+  type LocSource (Type Parsed) = Source
   getLoc (TCon l _)   = l
   getLoc (TVar l _)   = l
   getLoc (TApp l _ _) = l
   getLoc (TFun l _ _) = l
 
-instance HasLoc (Expr (Parsed ident)) where
-  type LocSource (Expr (Parsed ident)) = Source
+instance HasLoc (Expr Parsed) where
+  type LocSource (Expr Parsed) = Source
   getLoc (EVar l _)   = l
   getLoc (ECon l _)   = l
   getLoc (EApp l _ _) = l
@@ -244,18 +246,18 @@ instance HasLoc (Expr (Parsed ident)) where
   getLoc (ELit l _)   = l
   getLoc (ELet l _ _) = l
 
-instance HasLoc (Pat (Parsed ident)) where
-  type LocSource (Pat (Parsed ident)) = Source
+instance HasLoc (Pat Parsed) where
+  type LocSource (Pat Parsed) = Source
   getLoc (PVar  l _)   = l
   getLoc (PWild l)     = l
   getLoc (PCon  l _ _) = l
 
-instance HasLoc (ModStruct (Parsed ident)) where
-  type LocSource (ModStruct (Parsed ident)) = Source
+instance HasLoc (ModStruct Parsed) where
+  type LocSource (ModStruct Parsed) = Source
   getLoc (ModStruct l _) = l
 
-instance HasLoc (Literal (Parsed ident)) where
-  type LocSource (Literal (Parsed ident)) = Source
+instance HasLoc (Literal Parsed) where
+  type LocSource (Literal Parsed) = Source
   getLoc (LInt l _ _) = l
 
 
