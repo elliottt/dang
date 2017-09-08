@@ -45,7 +45,7 @@ import           Text.Location.Layout (Layout(..),layout)
   'where'  { Located $$ (TKeyword Kwhere)  }
   'type'   { Located $$ (TKeyword Ktype)   }
 
-  'import' { Located $$ (TKeyword Kimport) }
+  'require'{ Located $$ (TKeyword Krequire)}
   'open'   { Located $$ (TKeyword Kopen)   }
   'forall' { Located $$ (TKeyword Kforall) }
 
@@ -84,13 +84,24 @@ import           Text.Location.Layout (Layout(..),layout)
 
 top_module :: { Module Parsed }
   : 'module' mod_name 'where' 'v{' top_decls 'v}'
-    { Module { modMeta  = mappend $1 $6
-             , modName  = $2
-             , modDecls = $5 } }
+    { Module { modMeta     = mappend $1 $6
+             , modName     = $2
+             , modRequires = fst $5
+             , modDecls    = snd $5 } }
 
-top_decls :: { [Decl Parsed] } -- { ([Import],[Decl Parsed]) }
-  : {- empty -}      { []        }
-  | sep1('v;', decl) { concat $1 }
+top_decls :: { ([Require Parsed],[Decl Parsed]) }
+  : {- empty -}                               { ([], [])        }
+  | sep1('v;', require)                       { ($1, [])        }
+  | sep1('v;', require) 'v;' sep1('v;', decl) { ($1, concat $3) }
+  | sep1('v;', decl)                          { ([], concat $1) }
+
+
+-- Require Statements ----------------------------------------------------------
+
+require :: { Require Parsed }
+  : 'require'        mod_name { Require (getLoc ($1,$2)) $2 False }
+  | 'require' 'open' mod_name { Require (getLoc ($1,$3)) $3 True  }
+
 
 -- Declarations ----------------------------------------------------------------
 

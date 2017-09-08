@@ -24,7 +24,9 @@ type KindCheck f = f Renamed -> TC (f Checked)
 kcModule :: HasCallStack => KindCheck Module
 kcModule Module { .. } = withLoc modMeta $
   do decls' <- kcStructDecls modDecls
-     return Module { modDecls = decls', .. }
+     return Module { modDecls = decls'
+                   , modRequires = [] -- XXX: fix this
+                   , .. }
 
 kcStructDecls :: HasCallStack => [Decl Renamed] -> TC [Decl Checked]
 kcStructDecls ds =

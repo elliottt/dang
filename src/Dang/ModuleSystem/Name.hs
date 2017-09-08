@@ -92,10 +92,10 @@ nameUnique Name { .. } = nUnique
 
 -- Name Construction -----------------------------------------------------------
 
-mkModName :: Maybe [L.Text] -> L.Text -> SrcRange -> Supply -> (Supply,Name)
+mkModName :: Maybe Namespace -> L.Text -> SrcRange -> Supply -> (Supply,Name)
 mkModName mbNs n nFrom s =
   let (s',nUnique) = nextUnique s
-      name         = Name { nSort = ModDecl ((ModInfo . packNamespaceLazy) `fmap` mbNs)
+      name         = Name { nSort = ModDecl (ModInfo `fmap` mbNs)
                           , nName = mkIdent (L.toStrict n)
                           , .. }
    in (s',name)

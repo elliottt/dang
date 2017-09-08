@@ -39,6 +39,9 @@ main  = runDang $
      (mbMod,ms) <- collectMessages $ try $
        do pMod  <- parseModule Interactive txt
           rnMod <- renameModule pMod
+
+          io (print rnMod)
+
           KC.checkModule rnMod
 
      dumpMessages ms

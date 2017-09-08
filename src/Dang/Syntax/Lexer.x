@@ -44,7 +44,7 @@ $white+ ;
 "struct" { keyword Kstruct }
 "module" { keyword Kmodule }
 "where"  { keyword Kwhere  }
-"import" { keyword Kimport }
+"require"{ keyword Krequire}
 "open"   { keyword Kopen   }
 "forall" { keyword Kforall }
 "type"   { keyword Ktype   }
@@ -108,7 +108,7 @@ data Keyword = Kmodule
              | Kstruct
              | Kwhere
              | Kcolon
-             | Kimport
+             | Krequire
              | Kopen
              | Klparen
              | Krparen

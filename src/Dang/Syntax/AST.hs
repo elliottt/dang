@@ -49,11 +49,16 @@ pnameNamespace (PQual ns i) = ns ++ [i]
 -- | A parsed top-level module.
 type PModule = Module Parsed
 
-data Module syn = Module { modMeta  :: MetaOf syn
-                         , modName  :: IdentOf syn
-                         -- , modImports :: ?
-                         , modDecls :: [Decl syn]
+data Module syn = Module { modMeta     :: MetaOf syn
+                         , modName     :: IdentOf syn
+                         , modRequires :: [Require syn]
+                         , modDecls    :: [Decl syn]
                          } deriving (Generic)
+
+data Require syn = Require { reqMeta   :: MetaOf syn
+                           , reqModule :: IdentOf syn
+                           , reqOpen   :: Bool
+                           }
 
 data ModStruct syn = ModStruct { msMeta  :: MetaOf syn
                                , msElems :: [Decl syn]
@@ -163,6 +168,7 @@ instance HasSig LetDecl where
 -- Instances -------------------------------------------------------------------
 
 deriving instance Cxt Show syn => Show (Module    syn)
+deriving instance Cxt Show syn => Show (Require   syn)
 deriving instance Cxt Show syn => Show (ModStruct syn)
 deriving instance Cxt Show syn => Show (ModSpec   syn)
 deriving instance Cxt Show syn => Show (ModExpr   syn)

@@ -7,6 +7,8 @@ module Dang.Utils.Ident (
     Ident(),
     mkIdent,
     identText,
+
+    dot,
   ) where
 
 import qualified Data.Text as S

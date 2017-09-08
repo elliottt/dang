@@ -1,10 +1,14 @@
 module Dang.ModuleSystem.Env (
     NameTrie(),
+    NameNode(..),
+    Def(..),
     envDecl, envType, envMod,
     qualify,
+    insertPName,
     lookupDecl,
     lookupType,
     lookupMod,
+    lookupPName,
     openMod,
     nameList,
     shadowing,
@@ -72,6 +76,27 @@ singleton mkDef pn n =
     PUnqual p  ->             mk p
   where
   mk p = NameTrie (Map.singleton (mkDef p) (NameNode (Just n) mempty))
+
+
+insertPName :: Monoid a => (L.Text -> Def) -> PName -> a -> NameTrie a -> NameTrie a
+insertPName mkDef pn a =
+  case pn of
+    PQual ns p -> go (map DefMod ns ++ [mkDef p])
+    PUnqual p  -> go [mkDef p]
+
+  where
+  go (n:ns) (NameTrie m) = NameTrie (Map.alter upd n m)
+    where
+    upd | null ns = \ mb ->
+          case mb of
+            Just (NameNode mb sub) -> Just (NameNode (Just a `mappend` mb) sub)
+            Nothing                -> Just (NameNode (Just a)              mempty)
+
+        | otherwise = \ mb ->
+          case mb of
+            Just (NameNode x sub) -> Just (NameNode x       (go ns sub))
+            Nothing               -> Just (NameNode Nothing (go ns mempty))
+
 
 lookupDecl, lookupType, lookupMod :: PName -> NameTrie a -> Maybe a
 
