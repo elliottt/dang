@@ -19,7 +19,7 @@ module Dang.ModuleSystem.Name (
   ) where
 
 import Dang.Syntax.AST (PName(..))
-import Dang.Syntax.Location (HasLoc(..),Source,SrcRange)
+import Dang.Syntax.Location (HasRange(..),SourceRange,SourcePos)
 import Dang.Unique
 import Dang.Utils.Ident
 import Dang.Utils.PP
@@ -29,13 +29,13 @@ import qualified Data.Text.Lazy as L
 
 
 data ModInfo = ModInfo { modName :: !Namespace
-                       } deriving (Eq,Ord,Show)
+                       } deriving (Eq,Show)
 
 data ParamSource = FromBind !Name
                  | FromSig !Name
                  | FromFunctor !Name
-                 | FromLambda !SrcRange
-                   deriving (Eq,Ord,Show)
+                 | FromLambda !SourceRange
+                   deriving (Eq,Show)
 
 -- | Information about where a name comes from, like in GHC.
 data NameSort = Declaration !ModInfo
@@ -46,7 +46,7 @@ data NameSort = Declaration !ModInfo
 
               | ModDecl !(Maybe ModInfo)
                 -- ^ A module, declared in this module.
-                deriving (Eq,Ord,Show)
+                deriving (Eq,Show)
 
 data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
                    -- ^ The unique number assigned to this name for this run of
@@ -58,7 +58,7 @@ data Name = Name { nUnique :: {-# UNPACK #-} !(Unique Name)
                  , nName :: {-# UNPACK #-} !Ident
                    -- ^ The actual name.
 
-                 , nFrom :: {-# UNPACK #-} !SrcRange
+                 , nFrom :: !SourceRange
                    -- ^ Where this name is defined.
                  } deriving (Show)
 
@@ -72,10 +72,9 @@ instance Ord Name where
   compare = compare `on` nUnique
   {-# INLINE compare #-}
 
-instance HasLoc Name where
-  type LocSource Name = Source
-  getLoc Name { .. } = nFrom
-  {-# INLINE getLoc #-}
+instance HasRange Name where
+  range Name { .. } = nFrom
+  {-# INLINE range #-}
 
 -- | Retrieve the text associated with the 'Name'.
 nameIdent :: Name -> Ident
@@ -92,7 +91,7 @@ nameUnique Name { .. } = nUnique
 
 -- Name Construction -----------------------------------------------------------
 
-mkModName :: Maybe Namespace -> L.Text -> SrcRange -> Supply -> (Supply,Name)
+mkModName :: Maybe Namespace -> L.Text -> SourceRange -> Supply -> (Supply,Name)
 mkModName mbNs n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = ModDecl (ModInfo `fmap` mbNs)
@@ -101,7 +100,7 @@ mkModName mbNs n nFrom s =
    in (s',name)
 
 -- | Generate a name for a binding site.
-mkBinding :: Namespace -> L.Text -> SrcRange -> Supply -> (Supply,Name)
+mkBinding :: Namespace -> L.Text -> SourceRange -> Supply -> (Supply,Name)
 mkBinding ns n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Declaration (ModInfo ns)
@@ -110,7 +109,7 @@ mkBinding ns n nFrom s =
    in (s',name)
 
 
-mkParam :: ParamSource -> L.Text -> SrcRange -> Supply -> (Supply,Name)
+mkParam :: ParamSource -> L.Text -> SourceRange -> Supply -> (Supply,Name)
 mkParam d n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Parameter d
@@ -122,7 +121,7 @@ mkParam d n nFrom s =
 -- | Generate a bogus name from a parsed name. This is useful during renaming
 -- when we need to generate a name to finish the pass, but have already
 -- generated errors, invalidating the output.
-mkUnknown :: NameSort -> PName -> SrcRange -> Supply -> (Supply,Name)
+mkUnknown :: NameSort -> PName -> SourceRange -> Supply -> (Supply,Name)
 
 mkUnknown nSort (PUnqual n) src s =
   let (s',nUnique) = nextUnique s

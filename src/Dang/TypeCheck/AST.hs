@@ -29,12 +29,12 @@ data Type = TFree !TVar
           | TFun !Type !Type
             deriving (Eq,Ord,Show,Generic)
 
-data BindMeta = BindMeta SrcRange Schema
+data BindMeta = BindMeta !SourceRange Schema
                 deriving (Show)
 
-instance HasLoc BindMeta where
-  type LocSource BindMeta = Source
-  getLoc (BindMeta l _) = l
+instance HasRange BindMeta where
+  range (BindMeta l _) = l
+  {-# INLINE range #-}
 
 
 -- AST -------------------------------------------------------------------------
@@ -44,7 +44,7 @@ data Checked
 type instance IdentOf  Checked = Name
 type instance TypeOf   Checked = Type
 type instance SchemaOf Checked = Schema
-type instance MetaOf   Checked = SrcRange
+type instance MetaOf   Checked = SourceRange
 
 
 -- Pretty-printing -------------------------------------------------------------

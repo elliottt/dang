@@ -13,8 +13,6 @@
 
 module Dang.Syntax.AST where
 
-
-
 import Dang.AST
 import Dang.Syntax.Location
 import Dang.Utils.PP
@@ -29,10 +27,10 @@ import           GHC.Generics (Generic)
 -- | The syntax descriptor for parsed modules.
 data Parsed
 
-type instance IdentOf  Parsed = SrcLoc PName
+type instance IdentOf  Parsed = PName
 type instance TypeOf   Parsed = Type Parsed
 type instance SchemaOf Parsed = Schema Parsed
-type instance MetaOf   Parsed = SrcRange
+type instance MetaOf   Parsed = SourceRange
 
 
 -- AST -------------------------------------------------------------------------
@@ -191,80 +189,66 @@ deriving instance Cxt Show syn => Show (Type    syn)
 
 -- Locations -------------------------------------------------------------------
 
-instance HasLoc (Module Parsed) where
-  type LocSource (Module Parsed) = Source
-  getLoc = modMeta
+instance HasRange (Module Parsed) where
+  range = modMeta
 
-instance HasLoc (ModType Parsed) where
-  type LocSource (ModType Parsed) = Source
-  getLoc (MTVar     l _)     = l
-  getLoc (MTSig     l _)     = l
-  getLoc (MTFunctor l _ _ _) = l
+instance HasRange (ModType Parsed) where
+  range (MTVar     l _)     = l
+  range (MTSig     l _)     = l
+  range (MTFunctor l _ _ _) = l
 
-instance HasLoc (Sig Parsed) where
-  type LocSource (Sig Parsed) = Source
-  getLoc Sig { .. } = sigMeta
+instance HasRange (Sig Parsed) where
+  range Sig { .. } = sigMeta
 
-instance HasLoc (Bind Parsed) where
-  type LocSource (Bind Parsed) = Source
-  getLoc Bind { .. } = bMeta
+instance HasRange (Bind Parsed) where
+  range Bind { .. } = bMeta
 
-instance HasLoc (Data Parsed) where
-  type LocSource (Data Parsed) = Source
-  getLoc Data { .. } = dMeta
+instance HasRange (Data Parsed) where
+  range Data { .. } = dMeta
 
-instance HasLoc (Constr Parsed) where
-  type LocSource (Constr Parsed) = Source
-  getLoc Constr { .. } = cMeta
+instance HasRange (Constr Parsed) where
+  range Constr { .. } = cMeta
 
-instance HasLoc (ModExpr Parsed) where
-  type LocSource (ModExpr Parsed) = Source
-  getLoc (MEName       l _)     = l
-  getLoc (MEApp        l _ _)   = l
-  getLoc (MEStruct     l _)     = l
-  getLoc (MEFunctor    l _ _ _) = l
-  getLoc (MEConstraint l _ _)   = l
+instance HasRange (ModExpr Parsed) where
+  range (MEName       l _)     = l
+  range (MEApp        l _ _)   = l
+  range (MEStruct     l _)     = l
+  range (MEFunctor    l _ _ _) = l
+  range (MEConstraint l _ _)   = l
 
-instance HasLoc (Match Parsed) where
-  type LocSource (Match Parsed) = Source
-  getLoc (MPat   l _ _) = l
-  getLoc (MSplit l _ _) = l
-  getLoc (MFail  l)     = l
-  getLoc (MExpr  l _)   = l
+instance HasRange (Match Parsed) where
+  range (MPat   l _ _) = l
+  range (MSplit l _ _) = l
+  range (MFail  l)     = l
+  range (MExpr  l _)   = l
 
-instance HasLoc (Schema Parsed) where
-  type LocSource (Schema Parsed) = Source
-  getLoc (Schema l _ _) = l
+instance HasRange (Schema Parsed) where
+  range (Schema l _ _) = l
 
-instance HasLoc (Type Parsed) where
-  type LocSource (Type Parsed) = Source
-  getLoc (TCon l _)   = l
-  getLoc (TVar l _)   = l
-  getLoc (TApp l _ _) = l
-  getLoc (TFun l _ _) = l
+instance HasRange (Type Parsed) where
+  range (TCon l _)   = l
+  range (TVar l _)   = l
+  range (TApp l _ _) = l
+  range (TFun l _ _) = l
 
-instance HasLoc (Expr Parsed) where
-  type LocSource (Expr Parsed) = Source
-  getLoc (EVar l _)   = l
-  getLoc (ECon l _)   = l
-  getLoc (EApp l _ _) = l
-  getLoc (EAbs l _)   = l
-  getLoc (ELit l _)   = l
-  getLoc (ELet l _ _) = l
+instance HasRange (Expr Parsed) where
+  range (EVar l _)   = l
+  range (ECon l _)   = l
+  range (EApp l _ _) = l
+  range (EAbs l _)   = l
+  range (ELit l _)   = l
+  range (ELet l _ _) = l
 
-instance HasLoc (Pat Parsed) where
-  type LocSource (Pat Parsed) = Source
-  getLoc (PVar  l _)   = l
-  getLoc (PWild l)     = l
-  getLoc (PCon  l _ _) = l
+instance HasRange (Pat Parsed) where
+  range (PVar  l _)   = l
+  range (PWild l)     = l
+  range (PCon  l _ _) = l
 
-instance HasLoc (ModStruct Parsed) where
-  type LocSource (ModStruct Parsed) = Source
-  getLoc (ModStruct l _) = l
+instance HasRange (ModStruct Parsed) where
+  range (ModStruct l _) = l
 
-instance HasLoc (Literal Parsed) where
-  type LocSource (Literal Parsed) = Source
-  getLoc (LInt l _ _) = l
+instance HasRange (Literal Parsed) where
+  range (LInt l _ _) = l
 
 
 -- Pretty-printing -------------------------------------------------------------

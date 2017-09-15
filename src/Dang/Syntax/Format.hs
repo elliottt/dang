@@ -6,8 +6,7 @@ module Dang.Syntax.Format where
 import Dang.Message (Message(..),MessageType(..),describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
 import Dang.Syntax.Location
-           (SrcRange,Source(..),Located(..),Position(..),Range(..),zeroPos
-           ,rangeText)
+           (SourceRange(..))
 import Dang.Utils.PP
 
 import           Data.Int (Int64)

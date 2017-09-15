@@ -42,16 +42,16 @@ describeMessageType (Error err)    = describeError err
 describeMessageType (Warning warn) = describeWarning warn
 
 data Message = Message { msgType   :: !MessageType
-                       , msgSource :: !SrcRange
+                       , msgSource :: !SourceRange
                        , msgDoc    :: Doc
                        } deriving (Show)
 
-instance HasLoc Message where
-  type LocSource Message = Source
-  getLoc = msgSource
+instance HasRange Message where
+  range = msgSource
+  {-# INLINE range #-}
 
 
-mkError :: Error -> SrcRange -> Doc -> Message
+mkError :: Error -> SourceRange -> Doc -> Message
 mkError err msgSource msgDoc = Message { msgType = Error err, .. }
 {-# INLINE mkError #-}
 
@@ -59,7 +59,7 @@ isError :: Message -> Bool
 isError Message { msgType = Error{} } = True
 isError _                             = False
 
-mkWarning :: Warning -> SrcRange -> Doc -> Message
+mkWarning :: Warning -> SourceRange -> Doc -> Message
 mkWarning warn msgSource msgDoc = Message { msgType = Warning warn, .. }
 {-# INLINE mkWarning #-}
 

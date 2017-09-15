@@ -2,6 +2,7 @@
 
 {
 {-# OPTIONS_GHC -w #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Dang.Syntax.Lexer (
@@ -9,13 +10,13 @@ module Dang.Syntax.Lexer (
   ) where
 
 import Dang.Syntax.AST (PName(..))
-import Dang.Syntax.Location
 import Dang.Utils.Ident
 
+import           AlexTools
 import           Data.Char (ord,isAscii,isSpace)
 import           Data.Maybe (fromMaybe)
 import           Data.Word (Word8)
-import qualified Data.Text.Lazy as L
+import qualified Data.Text as T
 
 }
 
@@ -63,7 +64,7 @@ $white+ ;
 "_"      { keyword Kwild   }
 
 -- numbers
-$number+ { emits (TNum 10 . read . L.unpack) }
+$number+ { emits (TNum 10 . read . T.unpack) }
 
 -- names
 @qual @con_name { emits (mkQual TQualCon) }
@@ -78,26 +79,29 @@ $number+ { emits (TNum 10 . read . L.unpack) }
 
 -- Tokens ----------------------------------------------------------------------
 
-data Token = TUnqualCon !L.Text
-           | TQualCon ![L.Text] !L.Text
-           | TUnqualIdent !L.Text
-           | TQualIdent ![L.Text] !L.Text
+data Token = TUnqualCon !T.Text
+           | TQualCon ![T.Text] !T.Text
+           | TUnqualIdent !T.Text
+           | TQualIdent ![T.Text] !T.Text
            | TKeyword !Keyword
            | TNum Integer Int
-           | TLineComment !L.Text
+           | TLineComment !T.Text
            | TStart
            | TSep
            | TEnd
-           | TError !L.Text -- ^ Lexical error
+           | TError !T.Text -- ^ Lexical error
              deriving (Eq,Show)
 
 isComment :: Token -> Bool
 isComment TLineComment{} = True
 isComment _              = False
 
-mkQual :: ([L.Text] -> L.Text -> Token) -> L.Text -> Token
+ignoreComments :: [Lexeme Token] -> [Lexeme Token]
+ignoreComments  = filter (isComment . lexemeToken)
+
+mkQual :: ([T.Text] -> T.Text -> Token) -> T.Text -> Token
 mkQual mk txt =
-  case L.splitOn "." txt of
+  case T.splitOn "." txt of
     [n] -> mk [] n
     []  -> error "impossible"
     ns  -> mk (init ns) (last ns)
@@ -125,81 +129,32 @@ data Keyword = Kmodule
                deriving (Eq,Show)
 
 
--- Actions ---------------------------------------------------------------------
-
-type AlexAction = Maybe Source -> Int -> AlexInput -> Mode -> (Mode,[SrcLoc Token])
-
-move :: Char -> Position -> Position
-move  = movePos 8
-
-withInput :: (L.Text -> Token) -> Maybe Source -> Int -> AlexInput
-          -> SrcLoc Token
-withInput mk rangeSource len AlexInput { .. } =
-  mk txt `at` Range { rangeStart = aiPos
-                    , rangeEnd   = L.foldl' (flip move) aiPos txt
-                    , .. }
-  where
-  txt = L.take (fromIntegral len) aiText
-
-keyword :: Keyword -> AlexAction
-keyword kw src len inp st = (st,[withInput (const (TKeyword kw)) src len inp])
-
-emits :: (L.Text -> Token) -> AlexAction
-emits mk src len inp st = (st,[withInput mk src len inp])
-
-
 -- Lexer -----------------------------------------------------------------------
 
-ignoreComments :: [SrcLoc Token] -> [SrcLoc Token]
-ignoreComments  = filter (not . isComment . thing)
+mkConfig :: LexerConfig Mode Token
+mkConfig  =
+  LexerConfig { lexerInitialState = Normal
+              , lexerStateMode    = modeToInt
+              , lexerEOF          = \ _ -> [] }
 
-lexer :: Source
-      -> Maybe Position
-      -> L.Text
-      -> [SrcLoc Token]
-lexer src mbPos txt =
-  go AlexInput { aiPos = startPos, aiText = txt } Normal
-  where
+lexer :: FilePath -> Maybe SourcePos -> T.Text -> [Lexeme Token]
+lexer src mbPos bytes =
+  $makeLexer mkConfig $
+    case mbPos of
+      Just pos -> (initialInput (T.pack src) bytes) { inputPos = pos }
+      Nothing  ->  initialInput (T.pack src) bytes
 
-  startPos = fromMaybe (Position 1 1) mbPos
+emits :: (T.Text -> Token) -> Action Mode [Lexeme Token]
+emits mkToken =
+  do lexemeText  <- matchText
+     lexemeRange <- matchRange
+     return [Lexeme { lexemeToken = mkToken lexemeText, .. }]
 
-  go inp st =
-    case alexScan inp (modeToInt st) of
+token :: Token -> Action Mode [Lexeme Token]
+token tok = emits (const tok)
 
-      AlexEOF ->
-        []
-
-      -- chew up text until the next whitespace character, then continue
-      AlexError inp' ->
-        let (as,bs) = L.break isSpace (aiText inp')
-            pos'    = L.foldl' (flip move) (aiPos inp') as
-            inp2    = AlexInput { aiPos = pos', aiText = bs }
-            loc     = Range { rangeStart = aiPos inp', rangeEnd = pos', .. }
-        in (TError as `at` loc) : go inp2 st
-
-      AlexSkip inp' _ ->
-        go inp' st
-
-      AlexToken inp' len act ->
-        case act rangeSource len inp st of
-          (st',xs) -> xs ++ go inp' st'
-
-  rangeSource = Just src
-
-  mkRange a b =
-    Range { rangeStart = aiPos a, rangeEnd = aiPos b, .. }
-
-
--- Alex Interface --------------------------------------------------------------
-
-data AlexInput = AlexInput { aiPos  :: !Position
-                           , aiText :: L.Text
-                           }
-
-alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
-alexGetByte AlexInput { .. } =
-  do (c,rest) <- L.uncons aiText
-     return (byteForChar c, AlexInput { aiText = rest, aiPos = move c aiPos, .. })
+keyword :: Keyword -> Action Mode [Lexeme Token]
+keyword k = token (TKeyword k)
 
 
 -- Lexer Modes -----------------------------------------------------------------
@@ -222,5 +177,9 @@ byteForChar c
 
   non_graphic = 0
 
+alexGetByte = makeAlexGetByte $ \ c ->
+  if isAscii c
+     then toEnum (fromEnum c)
+     else 0x1
 
 }

@@ -22,7 +22,6 @@ library
                        Dang.Syntax.AST
                        Dang.Syntax.Format
                        Dang.Syntax.Lexer
-                       Dang.Syntax.Location
                        Dang.Syntax.Parser
                        Dang.TypeCheck.AST
                        Dang.TypeCheck.KindCheck
@@ -40,8 +39,9 @@ library
                        containers,
                        lens,
                        text,
-                       located,
-                       terminal-size
+                       terminal-size,
+                       alex-tools >= 0.3,
+                       layout-rules
   ghc-options:         -Wall
 
 executable dang
