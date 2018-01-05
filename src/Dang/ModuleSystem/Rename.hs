@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE Rank2Types #-}
 
@@ -352,8 +351,7 @@ rnLetDecls lds body =
 
 rnLetDecl :: Rename LetDecl
 rnLetDecl (LDBind loc b) = withLoc loc (LDBind loc <$> rnBindAux b)
-
-
+rnLetDecl (LDSig  loc s) = withLoc loc (LDSig  loc <$> rnSig     s)
 
 
 rnLit :: Rename Literal
@@ -374,8 +372,8 @@ rnPName mkDef lpname =
   do RW { rwContext = ctx } <- RN get
      io (print ctx)
      case resolve ctx of
-       Just ns -> return (head ns)
        Just [] -> panic (text "Malformed name scope")
+       Just ns -> return (head ns)
        Nothing -> missingBinding lpname
 
   where
@@ -383,6 +381,8 @@ rnPName mkDef lpname =
   resolve (scope:rest) = check (scopePrivate scope)
                        $ check (scopePublic scope)
                        $ go rest
+
+  resolve [] = panic (text "Invalid scope context")
 
   check names tryOther =
     do NameNode mb _ <- lookupPName mkDef lpname names
