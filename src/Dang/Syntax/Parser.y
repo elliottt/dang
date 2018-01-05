@@ -10,7 +10,7 @@
 
 module Dang.Syntax.Parser (
     parseModule,
-    lexWithLayout
+    lexWithLayout,
   ) where
 
 import Dang.Monad
@@ -402,7 +402,7 @@ restrictMod :: Maybe (ModType Parsed) -> ModExpr Parsed -> ModExpr Parsed
 restrictMod Nothing   e = e
 restrictMod (Just ty) e = MEConstraint (e <-> ty) e ty
 
-listLoc :: HasRange a => [a] -> SourceRange
+listLoc :: (HasCallStack,HasRange a) => [a] -> SourceRange
 listLoc ls = range (head ls)
 
 (<-?>) :: HasRange b => SourceRange -> Maybe b -> SourceRange

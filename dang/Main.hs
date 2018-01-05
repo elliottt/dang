@@ -5,6 +5,7 @@ module Main where
 import           Dang.ModuleSystem.Rename
 import           Dang.Monad
 import           Dang.Syntax.Format (formatMessage)
+import           Dang.Syntax.Lexer
 import           Dang.Syntax.Location
     (Source,SourceRange(..),SourcePos(..),HasRange(..),interactive)
 import           Dang.Syntax.Parser
@@ -28,8 +29,8 @@ main  = runDang $
                _      -> io $ do putStrLn "Usage: dang file.dg"
                                  exitFailure
 
-     txt        <- io (S.readFile file)
-     io (mapM_ print (lexWithLayout (S.pack file) Nothing txt))
+     txt <- io (S.readFile file)
+     io (mapM_ (print . lexemeToken) (lexWithLayout (S.pack file) Nothing txt))
 
      let dumpMessages ms =
            io $ printDoc defaultConfig

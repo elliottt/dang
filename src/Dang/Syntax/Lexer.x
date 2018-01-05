@@ -102,7 +102,7 @@ isComment TLineComment{} = True
 isComment _              = False
 
 ignoreComments :: [Lexeme Token] -> [Lexeme Token]
-ignoreComments  = filter (isComment . lexemeToken)
+ignoreComments  = filter (not . isComment . lexemeToken)
 
 mkQual :: ([T.Text] -> T.Text -> Token) -> T.Text -> Token
 mkQual mk txt =

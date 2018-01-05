@@ -16,6 +16,7 @@ module Dang.ModuleSystem.Env (
 
 import Dang.Syntax.AST (PName(..))
 import Dang.Utils.PP
+import Dang.Utils.Panic (panic)
 
 import           Control.Monad (mplus)
 import qualified Data.Map.Strict as Map
@@ -80,21 +81,27 @@ singleton mkDef pn n =
 insertPName :: Monoid a => (T.Text -> Def) -> PName -> a -> NameTrie a -> NameTrie a
 insertPName mkDef pn a =
   case pn of
-    PQual _ ns p -> go (map DefMod ns ++ [mkDef p])
-    PUnqual _ p  -> go [mkDef p]
+    PUnqual _ p  -> go (mkDef p) []
+    PQual _ ns p ->
+      case map DefMod ns ++ [mkDef p] of
+        n:ns' -> go n ns'
+        _     -> panic (text "Invalid qualified name")
+
 
   where
-  go (n:ns) (NameTrie m) = NameTrie (Map.alter upd n m)
+  go n ns (NameTrie m) = NameTrie (Map.alter upd n m)
     where
-    upd | null ns = \ mb ->
+    upd mb =
+      case ns of
+        n':rest ->
+          case mb of
+            Just (NameNode x sub) -> Just (NameNode x       (go n' rest sub))
+            Nothing               -> Just (NameNode Nothing (go n' rest mempty))
+
+        [] ->
           case mb of
             Just (NameNode x sub) -> Just (NameNode (Just a `mappend` x) sub)
             Nothing               -> Just (NameNode (Just a)             mempty)
-
-        | otherwise = \ mb ->
-          case mb of
-            Just (NameNode x sub) -> Just (NameNode x       (go ns sub))
-            Nothing               -> Just (NameNode Nothing (go ns mempty))
 
 
 lookupDecl, lookupType, lookupMod :: PName -> NameTrie a -> Maybe a

@@ -10,6 +10,7 @@ module Dang.Syntax.Location (
 
 import AlexTools
 import qualified Data.Text as T
+import GHC.Stack (HasCallStack)
 
 type Source = T.Text
 
@@ -22,6 +23,6 @@ emptyPos  = startPos T.empty
 emptyRange :: SourceRange
 emptyRange  = SourceRange { sourceFrom = emptyPos, sourceTo = emptyPos }
 
-listRange :: HasRange range => [range] -> SourceRange
+listRange :: (HasCallStack,HasRange range) => [range] -> SourceRange
 listRange [] = emptyRange
 listRange xs = range (last xs)

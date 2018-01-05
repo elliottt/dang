@@ -11,6 +11,8 @@ import Dang.Utils.PP
 import           Data.List (intersperse)
 import qualified Data.Text as T
 
+import Debug.Trace
+
 
 formatMessage :: Source -> T.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat
@@ -42,8 +44,24 @@ formatMessage src txt (Message ty loc doc) = vcat
     text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
 
 
-rangeText = undefined
+-- | Extract the range of text with n context lines, centered around the range
+-- provided, from the program text.
+rangeText ::
+  Int         {-^ Context lines -} ->
+  SourceRange {-^ Start region-} ->
+  T.Text      {-^ Source text -} ->
+  T.Text
 
+rangeText cxt SourceRange { .. } txt
+  = T.unlines
+  $ take keep
+  $ drop skip
+  $ T.lines txt
+
+  where
+  skip = max 0 (sourceLine sourceFrom - cxt)
+
+  keep = sourceLine sourceTo - sourceLine sourceFrom
 
 -- | Generate a single underline for the range specified.
 rangeUnderline :: Ann -> SourceRange -> Doc
@@ -89,7 +107,9 @@ spaceBetween gutterLen mkGutter = \ start end ->
 -- | Print out a formatted chunk of source code to the console. The returned
 -- value is the size of the line number gutter.
 formatChunk :: Source -> SourcePos -> T.Text -> (Doc,Int)
-formatChunk src start chunk = (prefix <> go start toks, pad + 1)
+formatChunk src start chunk
+  | T.null chunk = (emptyDoc,0)
+  | otherwise    = (prefix <> go start toks, pad + 1)
   where
 
   toks = lexer src (Just start) chunk
