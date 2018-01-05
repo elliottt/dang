@@ -29,7 +29,7 @@ module Dang.Utils.PP (
 
     -- ** Combinators
     (<>), (<+>), ($$), ($+$),
-    fsep, sep, hsep, cat, vcat, punctuate,
+    fsep, sep, hsep, cat, vcat, hcat, punctuate,
     optParens, parens, brackets, angles, quotes,
     comma, commas,
     text, char, int, integer,
@@ -295,6 +295,9 @@ vcat ds = PJ.vcat <$> sequence ds
 
 cat :: [Doc] -> Doc
 cat ds = PJ.cat <$> sequence ds
+
+hcat :: [Doc] -> Doc
+hcat ds = PJ.hcat <$> sequence ds
 
 optParens :: Int -> Doc -> Doc
 optParens n doc =

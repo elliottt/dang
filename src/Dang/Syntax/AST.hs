@@ -18,7 +18,7 @@ import Dang.Syntax.Location
 import Dang.Utils.PP
 
 import           Data.List (intersperse)
-import qualified Data.Text.Lazy as L
+import qualified Data.Text as T
 import           GHC.Generics (Generic)
 
 
@@ -36,13 +36,23 @@ type instance MetaOf   Parsed = SourceRange
 -- AST -------------------------------------------------------------------------
 
 -- | Parsed names, either qualified or unqualified.
-data PName = PUnqual !L.Text
-           | PQual   ![L.Text] !L.Text
-             deriving (Eq,Show,Ord,Generic)
+data PName = PUnqual !SourceRange !T.Text
+           | PQual   !SourceRange ![T.Text] !T.Text
+             deriving (Eq,Show,Generic)
 
-pnameNamespace :: PName -> [L.Text]
-pnameNamespace (PUnqual i)  = [i]
-pnameNamespace (PQual ns i) = ns ++ [i]
+instance Ord PName where
+  compare (PUnqual _ a) (PUnqual _ b) = compare a b
+  compare PUnqual{} _ = LT
+
+  compare (PQual _ as a) (PQual _ bs b) =
+    case compare as bs of
+      EQ -> compare a b
+      x  -> x
+  compare PQual{}   _ = GT
+
+pnameNamespace :: PName -> [T.Text]
+pnameNamespace (PUnqual _ i)  = [i]
+pnameNamespace (PQual _ ns i) = ns ++ [i]
 
 -- | A parsed top-level module.
 type PModule = Module Parsed
@@ -250,9 +260,13 @@ instance HasRange (ModStruct Parsed) where
 instance HasRange (Literal Parsed) where
   range (LInt l _ _) = l
 
+instance HasRange PName where
+  range (PUnqual l _) = l
+  range (PQual l _ _) = l
+
 
 -- Pretty-printing -------------------------------------------------------------
 
 instance PP PName where
-  ppr (PUnqual n)  = pp n
-  ppr (PQual ns n) = vcat (intersperse (char '.') (map pp ns)) <> char '.' <> pp n
+  ppr (PUnqual _ n)  = pp n
+  ppr (PQual _ ns n) = vcat (intersperse (char '.') (map pp ns)) <> char '.' <> pp n

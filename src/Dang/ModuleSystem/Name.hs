@@ -19,13 +19,13 @@ module Dang.ModuleSystem.Name (
   ) where
 
 import Dang.Syntax.AST (PName(..))
-import Dang.Syntax.Location (HasRange(..),SourceRange,SourcePos)
+import Dang.Syntax.Location (HasRange(..),SourceRange)
 import Dang.Unique
 import Dang.Utils.Ident
 import Dang.Utils.PP
 
 import           Data.Function (on)
-import qualified Data.Text.Lazy as L
+import qualified Data.Text as T
 
 
 data ModInfo = ModInfo { modName :: !Namespace
@@ -91,29 +91,29 @@ nameUnique Name { .. } = nUnique
 
 -- Name Construction -----------------------------------------------------------
 
-mkModName :: Maybe Namespace -> L.Text -> SourceRange -> Supply -> (Supply,Name)
+mkModName :: Maybe Namespace -> T.Text -> SourceRange -> Supply -> (Supply,Name)
 mkModName mbNs n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = ModDecl (ModInfo `fmap` mbNs)
-                          , nName = mkIdent (L.toStrict n)
+                          , nName = mkIdent n
                           , .. }
    in (s',name)
 
 -- | Generate a name for a binding site.
-mkBinding :: Namespace -> L.Text -> SourceRange -> Supply -> (Supply,Name)
+mkBinding :: Namespace -> T.Text -> SourceRange -> Supply -> (Supply,Name)
 mkBinding ns n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Declaration (ModInfo ns)
-                          , nName = mkIdent (L.toStrict n)
+                          , nName = mkIdent n
                           , .. }
    in (s',name)
 
 
-mkParam :: ParamSource -> L.Text -> SourceRange -> Supply -> (Supply,Name)
+mkParam :: ParamSource -> T.Text -> SourceRange -> Supply -> (Supply,Name)
 mkParam d n nFrom s =
   let (s',nUnique) = nextUnique s
       name         = Name { nSort = Parameter d
-                          , nName = mkIdent (L.toStrict n)
+                          , nName = mkIdent n
                           , .. }
    in (s',name)
 
@@ -123,16 +123,16 @@ mkParam d n nFrom s =
 -- generated errors, invalidating the output.
 mkUnknown :: NameSort -> PName -> SourceRange -> Supply -> (Supply,Name)
 
-mkUnknown nSort (PUnqual n) src s =
+mkUnknown nSort (PUnqual _ n) src s =
   let (s',nUnique) = nextUnique s
-      name         = Name { nName = mkIdent (L.toStrict n)
+      name         = Name { nName = mkIdent n
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)
 
-mkUnknown nSort (PQual _ n) src s =
+mkUnknown nSort (PQual _ _ n) src s =
   let (s',nUnique) = nextUnique s
-      name         = Name { nName = mkIdent (L.toStrict n)
+      name         = Name { nName = mkIdent n
                           , nFrom = src
                           , .. }
    in name `seq` s' `seq` (s',name)

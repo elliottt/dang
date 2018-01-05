@@ -9,7 +9,6 @@ module Dang.TypeCheck.AST where
 
 import Dang.AST
 import Dang.ModuleSystem.Name
-import Dang.Syntax.AST hiding (Type(..),Schema,TVar)
 import Dang.Syntax.Location
 import Dang.Utils.PP
 

@@ -19,7 +19,7 @@ import Dang.TypeCheck.AST (TVar(..),Type(..))
 import Dang.Utils.PP
 import Dang.Unique (withSupply)
 import Dang.Syntax.Format (formatMessage)
-import Dang.Syntax.Location (Source(..))
+import Dang.Syntax.Location (Source(..),interactive,emptyRange)
 
 import           Control.Monad (mzero,unless)
 import qualified Data.Set as Set
@@ -324,23 +324,23 @@ bindVar var ty
 
 
 test = runDang $
-  do cxt  <- withSupply (mkBinding "Main" "cxt" mempty)
-     fooC <- withSupply (mkBinding "Main" "Foo" mempty)
-     a    <- withSupply (mkParam (FromBind cxt) "a" mempty)
-     b    <- withSupply (mkParam (FromBind cxt) "b" mempty)
+  do cxt  <- withSupply (mkBinding "Main" "cxt" emptyRange)
+     fooC <- withSupply (mkBinding "Main" "Foo" emptyRange)
+     a    <- withSupply (mkParam (FromBind cxt) "a" emptyRange)
+     b    <- withSupply (mkParam (FromBind cxt) "b" emptyRange)
      su   <- unify emptySubst (TFree (TVar a)) (TCon fooC)
      su'  <- unify su (TFree (TVar a)) (TFree (TVar b))
 
      fun <- zonk su' (TFun (TFree (TVar a)) (TFree (TVar b)))
      io (print (pp fun))
 
-     c   <- withSupply (mkParam (FromBind cxt) "c" mempty)
+     c   <- withSupply (mkParam (FromBind cxt) "c" emptyRange)
      let var = TFree (TVar c)
      su'' <- unify su' var (TFun var var)
 
      (c',ms) <- collectMessages (try (zonk su'' var))
 
-     io (mapM_ (print . formatMessage Interactive "") ms)
+     io (mapM_ (print . formatMessage interactive "") ms)
      io (print c')
 
      return ()

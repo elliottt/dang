@@ -10,7 +10,6 @@ module Dang.ModuleSystem.Env (
     lookupMod,
     lookupPName,
     openMod,
-    nameList,
     shadowing,
     intersectionWith,
   ) where
@@ -20,14 +19,14 @@ import Dang.Utils.PP
 
 import           Control.Monad (mplus)
 import qualified Data.Map.Strict as Map
-import qualified Data.Text.Lazy as L
+import qualified Data.Text as T
 
 
 -- Naming Environment ----------------------------------------------------------
 
-data Def = DefMod  !L.Text
-         | DefDecl !L.Text
-         | DefType !L.Text
+data Def = DefMod  !T.Text
+         | DefDecl !T.Text
+         | DefType !T.Text
            deriving (Eq,Ord,Show)
 
 instance PP Def where
@@ -59,7 +58,7 @@ shadowing (NameTrie l) (NameTrie r) = NameTrie (Map.unionWith merge l r)
   where
   merge (NameNode a l') (NameNode b r') = NameNode (a `mplus` b) (shadowing l' r')
 
-qualify :: [L.Text] -> NameTrie a -> NameTrie a
+qualify :: [T.Text] -> NameTrie a -> NameTrie a
 qualify ns t = foldr step t ns
   where
   step n acc = NameTrie (Map.singleton (DefMod n) (NameNode Nothing acc))
@@ -69,28 +68,28 @@ envDecl = singleton DefDecl
 envType = singleton DefType
 envMod  = singleton DefMod
 
-singleton :: Monoid a => (L.Text -> Def) -> PName -> a -> NameTrie a
+singleton :: Monoid a => (T.Text -> Def) -> PName -> a -> NameTrie a
 singleton mkDef pn n =
   case pn of
-    PQual ns p -> qualify ns (mk p)
-    PUnqual p  ->             mk p
+    PQual _ ns p -> qualify ns (mk p)
+    PUnqual _ p  ->             mk p
   where
   mk p = NameTrie (Map.singleton (mkDef p) (NameNode (Just n) mempty))
 
 
-insertPName :: Monoid a => (L.Text -> Def) -> PName -> a -> NameTrie a -> NameTrie a
+insertPName :: Monoid a => (T.Text -> Def) -> PName -> a -> NameTrie a -> NameTrie a
 insertPName mkDef pn a =
   case pn of
-    PQual ns p -> go (map DefMod ns ++ [mkDef p])
-    PUnqual p  -> go [mkDef p]
+    PQual _ ns p -> go (map DefMod ns ++ [mkDef p])
+    PUnqual _ p  -> go [mkDef p]
 
   where
   go (n:ns) (NameTrie m) = NameTrie (Map.alter upd n m)
     where
     upd | null ns = \ mb ->
           case mb of
-            Just (NameNode mb sub) -> Just (NameNode (Just a `mappend` mb) sub)
-            Nothing                -> Just (NameNode (Just a)              mempty)
+            Just (NameNode x sub) -> Just (NameNode (Just a `mappend` x) sub)
+            Nothing               -> Just (NameNode (Just a)             mempty)
 
         | otherwise = \ mb ->
           case mb of
@@ -115,11 +114,11 @@ lookupMod pn t =
     Just (NameNode mb _) -> mb
     Nothing              -> Nothing
 
-lookupPName :: (L.Text -> Def) -> PName -> NameTrie a -> Maybe (NameNode a)
+lookupPName :: (T.Text -> Def) -> PName -> NameTrie a -> Maybe (NameNode a)
 lookupPName mkDef pn =
   case pn of
-    PQual ns p -> go (map DefMod ns ++ [mkDef p])
-    PUnqual p  -> go [mkDef p]
+    PQual _ ns p -> go (map DefMod ns ++ [mkDef p])
+    PUnqual _ p  -> go [mkDef p]
 
   where
   go (n:ns) (NameTrie m) =
@@ -136,34 +135,6 @@ openMod pn e =
   case lookupPName DefMod pn e of
     Just (NameNode _ ds) -> ds `shadowing` e
     Nothing              -> e
-
--- | Flatten the environment into parsed names, and their values in the tree.
-nameList :: NameTrie a -> [(PName,a)]
-nameList (NameTrie m) = go id (Map.toList m)
-  where
-  go mkNS ((d,NameNode mb (NameTrie m')):rest) = names ++ go mkNS rest
-    where
-    names =
-      case (mb,d) of
-
-        (Nothing, DefMod n) ->
-          go (mkNS . (n:)) (Map.toList m')
-
-        (Just a, DefMod n) ->
-          let ts = go (mkNS . (n:)) (Map.toList m')
-           in (mkPName mkNS n, a) : ts
-
-        (Just a, DefDecl n) -> [(mkPName mkNS n, a)]
-        (Just a, DefType n) -> [(mkPName mkNS n, a)]
-
-        _ -> []
-
-  go _ [] = []
-
-  mkPName mkNS n =
-    case mkNS [] of
-      [] -> PUnqual n
-      xs -> PQual xs n
 
 
 intersectionWith :: (Maybe a -> Maybe b -> Maybe c)

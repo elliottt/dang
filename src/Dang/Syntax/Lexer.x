@@ -6,10 +6,15 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Dang.Syntax.Lexer (
-    Token(..), Keyword(..), lexer, ignoreComments
+    Token(..),
+    Keyword(..),
+    Lexeme(..),
+    lexer,
+    ignoreComments,
   ) where
 
 import Dang.Syntax.AST (PName(..))
+import Dang.Syntax.Location (Source)
 import Dang.Utils.Ident
 
 import           AlexTools
@@ -84,7 +89,7 @@ data Token = TUnqualCon !T.Text
            | TUnqualIdent !T.Text
            | TQualIdent ![T.Text] !T.Text
            | TKeyword !Keyword
-           | TNum Integer Int
+           | TNum Int Integer
            | TLineComment !T.Text
            | TStart
            | TSep
@@ -137,12 +142,12 @@ mkConfig  =
               , lexerStateMode    = modeToInt
               , lexerEOF          = \ _ -> [] }
 
-lexer :: FilePath -> Maybe SourcePos -> T.Text -> [Lexeme Token]
+lexer :: Source -> Maybe SourcePos -> T.Text -> [Lexeme Token]
 lexer src mbPos bytes =
   $makeLexer mkConfig $
     case mbPos of
-      Just pos -> (initialInput (T.pack src) bytes) { inputPos = pos }
-      Nothing  ->  initialInput (T.pack src) bytes
+      Just pos -> (initialInput src bytes) { inputPos = pos }
+      Nothing  ->  initialInput src bytes
 
 emits :: (T.Text -> Token) -> Action Mode [Lexeme Token]
 emits mkToken =

@@ -4,16 +4,15 @@
 module Dang.Syntax.Format where
 
 import Dang.Message (Message(..),MessageType(..),describeMessageType)
-import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..))
-import Dang.Syntax.Location
-           (SourceRange(..))
+import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..),Lexeme(..))
+import Dang.Syntax.Location (Source,SourceRange(..),SourcePos(..),startPos)
 import Dang.Utils.PP
 
-import           Data.Int (Int64)
-import qualified Data.Text.Lazy as L
+import           Data.List (intersperse)
+import qualified Data.Text as T
 
 
-formatMessage :: Source -> L.Text -> Message -> Doc
+formatMessage :: Source -> T.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat
   [ annotate msgAnn (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
   , text ""
@@ -23,9 +22,9 @@ formatMessage src txt (Message ty loc doc) = vcat
   , doc
   , text "" ]
   where
-  (chunk,gutterLen) = formatChunk src startPos (rangeText cxtLines loc txt)
+  (chunk,gutterLen) = formatChunk src start (rangeText cxtLines loc txt)
 
-  source | L.null txt = emptyDoc
+  source | T.null txt = emptyDoc
          | otherwise  = chunk
                      $$ nest gutterLen (rangeUnderline msgAnn loc)
                      $$ text ""
@@ -36,20 +35,23 @@ formatMessage src txt (Message ty loc doc) = vcat
     Error{}   -> (text "[error]",   AnnError)
     Warning{} -> (text "[warning]", AnnWarning)
 
-  startRow = posRow (rangeStart loc) - fromIntegral cxtLines
-  startPos = zeroPos { posRow = max 1 startRow }
+  startRow = sourceLine (sourceFrom loc) - fromIntegral cxtLines
+  start = (startPos src) { sourceColumn = max 1 startRow }
 
   ppHeading msg =
     text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
 
 
+rangeText = undefined
+
+
 -- | Generate a single underline for the range specified.
-rangeUnderline :: Ann -> SrcRange -> Doc
-rangeUnderline ann Range { .. } =
+rangeUnderline :: Ann -> SourceRange -> Doc
+rangeUnderline ann SourceRange { .. } =
   text (replicate (start - 1) ' ') <> annotate ann (text line)
   where
-  start = fromIntegral (posCol rangeStart)
-  end   = fromIntegral (posCol rangeEnd)
+  start = fromIntegral (sourceColumn sourceFrom)
+  end   = fromIntegral (sourceColumn sourceTo)
 
   len   = end - start
 
@@ -59,26 +61,26 @@ rangeUnderline ann Range { .. } =
 
 -- | Draw the space defined by two positions. When a new line is started, invoke
 -- the function given to define the gutter.
-spaceBetween :: Int64 -> (Int64 -> Doc)
-             -> Position -> Position -> Doc
+spaceBetween :: Int -> (Int -> Doc)
+             -> SourcePos -> SourcePos -> Doc
 spaceBetween gutterLen mkGutter = \ start end ->
-  let spansMultipleLines = posRow start < posRow end
+  let spansMultipleLines = sourceLine start < sourceLine end
 
       newlines
         | spansMultipleLines =
           text "" $+$
-          nest (negate (fromIntegral (posCol start + gutterLen)))
-            (vcat [ mkGutter i | i <- [ posRow start + 1 .. posRow end ] ])
+          nest (negate (fromIntegral (sourceColumn start + gutterLen)))
+            (vcat [ mkGutter i | i <- [ sourceLine start + 1 .. sourceLine end ] ])
 
         | otherwise =
           emptyDoc
 
       spaces
         | spansMultipleLines =
-          text (replicate (fromIntegral (posCol end) - 1) ' ')
+          text (replicate (fromIntegral (sourceColumn end) - 1) ' ')
 
         | otherwise =
-          text (replicate (fromIntegral (posCol end - posCol start)) ' ')
+          text (replicate (fromIntegral (sourceColumn end - sourceColumn start)) ' ')
 
    in newlines <> spaces
 {-# INLINE spaceBetween #-}
@@ -86,13 +88,13 @@ spaceBetween gutterLen mkGutter = \ start end ->
 
 -- | Print out a formatted chunk of source code to the console. The returned
 -- value is the size of the line number gutter.
-formatChunk :: Source -> Position -> L.Text -> (Doc,Int)
+formatChunk :: Source -> SourcePos -> T.Text -> (Doc,Int)
 formatChunk src start chunk = (prefix <> go start toks, pad + 1)
   where
 
   toks = lexer src (Just start) chunk
 
-  pad = length (show (posRow (rangeEnd (locRange (last toks)))))
+  pad = length (show (sourceLine (sourceTo (lexemeRange (last toks)))))
 
   gutter row =
     let str = show row
@@ -103,17 +105,18 @@ formatChunk src start chunk = (prefix <> go start toks, pad + 1)
 
   moveTo = spaceBetween (fromIntegral pad) gutter
 
-  prefix = gutter (posRow start) <> moveTo start { posCol = 1 } start
+  prefix = gutter (sourceLine start) <> moveTo start { sourceLine = 1 } start
 
-  go pos (Located { .. }:ts) =
-    moveTo pos (rangeStart locRange)
-    <> formatToken locValue <> go (rangeEnd locRange) ts
+  go pos (Lexeme { .. }:ts) =
+    moveTo pos (sourceFrom lexemeRange)
+    <> formatToken lexemeToken
+    <> go (sourceTo lexemeRange) ts
 
   go _ [] = emptyDoc
 
 
-ppQual :: [L.Text] -> L.Text -> Doc
-ppQual ns n = pp (L.intercalate "." ns) <> char '.' <> pp n
+ppQual :: [T.Text] -> T.Text -> Doc
+ppQual ns n = hcat (map pp (intersperse (T.pack ".") ns)) <> char '.' <> pp n
 
 formatToken :: Token -> Doc
 formatToken (TUnqualCon c)    = pp c

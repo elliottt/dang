@@ -22,6 +22,7 @@ library
                        Dang.Syntax.AST
                        Dang.Syntax.Format
                        Dang.Syntax.Lexer
+                       Dang.Syntax.Location
                        Dang.Syntax.Parser
                        Dang.TypeCheck.AST
                        Dang.TypeCheck.KindCheck

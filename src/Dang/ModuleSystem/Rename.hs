@@ -16,22 +16,16 @@ import Dang.Syntax.AST
 import Dang.Syntax.Location
 import Dang.ModuleSystem.Env
 import Dang.ModuleSystem.Name hiding (modName)
-import Dang.Unique (SupplyM,withSupply)
-import Dang.Utils.Ident (Namespace,packNamespaceLazy,dot)
+import Dang.Unique (withSupply)
+import Dang.Utils.Ident (Namespace,packNamespace,dot)
 import Dang.Utils.PP
 import Dang.Utils.Panic
 
 import           Control.Applicative (Alternative(..))
 import           Control.Monad (MonadPlus)
 import           Control.Lens (Lens',over,view)
-import qualified Data.Foldable as F
-import           Data.List (nub,partition)
-import           Data.Maybe (catMaybes,fromMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.Lazy as L
 import           MonadLib (runM,BaseM(..),StateT,get,sets,sets_)
-
-import Debug.Trace
 
 
 data Renamed
@@ -39,13 +33,13 @@ data Renamed
 type instance IdentOf  Renamed = Name
 type instance TypeOf   Renamed = Type Renamed
 type instance SchemaOf Renamed = Schema Renamed
-type instance MetaOf   Renamed = SrcRange
+type instance MetaOf   Renamed = SourceRange
 
 
 -- | Rename a top-level module.
 renameModule :: HasCallStack => Module Parsed -> Dang (Module Renamed)
 renameModule m =
-  rename (pnameNamespace (thing (modName m))) (rnTopModule m)
+  rename (pnameNamespace (modName m)) (rnTopModule m)
 
 
 -- Renaming Monad --------------------------------------------------------------
@@ -53,7 +47,7 @@ renameModule m =
 type Names = NameTrie [Name]
 
 data Scope = Scope { scopeNS      :: !Namespace -- ^ Fully-qualified namespace
-                   , scopePrefix  :: [L.Text]   -- ^ Relative prefix
+                   , scopePrefix  :: [T.Text]   -- ^ Relative prefix
                    , scopePublic  :: Names
                    , scopePrivate :: Names
                    } deriving (Show)
@@ -68,17 +62,17 @@ publicVisibility = V $ \ f Scope { .. } ->
 privateVisibility = V $ \ f Scope { .. } ->
   fmap (\ ns -> Scope { scopePrivate = ns, .. }) (f scopePrivate)
 
-emptyScope :: Namespace -> [L.Text] -> Scope
+emptyScope :: Namespace -> [T.Text] -> Scope
 emptyScope scopeNS scopePrefix =
   Scope { scopePublic  = mempty
         , scopePrivate = mempty
         , .. }
 
-topScope :: [L.Text] -> Scope
-topScope pfx = emptyScope (packNamespaceLazy pfx) pfx
+topScope :: [T.Text] -> Scope
+topScope pfx = emptyScope (packNamespace pfx) pfx
 
-localScope :: Namespace -> [L.Text] -> Scope
-localScope outer pfx = emptyScope (outer `dot` packNamespaceLazy pfx) pfx
+localScope :: Namespace -> [T.Text] -> Scope
+localScope outer pfx = emptyScope (outer `dot` packNamespace pfx) pfx
 
 declScope :: Scope -> Scope
 declScope parent = emptyScope (scopeNS parent) (scopePrefix parent)
@@ -118,7 +112,7 @@ instance BaseM RN Dang where
   inBase m = RN (inBase m)
   {-# INLINE inBase #-}
 
-rename :: [L.Text] -> RN a -> Dang a
+rename :: [T.Text] -> RN a -> Dang a
 rename ns (RN m) =
   do (a,_) <- runM m RW { rwContext = [topScope ns]
                         , rwVisibility = publicVisibility }
@@ -129,7 +123,7 @@ withModuleScope :: IdentOf Parsed -> (Name -> RN a) -> RN a
 withModuleScope lpname body =
   do n  <- newModuleBind lpname
      ns <- currentNamespace
-     RN (sets_ (pushScope (localScope ns (pnameNamespace (thing lpname)))))
+     RN (sets_ (pushScope (localScope ns (pnameNamespace lpname))))
      a  <- body n
      RN (sets_ popScope)
      return a
@@ -174,7 +168,7 @@ currentVisibility  = RN $
 newMod :: IdentOf Parsed -> RN Name
 newMod lpname =
   do ns <- currentNamespace
-     RN (withSupply (mkModName (Just ns) (expectUnqual (thing lpname)) (getLoc lpname)))
+     RN (withSupply (mkModName (Just ns) (expectUnqual lpname) (range lpname)))
 
 -- | Make a new binding name.
 --
@@ -183,19 +177,19 @@ newMod lpname =
 newBind :: IdentOf Parsed -> RN Name
 newBind lpname =
   do ns <- currentNamespace
-     RN (withSupply (mkBinding ns (expectUnqual (thing lpname)) (getLoc lpname)))
+     RN (withSupply (mkBinding ns (expectUnqual lpname) (range lpname)))
 
 -- | Make a new name for a parameter.
 --
 -- INVARIANT: this shold never be a qualified identifier.
 newParam :: ParamSource -> IdentOf Parsed -> RN Name
 newParam src lpname =
-  RN (withSupply (mkParam src (expectUnqual (thing lpname)) (getLoc lpname)))
+  RN (withSupply (mkParam src (expectUnqual lpname) (range lpname)))
 
 
-addPName :: (L.Text -> Def) -> Visibility -> IdentOf Parsed -> Name -> RN ()
+addPName :: (T.Text -> Def) -> Visibility -> IdentOf Parsed -> Name -> RN ()
 addPName mkDef vis lpname n =
-  RN (sets_ (over (currentScope . unV vis) (insertPName mkDef (thing lpname) [n])))
+  RN (sets_ (over (currentScope . unV vis) (insertPName mkDef lpname [n])))
 
 addValue, addMod, addType :: Visibility -> IdentOf Parsed -> Name -> RN ()
 addValue = addPName DefDecl
@@ -249,9 +243,9 @@ newTypeParam parent lpname =
      return n
 
 
-expectUnqual :: PName -> L.Text
-expectUnqual (PUnqual n) = n
-expectUnqual (PQual _ _) = panic (text "Expected an unqualified name")
+expectUnqual :: PName -> T.Text
+expectUnqual (PUnqual _ n) = n
+expectUnqual (PQual _ _ _) = panic (text "Expected an unqualified name")
 
 
 -- Renaming --------------------------------------------------------------------
@@ -293,7 +287,7 @@ rnDecl (DModType loc lname mtype) = undefined
 
 -- | Introduce names from a binding.
 introBind :: Bind Parsed -> RN ()
-introBind Bind { .. } body =
+introBind Bind { .. } =
   do _ <- withLoc bMeta (newValueBind bName)
      return ()
 
@@ -311,10 +305,10 @@ rnBind b =
 -- | Rename a binding, assuming that it's name has already been introduced.
 rnBindAux :: Rename Bind
 rnBindAux Bind { .. } =
-  do n'  <- rnValueName (bName b)
-     ps' <- traverse rnPat (bParams b)
-     b'  <- rnExpr (bBody b)
-     return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
+  do n'  <- rnValueName bName
+     ps' <- traverse rnPat bParams
+     b'  <- rnExpr bBody
+     return Bind { bName = n', bMeta = bMeta, bParams = ps', bBody = b' }
 
 rnSig :: Rename Sig
 rnSig  = undefined
@@ -357,7 +351,7 @@ rnLetDecls lds body =
 
 
 rnLetDecl :: Rename LetDecl
-rnLetDecl (LDBind loc b) = withLoc loc (rnBindAux b)
+rnLetDecl (LDBind loc b) = withLoc loc (LDBind loc <$> rnBindAux b)
 
 
 
@@ -375,7 +369,7 @@ rnModName :: HasCallStack => IdentOf Parsed -> RN (IdentOf Renamed)
 rnModName  = rnPName DefMod
 
 
-rnPName :: (L.Text -> Def) -> IdentOf Parsed -> RN (IdentOf Renamed)
+rnPName :: (T.Text -> Def) -> IdentOf Parsed -> RN (IdentOf Renamed)
 rnPName mkDef lpname =
   do RW { rwContext = ctx } <- RN get
      io (print ctx)
@@ -391,7 +385,7 @@ rnPName mkDef lpname =
                        $ go rest
 
   check names tryOther =
-    do NameNode mb _ <- lookupPName mkDef (thing lpname) names
+    do NameNode mb _ <- lookupPName mkDef lpname names
        mb
     <|>
     tryOther
@@ -405,6 +399,6 @@ rnPName mkDef lpname =
 missingBinding :: IdentOf Parsed -> RN (IdentOf Renamed)
 missingBinding lpname =
   do io (print ("missing", lpname))
-     withLoc lpname (addError ErrRnUnknown (pp (thing lpname)))
+     withLoc lpname (addError ErrRnUnknown (pp lpname))
      -- XXX invent an unknown name
      undefined
