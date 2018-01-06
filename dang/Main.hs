@@ -19,6 +19,7 @@ import qualified Data.Text as S
 import qualified Data.Text.IO as S
 import           System.Exit (exitFailure)
 import           System.Environment (getArgs)
+import           Text.Show.Pretty (pPrint)
 
 
 main :: IO ()
@@ -40,12 +41,13 @@ main  = runDang $
               $ F.toList ms
 
      (mbMod,ms) <- collectMessages $ try $
-       do pMod  <- parseModule interactive txt
+       do pMod  <- parseModule (S.pack file) txt
           rnMod <- renameModule pMod
+          -- KC.checkModule rnMod
+          return rnMod
 
-          io (print rnMod)
+     io (pPrint mbMod)
 
-          KC.checkModule rnMod
-
-     dumpMessages ms
-     io (print mbMod)
+     if null ms
+        then io (putStrLn "No messages")
+        else dumpMessages ms

@@ -51,6 +51,7 @@ executable dang
   build-depends:       base >=4.8 && <5,
                        containers,
                        text,
+                       pretty-show,
                        dang
   hs-source-dirs:      dang
   default-language:    Haskell2010

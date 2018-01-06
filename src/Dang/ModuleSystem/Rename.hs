@@ -128,9 +128,10 @@ withModuleScope lpname body =
      return a
 
 -- | A local scope, introduced by a declaration.
-withDeclScope :: RN a -> RN a
-withDeclScope body =
-  do RN (sets_ (\ rw -> pushScope (declScope (view currentScope rw)) rw))
+withDeclScope :: Bind Parsed -> RN a -> RN a
+withDeclScope bind body =
+  do introBind bind
+     RN (sets_ (\ rw -> pushScope (declScope (view currentScope rw)) rw))
      a <- body
      RN (sets_ popScope)
      return a
@@ -295,9 +296,8 @@ introBind Bind { .. } =
 rnBind :: Rename Bind
 rnBind b =
   withLoc (bMeta b) $
-  withDeclScope $
-    do introBind b
-       n'  <- rnValueName (bName b)
+  withDeclScope b $
+    do n'  <- rnValueName (bName b)
        ps' <- traverse (rnPat n') (bParams b)
        b'  <- rnExpr (bBody b)
        return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
