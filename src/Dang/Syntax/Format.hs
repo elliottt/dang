@@ -11,8 +11,6 @@ import Dang.Utils.PP
 import           Data.List (intersperse)
 import qualified Data.Text as T
 
-import Debug.Trace
-
 
 formatMessage :: Source -> T.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat

@@ -180,7 +180,7 @@ newBind lpname =
 
 -- | Make a new name for a parameter.
 --
--- INVARIANT: this shold never be a qualified identifier.
+-- INVARIANT: this should never be a qualified identifier.
 newParam :: ParamSource -> IdentOf Parsed -> RN Name
 newParam src lpname =
   RN (withSupply (mkParam src (expectUnqual lpname) (range lpname)))
@@ -191,7 +191,7 @@ addPName mkDef vis lpname n =
   RN (sets_ (over (currentScope . unV vis) (insertPName mkDef lpname [n])))
 
 addValue, addMod, addType :: Visibility -> IdentOf Parsed -> Name -> RN ()
-addValue = addPName DefDecl
+addValue = addPName DefVal
 addMod   = addPName DefMod
 addType  = addPName DefType
 
@@ -242,6 +242,7 @@ newTypeParam parent lpname =
      return n
 
 
+-- | Panic if a qualified name is given.
 expectUnqual :: PName -> T.Text
 expectUnqual (PUnqual _ n) = n
 expectUnqual (PQual _ _ _) = panic (text "Expected an unqualified name")
@@ -294,18 +295,18 @@ introBind Bind { .. } =
 rnBind :: Rename Bind
 rnBind b =
   withLoc (bMeta b) $
-  do introBind b
-     withDeclScope $
-       do n'  <- rnValueName (bName b)
-          ps' <- traverse rnPat (bParams b)
-          b'  <- rnExpr (bBody b)
-          return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
+  withDeclScope $
+    do introBind b
+       n'  <- rnValueName (bName b)
+       ps' <- traverse (rnPat n') (bParams b)
+       b'  <- rnExpr (bBody b)
+       return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
 
 -- | Rename a binding, assuming that it's name has already been introduced.
 rnBindAux :: Rename Bind
 rnBindAux Bind { .. } =
   do n'  <- rnValueName bName
-     ps' <- traverse rnPat bParams
+     ps' <- traverse (rnPat n') bParams
      b'  <- rnExpr bBody
      return Bind { bName = n', bMeta = bMeta, bParams = ps', bBody = b' }
 
@@ -315,8 +316,16 @@ rnSig  = undefined
 rnData :: Rename Data
 rnData  = undefined
 
-rnPat :: Rename Pat
-rnPat  = undefined
+rnPat :: IdentOf Renamed -> Rename Pat
+
+rnPat parent (PVar loc v) =
+  withLoc loc (PVar loc <$> newValueParam parent v)
+
+rnPat _ (PWild loc) =
+  return (PWild loc)
+
+rnPat parent (PCon loc con ps) =
+  withLoc loc (PCon loc <$> rnValueName con <*> traverse (rnPat parent) ps)
 
 rnExpr :: Rename Expr
 rnExpr (EVar loc n)     = withLoc loc (EVar loc <$> rnValueName n)
@@ -360,7 +369,7 @@ rnLit (LInt loc a b) = pure (LInt loc a b)
 
 -- | Find the canonical name for this value-level variable.
 rnValueName :: IdentOf Parsed -> RN (IdentOf Renamed)
-rnValueName  = rnPName DefDecl
+rnValueName  = rnPName DefVal
 
 -- | Find the canonical name of this module name.
 rnModName :: HasCallStack => IdentOf Parsed -> RN (IdentOf Renamed)

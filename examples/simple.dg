@@ -1,3 +1,5 @@
 module Simple where
 
 f x = x
+
+f y = y

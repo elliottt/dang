@@ -7,7 +7,7 @@ import           Dang.Monad
 import           Dang.Syntax.Format (formatMessage)
 import           Dang.Syntax.Lexer
 import           Dang.Syntax.Location
-    (Source,SourceRange(..),SourcePos(..),HasRange(..),interactive)
+    (SourceRange(..),SourcePos(..),HasRange(..),interactive)
 import           Dang.Syntax.Parser
 import qualified Dang.TypeCheck.KindCheck as KC
 import           Dang.Utils.PP

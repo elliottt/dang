@@ -2,10 +2,10 @@ module Dang.ModuleSystem.Env (
     NameTrie(),
     NameNode(..),
     Def(..),
-    envDecl, envType, envMod,
+    envVal, envType, envMod,
     qualify,
     insertPName,
-    lookupDecl,
+    lookupVal,
     lookupType,
     lookupMod,
     lookupPName,
@@ -26,13 +26,13 @@ import qualified Data.Text as T
 -- Naming Environment ----------------------------------------------------------
 
 data Def = DefMod  !T.Text
-         | DefDecl !T.Text
+         | DefVal  !T.Text
          | DefType !T.Text
            deriving (Eq,Ord,Show)
 
 instance PP Def where
   ppr (DefMod  n) = ppr n
-  ppr (DefDecl n) = ppr n
+  ppr (DefVal  n) = ppr n
   ppr (DefType n) = ppr n
 
 
@@ -64,8 +64,8 @@ qualify ns t = foldr step t ns
   where
   step n acc = NameTrie (Map.singleton (DefMod n) (NameNode Nothing acc))
 
-envDecl, envType, envMod :: Monoid a => PName -> a -> NameTrie a
-envDecl = singleton DefDecl
+envVal, envType, envMod :: Monoid a => PName -> a -> NameTrie a
+envVal  = singleton DefVal
 envType = singleton DefType
 envMod  = singleton DefMod
 
@@ -104,10 +104,10 @@ insertPName mkDef pn a =
             Nothing               -> Just (NameNode (Just a)             mempty)
 
 
-lookupDecl, lookupType, lookupMod :: PName -> NameTrie a -> Maybe a
+lookupVal, lookupType, lookupMod :: PName -> NameTrie a -> Maybe a
 
-lookupDecl pn t =
-  case lookupPName DefDecl pn t of
+lookupVal pn t =
+  case lookupPName DefVal pn t of
     Just (NameNode mb _) -> mb
     Nothing              -> Nothing
 
