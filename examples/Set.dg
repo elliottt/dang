@@ -1,0 +1,55 @@
+
+module Set where
+
+type Bool = True | False
+
+not : Bool -> Bool
+not b =
+  case b of
+    True  -> False
+    False -> True
+
+
+module type Ord = sig
+
+  -- a concrete type
+  type Ordering = LT | EQ | GT
+
+  -- a kind signature
+  type T : Type
+
+  -- a value signature
+  compare : T -> T -> Ordering
+
+
+module Eq (Cmp : Ord) = struct
+
+  eq, neq : Cmp.T -> Cmp.T -> Bool
+
+  eq a b =
+    case Cmp.compare a b of
+      EQ -> True
+      _  -> False
+
+  neq a b = not (eq a b)
+
+
+module Make (Cmp : Ord) = struct
+
+  -- simple function-as-set
+  type Set = Cmp.T -> Bool
+
+  insert, delete : Cmp.T -> Set -> Set
+
+  insert x s = \ x' ->
+    case Cmp.compare x x' of
+      EQ -> True
+      _  -> s x'
+
+  delete x s = \ x' ->
+    case Cmp.compaare x x' of
+      EQ -> False
+      _  -> s x'
+
+  member : Cmp.T -> Set -> Bool
+  member x s = s x
