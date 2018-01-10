@@ -292,9 +292,15 @@ introBind Bind { .. } =
   do _ <- withLoc bMeta (newValueBind bName)
      return ()
 
-
+-- | Rename a binding.
 rnBind :: Rename Bind
 rnBind b =
+  do introBind b
+     rnBindAux b
+
+-- | Rename a binding, assuming that it's name has already been introduced.
+rnBindAux :: Rename Bind
+rnBindAux b =
   withLoc (bMeta b) $
   withDeclScope b $
     do n'  <- rnValueName (bName b)
@@ -302,16 +308,8 @@ rnBind b =
        b'  <- rnExpr (bBody b)
        return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
 
--- | Rename a binding, assuming that it's name has already been introduced.
-rnBindAux :: Rename Bind
-rnBindAux Bind { .. } =
-  do n'  <- rnValueName bName
-     ps' <- traverse (rnPat n') bParams
-     b'  <- rnExpr bBody
-     return Bind { bName = n', bMeta = bMeta, bParams = ps', bBody = b' }
-
 rnSig :: Rename Sig
-rnSig  = undefined
+rnSig _ = panic "Unexpected DSig remaining, bug in resolveSignatures?"
 
 rnData :: Rename Data
 rnData  = undefined
@@ -339,6 +337,8 @@ rnExpr (ELet loc lds e) =
     ELet loc lds' <$> rnExpr e
 
 
+-- | Introduce names for all declarations in the block, then rename each
+-- declaration.
 rnLetDecls :: [LetDecl Parsed] -> ([LetDecl Renamed] -> RN a) -> RN a
 rnLetDecls lds body =
   do introBinds lds
@@ -358,6 +358,9 @@ rnLetDecls lds body =
        introBinds rest
 
 
+-- | Rename a single let declaration.
+--
+-- NOTE: binding names will be introduced by the let block, as let is recursive.
 rnLetDecl :: Rename LetDecl
 rnLetDecl (LDBind loc b) = withLoc loc (LDBind loc <$> rnBindAux b)
 rnLetDecl (LDSig  loc s) = withLoc loc (LDSig  loc <$> rnSig     s)

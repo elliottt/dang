@@ -134,6 +134,9 @@ mod_spec :: { [ModSpec Parsed] }
   : signature
     { [ MSSig (range sig) sig | sig <- $1 ] }
 
+  | kind_sig
+    { [ MSKind (range $1) $1 ] }
+
   | data_decl
     { [MSData (range $1) $1] }
 
@@ -182,6 +185,13 @@ mod_struct :: { ModStruct Parsed }
 
 -- Types -----------------------------------------------------------------------
 
+kind_sig :: { Sig Parsed }
+  : 'type' con ':' schema
+    { Sig { sigMeta   = $1 <-> $4
+          , sigName   = $2
+          , sigSchema = $4
+          } }
+
 signature :: { [Sig Parsed] }
   : sep1(',', ident) ':' schema
     { let { schemaLoc = range $3
@@ -213,6 +223,7 @@ bind :: { Bind Parsed }
   : ident list(pat) '=' expr
     { Bind { bMeta   = $1 <-> $4
            , bName   = $1
+           , bSig    = Nothing
            , bParams = $2
            , bBody   = $4 } }
 

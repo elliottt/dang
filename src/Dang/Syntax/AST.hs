@@ -81,6 +81,7 @@ data Decl syn = DBind    (MetaOf syn) (Bind syn)
 
 data Bind syn = Bind { bMeta   :: MetaOf syn
                      , bName   :: IdentOf syn
+                     , bSig    :: Maybe (SchemaOf syn)
                      , bParams :: [Pat syn]
                      , bBody   :: Expr syn
                      } deriving (Generic)
@@ -99,6 +100,7 @@ data ModType syn = MTVar     (MetaOf syn) (IdentOf syn)
 type ModSig syn = [ModSpec syn]
 
 data ModSpec syn = MSSig  (MetaOf syn) (Sig syn)
+                 | MSKind (MetaOf syn) (Sig syn)
                  | MSData (MetaOf syn) (Data syn)
                  | MSMod  (MetaOf syn) (IdentOf syn) (ModType syn)
                    deriving (Generic)
