@@ -24,10 +24,9 @@ formatMessage src txt (Message ty loc doc) = vcat
   where
   (chunk,gutterLen) = formatChunk src start (rangeText cxtLines loc txt)
 
-  source | T.null txt = emptyDoc
-         | otherwise  = chunk
-                     $$ nest gutterLen (rangeUnderline msgAnn loc)
-                     $$ text ""
+  source = chunk
+        $$ nest gutterLen (rangeUnderline msgAnn loc)
+        $$ text ""
 
   cxtLines = 3
 
@@ -35,8 +34,8 @@ formatMessage src txt (Message ty loc doc) = vcat
     Error{}   -> (text "[error]",   AnnError)
     Warning{} -> (text "[warning]", AnnWarning)
 
-  startRow = sourceLine (sourceFrom loc) - fromIntegral cxtLines
-  start = (startPos src) { sourceColumn = max 1 startRow }
+  startLine = max 1 (sourceLine (sourceFrom loc) - fromIntegral cxtLines)
+  start     = (sourceFrom loc) { sourceLine = startLine }
 
   ppHeading msg =
     text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
@@ -71,7 +70,7 @@ rangeUnderline ann SourceRange { .. } =
 
   len   = end - start
 
-  line | len > 1   = replicate len '~'
+  line | len > 0   = replicate (len + 1) '~'
        | otherwise = "^"
 
 
@@ -105,14 +104,15 @@ spaceBetween gutterLen mkGutter = \ start end ->
 -- | Print out a formatted chunk of source code to the console. The returned
 -- value is the size of the line number gutter.
 formatChunk :: Source -> SourcePos -> T.Text -> (Doc,Int)
-formatChunk src start chunk
-  | T.null chunk = (emptyDoc,0)
-  | otherwise    = (prefix <> go start toks, pad + 1)
+formatChunk src start chunk = (prefix <> go start toks, pad + 1)
   where
 
   toks = lexer src (Just start) chunk
 
-  pad = length (show (sourceLine (sourceTo (lexemeRange (last toks)))))
+  pad = length (show (sourceLine loc))
+    where
+    loc | null toks = start
+        | otherwise = sourceTo (lexemeRange (last toks))
 
   gutter row =
     let str = show row
@@ -165,6 +165,7 @@ formatKeyword Krparen  =                        text ")"
 formatKeyword Krarrow  = annotate AnnPunc      (text "->")
 formatKeyword Kassign  = annotate AnnPunc      (text "=")
 formatKeyword Ktype    = annotate AnnKeyword   (text "type")
+formatKeyword Kdata    = annotate AnnKeyword   (text "data")
 formatKeyword Kforall  = annotate AnnKeyword   (text "forall")
 formatKeyword Kdot     = annotate AnnPunc      (text ".")
 formatKeyword Kcomma   =                        text ","
@@ -172,3 +173,6 @@ formatKeyword Kwild    =                        text "_"
 formatKeyword Kpipe    = annotate AnnPunc      (text "|")
 formatKeyword Klet     = annotate AnnPunc      (text "let")
 formatKeyword Kin      = annotate AnnPunc      (text "in")
+formatKeyword Kcase    = annotate AnnPunc      (text "case")
+formatKeyword Kof      = annotate AnnPunc      (text "of")
+formatKeyword Klambda  = annotate AnnPunc      (text "\\")

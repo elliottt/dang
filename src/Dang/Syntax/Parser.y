@@ -44,6 +44,7 @@ import           Text.Layout.OffSides (Layout(..),layout,wrapToken)
   'module' { Keyword Kmodule  $$ }
   'where'  { Keyword Kwhere   $$ }
   'type'   { Keyword Ktype    $$ }
+  'data'   { Keyword Kdata    $$ }
 
   'require'{ Keyword Krequire $$ }
   'open'   { Keyword Kopen    $$ }
@@ -59,6 +60,9 @@ import           Text.Layout.OffSides (Layout(..),layout,wrapToken)
 
   'let'    { Keyword Klet     $$ }
   'in'     { Keyword Kin      $$ }
+
+  'case'   { Keyword Kcase    $$ }
+  'of'     { Keyword Kof      $$ }
 
   '->'     { Keyword Krarrow  $$ }
 
@@ -123,8 +127,9 @@ mod_type :: { ModType Parsed }
   : con
     { MTVar (range $1) $1 }
 
-  | 'sig' 'v{' sep1('v;', mod_spec) 'v}'
-    { MTSig ($1 <-> $4) (concat $3) }
+  | 'sig' layout(mod_spec)
+    { let ds = concat $2 in
+      MTSig ($1 <-> listLoc ds) ds }
 
   | 'functor' list1(mod_param) '->' mod_type
     { let { mk (p,ty) r = MTFunctor (p <-> r) p ty r
@@ -220,25 +225,33 @@ atype :: { Type Parsed }
 -- Expressions -----------------------------------------------------------------
 
 bind :: { Bind Parsed }
-  : ident list(pat) '=' expr
+  : ident list(arg_pat) '=' expr
     { Bind { bMeta   = $1 <-> $4
            , bName   = $1
            , bSig    = Nothing
            , bParams = $2
            , bBody   = $4 } }
 
+arg_pat :: { Pat Parsed }
+  : '_'                       { PWild  $1                     }
+  | ident                     { PVar   (range $1) $1         }
+  | con                       { PCon   (range $1) $1 []      }
+  | '(' con list(arg_pat) ')' { PCon   ($1 <-> $4) $2 $3 }
+
 pat :: { Pat Parsed }
-  : '_'                    { PWild  $1                     }
-  | ident                  { PVar   (range $1) $1         }
-  | con                    { PCon   (range $1) $1 []      }
-  | '(' con list1(pat) ')' { PCon   ($1 <-> $4) $2 $3 }
+  : '_'               { PWild  $1                     }
+  | ident             { PVar   (range $1) $1         }
+  | con list(arg_pat) { PCon   ($1 <-> listLoc $2) $1 $2      }
 
 expr :: { Expr Parsed }
   : list1(aexpr)
     { mkEApp $1 }
 
-  | 'let' 'v{' sep1('v;', let_decl) 'v}' 'in' expr
-    { ELet ($1 <-> $6) (concat $3) $6 }
+  | 'let' layout(let_decl) 'in' expr
+    { ELet ($1 <-> $4) (concat $2) $4 }
+
+  | 'case' expr 'of' layout(case_arm)
+    { ECase ($1 <-> listLoc $4) $4 }
 
 let_decl :: { [LetDecl Parsed] }
   : bind      { [LDBind (range $1) $1] }
@@ -258,10 +271,15 @@ lit :: { Literal Parsed }
         }
 
 
+case_arm :: { CaseArm Parsed }
+  : pat '->' expr
+    { CaseArm ($1 <-> $3) $1 $3 }
+
+
 -- Data Declarations -----------------------------------------------------------
 
 data_decl :: { Data Parsed }
-  : 'type' con list(ident) opt(data_constrs)
+  : 'data' con list(ident) opt(data_constrs)
     { Data { dMeta = $1 <-> $2 <-> listLoc $3 <-?> fmap listLoc $4
            , dName = $2
            , dParams = $3
@@ -312,18 +330,21 @@ ident :: { IdentOf Parsed }
 
 -- Utilities -------------------------------------------------------------------
 
+layout(p) :: { [p] }
+  : 'v{' sep1('v;', p) 'v}' { $2 }
+
 opt(p) :: { Maybe p }
   : {- empty -} { Nothing }
   | p           { Just $1 }
 
-sep(p,q) :: { [p] }
+sep(p,q) :: { [q] }
   : {- empty -}   { []         }
   | sep_body(p,q) { reverse $1 }
 
-sep1(p,q) :: { [p] }
+sep1(p,q) :: { [q] }
   : sep_body(p,q) { reverse $1 }
 
-sep_body(p,q) :: { [p] }
+sep_body(p,q) :: { [q] }
   : q                 { [$1]    }
   | sep_body(p,q) p q { $3 : $1 }
 
@@ -348,7 +369,7 @@ lexWithLayout src mbStart txt =
   layout Layout { .. } (ignoreComments (lexer src mbStart txt))
   where
 
-  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet]
+  beginsLayout (TKeyword k) = k `elem` [Kwhere, Kstruct, Ksig, Klet, Kof]
   beginsLayout _            = False
 
   endsLayout (TKeyword Kin) = True
@@ -414,7 +435,7 @@ restrictMod Nothing   e = e
 restrictMod (Just ty) e = MEConstraint (e <-> ty) e ty
 
 listLoc :: (HasCallStack,HasRange a) => [a] -> SourceRange
-listLoc ls = range (head ls)
+listLoc ls = range (last ls)
 
 (<-?>) :: HasRange b => SourceRange -> Maybe b -> SourceRange
 r <-?> Just b = r <-> b

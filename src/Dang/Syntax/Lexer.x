@@ -54,8 +54,11 @@ $white+ ;
 "open"   { keyword Kopen   }
 "forall" { keyword Kforall }
 "type"   { keyword Ktype   }
+"data"   { keyword Kdata   }
 "let"    { keyword Klet    }
 "in"     { keyword Kin     }
+"case"   { keyword Kcase   }
+"of"     { keyword Kof     }
 
 -- punctuation
 "|"      { keyword Kpipe   }
@@ -67,6 +70,7 @@ $white+ ;
 "."      { keyword Kdot    }
 ","      { keyword Kcomma  }
 "_"      { keyword Kwild   }
+"\\"     { keyword Klambda }
 
 -- numbers
 $number+ { emits (TNum 10 . read . T.unpack) }
@@ -77,6 +81,8 @@ $number+ { emits (TNum 10 . read . T.unpack) }
 
 @qual @ident    { emits (mkQual TQualIdent) }
 @ident          { emits TUnqualIdent        }
+
+.        { emits TError }
 
 }
 
@@ -124,6 +130,7 @@ data Keyword = Kmodule
              | Krarrow
              | Kassign
              | Ktype
+             | Kdata
              | Kforall
              | Kdot
              | Kcomma
@@ -131,6 +138,9 @@ data Keyword = Kmodule
              | Kpipe
              | Klet
              | Kin
+             | Klambda
+             | Kcase
+             | Kof
                deriving (Eq,Show)
 
 

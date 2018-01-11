@@ -1,7 +1,7 @@
 
 module Set where
 
-type Bool = True | False
+data Bool = True | False
 
 not : Bool -> Bool
 not b =
@@ -13,7 +13,7 @@ not b =
 module type Ord = sig
 
   -- a concrete type
-  type Ordering = LT | EQ | GT
+  data Ordering = LT | EQ | GT
 
   -- a kind signature
   type T : Type
@@ -47,7 +47,7 @@ module Make (Cmp : Ord) = struct
       _  -> s x'
 
   delete x s = \ x' ->
-    case Cmp.compaare x x' of
+    case Cmp.compare x x' of
       EQ -> False
       _  -> s x'
 
