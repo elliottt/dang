@@ -5,7 +5,7 @@ module Dang.Syntax.Format where
 
 import Dang.Message (Message(..),MessageType(..),describeMessageType)
 import Dang.Syntax.Lexer (lexer,Token(..),Keyword(..),Lexeme(..))
-import Dang.Syntax.Location (Source,SourceRange(..),SourcePos(..),startPos)
+import Dang.Syntax.Location (Source,SourceRange(..),SourcePos(..))
 import Dang.Utils.PP
 
 import           Data.List (intersperse)
@@ -35,7 +35,7 @@ formatMessage src txt (Message ty loc doc) = vcat
     Warning{} -> (text "[warning]", AnnWarning)
 
   startLine = max 1 (sourceLine (sourceFrom loc) - fromIntegral cxtLines)
-  start     = (sourceFrom loc) { sourceLine = startLine }
+  start     = (sourceFrom loc) { sourceLine = startLine, sourceColumn = 1 }
 
   ppHeading msg =
     text "--" <+> text msg <+> text (replicate (80 - length msg - 4) '-')
@@ -56,9 +56,9 @@ rangeText cxt SourceRange { .. } txt
   $ T.lines txt
 
   where
-  skip = max 0 (sourceLine sourceFrom - cxt)
+  skip = max 0 (sourceLine sourceFrom - cxt - 1)
 
-  keep = sourceLine sourceTo - sourceLine sourceFrom
+  keep = sourceLine sourceTo - sourceLine sourceFrom + 1 + cxt
 
 -- | Generate a single underline for the range specified.
 rangeUnderline :: Ann -> SourceRange -> Doc
@@ -84,7 +84,7 @@ spaceBetween gutterLen mkGutter = \ start end ->
       newlines
         | spansMultipleLines =
           text "" $+$
-          nest (negate (fromIntegral (sourceColumn start + gutterLen)))
+          nest (negate (fromIntegral (sourceColumn start + gutterLen + 1)))
             (vcat [ mkGutter i | i <- [ sourceLine start + 1 .. sourceLine end ] ])
 
         | otherwise =
@@ -95,7 +95,7 @@ spaceBetween gutterLen mkGutter = \ start end ->
           text (replicate (fromIntegral (sourceColumn end) - 1) ' ')
 
         | otherwise =
-          text (replicate (fromIntegral (sourceColumn end - sourceColumn start)) ' ')
+          text (replicate (fromIntegral (sourceColumn end - sourceColumn start) - 1) ' ')
 
    in newlines <> spaces
 {-# INLINE spaceBetween #-}
@@ -116,14 +116,14 @@ formatChunk src start chunk = (prefix <> go start toks, pad + 1)
 
   gutter row =
     let str = show row
-        num = text $ showString (replicate (pad - length str) ' ')
-                   $ showString str ""
+        num = text (replicate (pad - length str) ' ') <> text str
 
      in annotate AnnGutter (num <> char '|')
 
   moveTo = spaceBetween (fromIntegral pad) gutter
 
-  prefix = gutter (sourceLine start) <> moveTo start { sourceLine = 1 } start
+  -- the gutter for the first line, and the space to its first token
+  prefix = gutter (sourceLine start) <> moveTo start { sourceColumn = 1 } start
 
   go pos (Lexeme { .. }:ts) =
     moveTo pos (sourceFrom lexemeRange)
