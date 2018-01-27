@@ -9,6 +9,7 @@ import           Dang.Syntax.Lexer
 import           Dang.Syntax.Location
     (SourceRange(..),SourcePos(..),HasRange(..),interactive)
 import           Dang.Syntax.Parser
+import           Dang.Syntax.Signatures
 import qualified Dang.TypeCheck.KindCheck as KC
 import           Dang.Utils.PP
 
@@ -42,7 +43,8 @@ main  = runDang $
 
      (mbMod,ms) <- collectMessages $ try $
        do pMod  <- parseModule (S.pack file) txt
-          rnMod <- renameModule pMod
+          sMod  <- resolveSignatures pMod
+          rnMod <- renameModule sMod
           -- KC.checkModule rnMod
           return rnMod
 

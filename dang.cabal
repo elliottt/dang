@@ -24,6 +24,7 @@ library
                        Dang.Syntax.Lexer
                        Dang.Syntax.Location
                        Dang.Syntax.Parser
+                       Dang.Syntax.Signatures
                        Dang.TypeCheck.AST
                        Dang.TypeCheck.KindCheck
                        Dang.TypeCheck.Monad

@@ -309,7 +309,9 @@ rnBindAux b =
        return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
 
 rnSig :: Rename Sig
-rnSig _ = panic "Unexpected DSig remaining, bug in resolveSignatures?"
+rnSig Sig { .. } =
+  panic $ text "Unexpected DSig remaining, bug in resolveSignatures?" $$
+          pp sigName
 
 rnData :: Rename Data
 rnData  = undefined

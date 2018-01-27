@@ -251,7 +251,7 @@ expr :: { Expr Parsed }
     { ELet ($1 <-> $4) (concat $2) $4 }
 
   | 'case' expr 'of' layout(case_arm)
-    { ECase ($1 <-> listLoc $4) $4 }
+    { ECase ($1 <-> listLoc $4) (mkCases $4) }
 
 let_decl :: { [LetDecl Parsed] }
   : bind      { [LDBind (range $1) $1] }
@@ -271,9 +271,9 @@ lit :: { Literal Parsed }
         }
 
 
-case_arm :: { CaseArm Parsed }
+case_arm :: { Match Parsed }
   : pat '->' expr
-    { CaseArm ($1 <-> $3) $1 $3 }
+    { MPat ($1 <-> $3) $1 (MExpr (range $3) $3) }
 
 
 -- Data Declarations -----------------------------------------------------------
@@ -429,6 +429,9 @@ mkFunctor [] e = e
 mkFunctor ps e = foldr step e ps
   where
   step (r,p,ty) body = MEFunctor (r <-> body) p ty body
+
+mkCases :: [Match Parsed] -> Match Parsed
+mkCases  = foldr1 $ \ m acc -> MSplit (range acc) m acc
 
 restrictMod :: Maybe (ModType Parsed) -> ModExpr Parsed -> ModExpr Parsed
 restrictMod Nothing   e = e

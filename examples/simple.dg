@@ -1,5 +1,6 @@
 module Simple where
 
+f : a -> a
 f x = x
 
-f y = y
+data Ord = LT | EQ | GT

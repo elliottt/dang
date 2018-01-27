@@ -129,10 +129,8 @@ data Expr syn = EVar (MetaOf syn) (IdentOf syn)
               | EAbs (MetaOf syn) (Match syn)
               | ELit (MetaOf syn) (Literal syn)
               | ELet (MetaOf syn) [LetDecl syn] (Expr syn)
-              | ECase (MetaOf syn) [CaseArm syn]
+              | ECase (MetaOf syn) (Match syn)
                 deriving (Generic)
-
-data CaseArm syn = CaseArm (MetaOf syn) (Pat syn) (Expr syn)
 
 data LetDecl syn = LDBind (MetaOf syn) (Bind syn)
                  | LDSig  (MetaOf syn) (Sig syn)
@@ -196,7 +194,6 @@ deriving instance Cxt Show syn => Show (LetDecl   syn)
 deriving instance Cxt Show syn => Show (Literal   syn)
 deriving instance Cxt Show syn => Show (Data      syn)
 deriving instance Cxt Show syn => Show (Constr    syn)
-deriving instance Cxt Show syn => Show (CaseArm   syn)
 
 -- front-end specific types and schemas
 deriving instance Cxt Show syn => Show (Schema  syn)
@@ -261,9 +258,6 @@ instance HasRange (Expr Parsed) where
   range (ELit l _)   = l
   range (ELet l _ _) = l
   range (ECase l _)  = l
-
-instance HasRange (CaseArm Parsed) where
-  range (CaseArm l _ _) = l
 
 instance HasRange (Pat Parsed) where
   range (PVar  l _)   = l
