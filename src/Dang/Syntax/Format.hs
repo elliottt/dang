@@ -16,10 +16,11 @@ formatMessage :: Source -> T.Text -> Message -> Doc
 formatMessage src txt (Message ty loc doc) = vcat
   [ annotate msgAnn (ppHeading (show (tyDoc <+> pp src <+> pp loc)))
   , text ""
-  , describeMessageType ty
+  , doc
   , text ""
   , source
-  , doc
+  , describeMessageType ty
+  , text ""
   , text "" ]
   where
   (chunk,gutterLen) = formatChunk src start (rangeText cxtLines loc txt)

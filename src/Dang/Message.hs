@@ -21,7 +21,11 @@ describeError :: Error -> Doc
 describeError ErrLexer        = text "Lexcial error"
 describeError ErrParser       = text "Parse error"
 describeError ErrDuplicateSig = text "Duplicate type signature for declaration"
-describeError ErrNoDeclForSig = text "Type signature is missing a declaration"
+
+describeError ErrNoDeclForSig = flow
+  "The type signature is missing a declaration. If the value binding exists, \
+  \ moving the signature above it in the file should fix the problem."
+
 describeError ErrRnOverlap    = text "Names overlap"
 describeError ErrRnUnknown    = text "Name not in scope"
 describeError ErrUnification  = text "Unification failed"

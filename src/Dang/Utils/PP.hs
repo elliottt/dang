@@ -35,6 +35,7 @@ module Dang.Utils.PP (
     text, char, int, integer,
     hang, nest,
     emptyDoc,
+    flow,
   ) where
 
 import Dang.Syntax.Location
@@ -283,6 +284,9 @@ liftDoc2 f a b = f <$> a <*> b
 
 fsep :: [Doc] -> Doc
 fsep ds = PJ.fsep <$> sequence ds
+
+flow :: String -> Doc
+flow  = fsep . map text . words
 
 sep :: [Doc] -> Doc
 sep ds = PJ.sep <$> sequence ds
