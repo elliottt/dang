@@ -134,7 +134,7 @@ data Pat syn = PVar  (MetaOf syn) (IdentOf syn)
 data Expr syn = EVar (MetaOf syn) (IdentOf syn)
               | ECon (MetaOf syn) (IdentOf syn)
               | EApp (MetaOf syn) (Expr syn) [Expr syn]
-              | EAbs (MetaOf syn) (Match syn)
+              | EAbs (MetaOf syn) [Pat syn] (Expr syn)
               | ELit (MetaOf syn) (Literal syn)
               | ELet (MetaOf syn) [LetDecl syn] (Expr syn)
               | ECase (MetaOf syn) (Match syn)
@@ -266,7 +266,7 @@ instance HasRange (Expr Parsed) where
   range (EVar l _)   = l
   range (ECon l _)   = l
   range (EApp l _ _) = l
-  range (EAbs l _)   = l
+  range (EAbs l _ _) = l
   range (ELit l _)   = l
   range (ELet l _ _) = l
   range (ECase l _)  = l

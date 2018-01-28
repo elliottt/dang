@@ -331,7 +331,7 @@ rnExpr :: Rename Expr
 rnExpr (EVar loc n)     = withLoc loc (EVar loc <$> rnValueName n)
 rnExpr (ECon loc n)     = withLoc loc (ECon loc <$> rnValueName n)
 rnExpr (EApp loc f xs)  = withLoc loc (EApp loc <$> rnExpr f <*> traverse rnExpr xs)
-rnExpr (EAbs loc m)     = undefined
+rnExpr (EAbs loc xs m)  = undefined
 rnExpr (ELit loc lit)   = withLoc loc (ELit loc <$> rnLit lit)
 rnExpr (ELet loc lds e) =
   withLoc loc $

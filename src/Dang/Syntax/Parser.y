@@ -250,7 +250,7 @@ expr :: { Expr Parsed }
     { mkEApp $1 }
 
   | '\\' list1(arg_pat) '->' expr
-    { undefined }
+    { EAbs ($1 <-> $4) $2 $4 }
 
   | 'let' layout(let_decl) 'in' expr
     { ELet ($1 <-> $4) (concat $2) $4 }

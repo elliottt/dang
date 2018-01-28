@@ -69,9 +69,26 @@ resolveDecls  = go [] Map.empty
     go (d:acc) sigs ds
 
 
--- | Resolve signatures within a block of let declarations.
+-- | Resolve signatures within a block of let declarations. This functions the
+-- same as for normal declarations, but only has the value binding and signature
+-- cases.
 resolveLetDecls :: [LetDecl Parsed] -> Dang [LetDecl Parsed]
-resolveLetDecls  = undefined
+resolveLetDecls  = go [] Map.empty
+  where
+  go acc _ [] =
+       return (reverse acc)
+
+  go acc sigs (LDBind loc b : ds) =
+    do b' <- resolveBind b
+       case removeSig (bName b) sigs of
+         Just (sig, sigs') ->
+           go (LDBind loc b { bSig = Just (sigSchema sig) } : acc) sigs' ds
+
+         Nothing ->
+           go (LDBind loc b' : acc) sigs ds
+
+  go acc sigs (LDSig _ sig : ds) =
+       go acc (Map.insert (sigName sig) sig sigs) ds
 
 
 -- | Resolve signatures that occur within the body of a declaration.
@@ -96,8 +113,8 @@ resolveExpr e@ELit{} =
 resolveExpr (EApp loc f xs) = withLoc loc $
      EApp loc <$> resolveExpr f <*> traverse resolveExpr xs
 
-resolveExpr (EAbs loc m) = withLoc loc $
-     EAbs loc <$> resolveMatch m
+resolveExpr (EAbs loc xs b) = withLoc loc $
+     EAbs loc xs <$> resolveExpr b
 
 resolveExpr (ELet loc ds e) = withLoc loc $
      ELet loc <$> resolveLetDecls ds <*> resolveExpr e
@@ -123,7 +140,27 @@ resolveMatch (MExpr loc body) = withLoc loc $
 
 -- | Resolve signatures within a module expression.
 resolveModExpr :: Resolve ModExpr
-resolveModExpr  = undefined
+
+resolveModExpr me@MEName{} =
+     return me
+
+resolveModExpr (MEApp loc f x) = withLoc loc $
+     MEApp loc <$> resolveModExpr f <*> resolveModExpr x
+
+resolveModExpr (MEStruct loc ms) = withLoc loc $
+     MEStruct loc <$> resolveModStruct ms
+
+resolveModExpr (MEFunctor loc var ty e) = withLoc loc $
+     MEFunctor loc var ty <$> resolveModExpr e
+
+resolveModExpr (MEConstraint loc e ty) = withLoc loc $
+     MEConstraint loc <$> resolveModExpr e <*> return ty
+
+
+-- | Resolve signatures within a struct.
+resolveModStruct :: Resolve ModStruct
+resolveModStruct ModStruct { .. } = withLoc msMeta $
+  ModStruct msMeta <$> resolveDecls msElems
 
 
 -- Errors ----------------------------------------------------------------------
