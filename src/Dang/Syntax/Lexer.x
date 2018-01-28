@@ -70,7 +70,7 @@ $white+ ;
 "."      { keyword Kdot    }
 ","      { keyword Kcomma  }
 "_"      { keyword Kwild   }
-"\\"     { keyword Klambda }
+"\"      { keyword Klambda }
 
 -- numbers
 $number+ { emits (TNum 10 . read . T.unpack) }

@@ -64,6 +64,7 @@ import           Text.Layout.OffSides (Layout(..),layout,wrapToken)
   'case'   { Keyword Kcase    $$ }
   'of'     { Keyword Kof      $$ }
 
+  '\\'     { Keyword Klambda  $$ }
   '->'     { Keyword Krarrow  $$ }
 
   '_'      { Keyword Kwild    $$ }
@@ -113,6 +114,7 @@ decl :: { [Decl Parsed] }
   : signature     { [ DSig (range sig) sig | sig <- $1 ] }
   | bind          { [DBind (range $1) $1] }
   | data_decl     { [DData (range $1) $1] }
+  | type_synonym  { [DSyn  (range $1) $1] }
   | mod_bind      { [$1] }
   | mod_type_bind { [$1] }
 
@@ -247,6 +249,9 @@ expr :: { Expr Parsed }
   : list1(aexpr)
     { mkEApp $1 }
 
+  | '\\' list1(arg_pat) '->' expr
+    { undefined }
+
   | 'let' layout(let_decl) 'in' expr
     { ELet ($1 <-> $4) (concat $2) $4 }
 
@@ -293,6 +298,13 @@ data_constr :: { Constr Parsed }
     { Constr { cMeta = $1 <-> listRange $2
              , cName = $1
              , cParams = $2 } }
+
+type_synonym :: { Syn Parsed }
+  : 'type' con list(ident) '=' type
+    { Syn { synMeta = $1 <-> $5
+          , synName = $2
+          , synParams = $3
+          , synType   = $5 } }
 
 
 -- Names -----------------------------------------------------------------------

@@ -75,6 +75,7 @@ data ModStruct syn = ModStruct { msMeta  :: MetaOf syn
 data Decl syn = DBind    (MetaOf syn) (Bind syn)
               | DSig     (MetaOf syn) (Sig syn)
               | DData    (MetaOf syn) (Data syn)
+              | DSyn     (MetaOf syn) (Syn syn)
               | DModBind (MetaOf syn) (IdentOf syn) (ModExpr syn)
               | DModType (MetaOf syn) (IdentOf syn) (ModType syn)
                 deriving (Generic)
@@ -89,6 +90,13 @@ data Bind syn = Bind { bMeta   :: MetaOf syn
 data Sig syn = Sig { sigMeta   :: MetaOf syn
                    , sigName   :: IdentOf syn
                    , sigSchema :: SchemaOf syn
+                   } deriving (Generic)
+
+-- | A type synonym.
+data Syn syn = Syn { synMeta   :: MetaOf syn
+                   , synName   :: IdentOf syn
+                   , synParams :: [IdentOf syn]
+                   , synType   :: TypeOf syn
                    } deriving (Generic)
 
 data ModType syn = MTVar     (MetaOf syn) (IdentOf syn)
@@ -193,6 +201,7 @@ deriving instance Cxt Show syn => Show (Expr      syn)
 deriving instance Cxt Show syn => Show (LetDecl   syn)
 deriving instance Cxt Show syn => Show (Literal   syn)
 deriving instance Cxt Show syn => Show (Data      syn)
+deriving instance Cxt Show syn => Show (Syn       syn)
 deriving instance Cxt Show syn => Show (Constr    syn)
 
 -- front-end specific types and schemas
@@ -218,6 +227,9 @@ instance HasRange (Bind Parsed) where
 
 instance HasRange (Data Parsed) where
   range Data { .. } = dMeta
+
+instance HasRange (Syn Parsed) where
+  range Syn { .. } = synMeta
 
 instance HasRange (Constr Parsed) where
   range Constr { .. } = cMeta
