@@ -137,7 +137,7 @@ data Expr syn = EVar (MetaOf syn) (IdentOf syn)
               | EAbs (MetaOf syn) [Pat syn] (Expr syn)
               | ELit (MetaOf syn) (Literal syn)
               | ELet (MetaOf syn) [LetDecl syn] (Expr syn)
-              | ECase (MetaOf syn) (Match syn)
+              | ECase (MetaOf syn) (Expr syn) (Match syn)
                 deriving (Generic)
 
 data LetDecl syn = LDBind (MetaOf syn) (Bind syn)
@@ -269,7 +269,7 @@ instance HasRange (Expr Parsed) where
   range (EAbs l _ _) = l
   range (ELit l _)   = l
   range (ELet l _ _) = l
-  range (ECase l _)  = l
+  range (ECase l _ _)= l
 
 instance HasRange (Pat Parsed) where
   range (PVar  l _)   = l

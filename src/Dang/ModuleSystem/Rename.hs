@@ -128,10 +128,9 @@ withModuleScope lpname body =
      return a
 
 -- | A local scope, introduced by a declaration.
-withDeclScope :: Bind Parsed -> RN a -> RN a
-withDeclScope bind body =
-  do introBind bind
-     RN (sets_ (\ rw -> pushScope (declScope (view currentScope rw)) rw))
+withDeclScope :: RN a -> RN a
+withDeclScope body =
+  do RN (sets_ (\ rw -> pushScope (declScope (view currentScope rw)) rw))
      a <- body
      RN (sets_ popScope)
      return a
@@ -206,9 +205,9 @@ newValueBind lpname =
      return n
 
 -- | Introduce a value-level parameter.
-newValueParam :: IdentOf Renamed -> IdentOf Parsed -> RN (IdentOf Renamed)
+newValueParam :: ParamSource -> IdentOf Parsed -> RN (IdentOf Renamed)
 newValueParam parent lpname =
-  do n <- newParam (FromBind parent) lpname
+  do n <- newParam parent lpname
      addValue privateVisibility lpname n
      return n
 
@@ -302,9 +301,9 @@ rnBind b =
 rnBindAux :: Rename Bind
 rnBindAux b =
   withLoc (bMeta b) $
-  withDeclScope b $
+  withDeclScope $
     do n'  <- rnValueName (bName b)
-       ps' <- traverse (rnPat n') (bParams b)
+       ps' <- traverse (rnPat (FromBind n')) (bParams b)
        b'  <- rnExpr (bBody b)
        return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
 
@@ -313,10 +312,43 @@ rnSig Sig { .. } =
   panic $ text "Unexpected DSig remaining, bug in resolveSignatures?" $$
           pp sigName
 
-rnData :: Rename Data
-rnData  = undefined
 
-rnPat :: IdentOf Renamed -> Rename Pat
+-- | Introduce names for the type that is introduced, as well as for each
+-- constructor. Rename type parameters for each constructor.
+rnData :: Rename Data
+rnData Data { .. } = withLoc dMeta $
+  do ty <- newTypeBind dName
+     withDeclScope $
+       do ps <- mapM (newTypeParam ty) dParams
+          cs <- mapM rnConstr dConstrs
+          return Data { dName = ty
+                      , dParams = ps
+                      , dConstrs = cs
+                      , .. }
+
+
+rnConstr :: Rename Constr
+rnConstr Constr { .. } = withLoc cMeta $
+  do name <- newValueBind cName
+     ps   <- mapM rnType cParams
+     return Constr { cName = name, cParams = ps, .. }
+
+
+rnType :: Rename Type
+rnType (TCon loc n) = withLoc loc $
+     TCon loc <$> rnTypeName n
+
+rnType (TVar loc v) = withLoc loc $
+     TVar loc <$> rnTypeName v
+
+rnType (TApp loc f ps) = withLoc loc $
+     TApp loc <$> rnType f <*> traverse rnType ps
+
+rnType (TFun loc a b) = withLoc loc $
+     TFun loc <$> rnType a <*> rnType b
+
+
+rnPat :: ParamSource -> Rename Pat
 
 rnPat parent (PVar loc v) =
   withLoc loc (PVar loc <$> newValueParam parent v)
@@ -338,6 +370,25 @@ rnExpr (ELet loc lds e) =
   rnLetDecls lds $ \ lds' ->
     ELet loc lds' <$> rnExpr e
 
+rnExpr (ECase loc e m) =
+  withLoc loc $
+    ECase loc <$> rnExpr e <*> rnMatch (FromCase loc) m
+
+
+rnMatch :: ParamSource -> Rename Match
+rnMatch parent = go
+  where
+  go (MPat loc p m) = withLoc loc $
+    MPat loc <$> rnPat parent p <*> go m
+
+  go (MSplit loc l r) = withLoc loc $
+    MSplit loc <$> go l <*> go r
+
+  go (MFail loc) =
+    pure (MFail loc)
+
+  go (MExpr loc e) = withLoc loc $
+    MExpr loc <$> rnExpr e
 
 -- | Introduce names for all declarations in the block, then rename each
 -- declaration.
@@ -376,6 +427,9 @@ rnLit (LInt loc a b) = pure (LInt loc a b)
 rnValueName :: IdentOf Parsed -> RN (IdentOf Renamed)
 rnValueName  = rnPName DefVal
 
+rnTypeName :: IdentOf Parsed -> RN (IdentOf Renamed)
+rnTypeName  = rnPName DefType
+
 -- | Find the canonical name of this module name.
 rnModName :: HasCallStack => IdentOf Parsed -> RN (IdentOf Renamed)
 rnModName  = rnPName DefMod
@@ -411,8 +465,9 @@ rnPName mkDef lpname =
 -- Errors ----------------------------------------------------------------------
 
 missingBinding :: IdentOf Parsed -> RN (IdentOf Renamed)
-missingBinding lpname =
+missingBinding lpname = withLoc lpname $
   do io (print ("missing", lpname))
-     withLoc lpname (addError ErrRnUnknown (pp lpname))
-     -- XXX invent an unknown name
-     undefined
+     addError ErrRnUnknown (pp lpname)
+     ns  <- currentNamespace
+     loc <- askLoc
+     RN (withSupply (mkUnknown (Declaration (ModInfo ns)) lpname loc))

@@ -256,7 +256,7 @@ expr :: { Expr Parsed }
     { ELet ($1 <-> $4) (concat $2) $4 }
 
   | 'case' expr 'of' layout(case_arm)
-    { ECase ($1 <-> listLoc $4) (mkCases $4) }
+    { ECase ($1 <-> listLoc $4) $2 (mkCases $4) }
 
 let_decl :: { [LetDecl Parsed] }
   : bind      { [LDBind (range $1) $1] }

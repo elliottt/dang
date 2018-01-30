@@ -119,8 +119,8 @@ resolveExpr (EAbs loc xs b) = withLoc loc $
 resolveExpr (ELet loc ds e) = withLoc loc $
      ELet loc <$> resolveLetDecls ds <*> resolveExpr e
 
-resolveExpr (ECase loc body) = withLoc loc $
-     ECase loc <$> resolveMatch body
+resolveExpr (ECase loc e body) = withLoc loc $
+     ECase loc <$> resolveExpr e <*> resolveMatch body
 
 
 -- | Resolve signatures within a matching expression.

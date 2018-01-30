@@ -35,6 +35,7 @@ data ParamSource = FromBind !Name
                  | FromSig !Name
                  | FromFunctor !Name
                  | FromLambda !SourceRange
+                 | FromCase !SourceRange
                    deriving (Eq,Show)
 
 -- | Information about where a name comes from, like in GHC.
