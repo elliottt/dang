@@ -235,15 +235,15 @@ bind :: { Bind Parsed }
            , bBody   = $4 } }
 
 arg_pat :: { Pat Parsed }
-  : '_'                       { PWild  $1                     }
-  | ident                     { PVar   (range $1) $1         }
-  | con                       { PCon   (range $1) $1 []      }
+  : '_'                       { PWild  $1                }
+  | ident                     { PVar   (range $1) $1     }
+  | expr_con                  { PCon   (range $1) $1 []  }
   | '(' con list(arg_pat) ')' { PCon   ($1 <-> $4) $2 $3 }
 
 pat :: { Pat Parsed }
-  : '_'               { PWild  $1                     }
-  | ident             { PVar   (range $1) $1         }
-  | con list(arg_pat) { PCon   ($1 <-> listLoc $2) $1 $2      }
+  : '_'                    { PWild  $1                           }
+  | ident                  { PVar   (range $1) $1                }
+  | expr_con list(arg_pat) { PCon   ($1 <-?> listLocMb $2) $1 $2 }
 
 expr :: { Expr Parsed }
   : list1(aexpr)
@@ -265,8 +265,7 @@ let_decl :: { [LetDecl Parsed] }
 aexpr :: { Expr Parsed }
   : ident        { EVar (range $1) $1 }
   | qual_ident   { EVar (range $1) $1 }
-  | con          { ECon (range $1) $1 }
-  | qual_con     { ECon (range $1) $1 }
+  | expr_con     { ECon (range $1) $1 }
   | lit          { ELit (range $1) $1 }
   | '(' expr ')' { $2                  }
 
@@ -285,7 +284,7 @@ case_arm :: { Match Parsed }
 
 data_decl :: { Data Parsed }
   : 'data' con list(ident) opt(data_constrs)
-    { Data { dMeta = $1 <-> $2 <-> listLoc $3 <-?> fmap listLoc $4
+    { Data { dMeta = $1 <-> $2 <-?> listLocMb $3 <-?> fmap listLoc $4
            , dName = $2
            , dParams = $3
            , dConstrs = fromMaybe [] $4 } }
@@ -327,6 +326,11 @@ qual_con :: { IdentOf Parsed }
   : QUAL_CON
     { case $1 of
         Lexeme { lexemeToken = TQualCon ns n, .. } -> PQual lexemeRange ns n }
+
+-- A constructor that can show up in a pattern or expression.
+expr_con :: { IdentOf Parsed }
+  : con      { $1 }
+  | qual_con { $1 }
 
 qual_ident :: { IdentOf Parsed }
   : QUAL
@@ -415,7 +419,7 @@ pattern Keyword kw r <- Lexeme { lexemeToken = TKeyword kw, lexemeRange = r }
 
 pattern NumLit base n r <- Lexeme { lexemeToken = TNum base n, lexemeRange = r }
 
-mkTApp :: [Type Parsed] -> Type Parsed
+mkTApp :: HasCallStack => [Type Parsed] -> Type Parsed
 mkTApp [t]    = t
 mkTApp (t:ts) = TApp (t <-> last ts) t ts
 mkTApp _      = panic (text "mkTApp: empty list")
@@ -423,7 +427,7 @@ mkTApp _      = panic (text "mkTApp: empty list")
 mkTFun :: [Type Parsed] -> Type Parsed
 mkTFun  = foldr1 $ \ty r -> TFun (ty <-> r) ty r
 
-mkEApp :: [Expr Parsed] -> Expr Parsed
+mkEApp :: HasCallStack => [Expr Parsed] -> Expr Parsed
 mkEApp [e]    = e
 mkEApp (e:es) = EApp (e <-> last es) e es
 mkEApp _      = panic (text "mkEApp: empty list")
@@ -450,9 +454,14 @@ restrictMod Nothing   e = e
 restrictMod (Just ty) e = MEConstraint (e <-> ty) e ty
 
 listLoc :: (HasCallStack,HasRange a) => [a] -> SourceRange
+listLoc [] = error "listLoc: empty list"
 listLoc ls = range (last ls)
 
-(<-?>) :: HasRange b => SourceRange -> Maybe b -> SourceRange
-r <-?> Just b = r <-> b
-r <-?> _      = r
+listLocMb :: HasRange a => [a] -> Maybe SourceRange
+listLocMb [] = Nothing
+listLocMb ls = Just (range (last ls))
+
+(<-?>) :: (HasRange a, HasRange b) => a -> Maybe b -> SourceRange
+r <-?> Just b = range r <-> b
+r <-?> _      = range r
 }

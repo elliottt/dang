@@ -102,8 +102,7 @@ spaceBetween gutterLen mkGutter = \ start end ->
 {-# INLINE spaceBetween #-}
 
 
--- | Print out a formatted chunk of source code to the console. The returned
--- value is the size of the line number gutter.
+-- | Format a chunk of text, and return the length of the line-number gutter.
 formatChunk :: Source -> SourcePos -> T.Text -> (Doc,Int)
 formatChunk src start chunk = (prefix <> go start toks, pad + 1)
   where

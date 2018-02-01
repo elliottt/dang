@@ -24,6 +24,7 @@ import           Control.Applicative (Alternative(..))
 import           Control.Monad (MonadPlus)
 import           Control.Lens (Lens',over,view)
 import qualified Data.Text as T
+import           Data.Maybe (fromMaybe)
 import           MonadLib (runM,BaseM(..),StateT,get,sets,sets_)
 
 
@@ -220,9 +221,9 @@ newModuleBind lpname =
      return n
 
 -- | Introduce a module parameter.
-newFunctorParam :: IdentOf Renamed -> IdentOf Parsed -> RN (IdentOf Renamed)
+newFunctorParam :: ParamSource -> IdentOf Parsed -> RN (IdentOf Renamed)
 newFunctorParam parent lpname =
-  do n <- newParam (FromFunctor parent) lpname
+  do n <- newParam parent lpname
      addMod privateVisibility lpname n
      return n
 
@@ -235,9 +236,9 @@ newTypeBind lpname =
      return n
 
 -- | Introduce a type-level parameter.
-newTypeParam :: IdentOf Renamed -> IdentOf Parsed -> RN (IdentOf Renamed)
+newTypeParam :: ParamSource -> IdentOf Parsed -> RN (IdentOf Renamed)
 newTypeParam parent lpname =
-  do n <- newParam (FromSig parent) lpname
+  do n <- newParam parent lpname
      addType privateVisibility lpname n
      return n
 
@@ -277,12 +278,72 @@ rnModuleAux n' Module { .. } =
                    }
 
 rnDecl :: Rename Decl
-rnDecl (DBind loc bind) = withLoc loc (DBind loc <$> rnBind bind)
-rnDecl (DSig  loc sig)  = withLoc loc (DSig  loc <$> rnSig  sig)
-rnDecl (DData loc dta)  = withLoc loc (DData loc <$> rnData dta)
 
-rnDecl (DModBind loc lname mexpr) = undefined
-rnDecl (DModType loc lname mtype) = undefined
+rnDecl (DBind loc bind) = withLoc loc (DBind loc <$> rnBind bind)
+
+rnDecl (DSig _ sig) =
+  panic $ text "Unexpected DSig remaining, bug in resolveSignatures?" $$
+          pp (sigName sig)
+
+rnDecl (DData loc dta) = withLoc loc (DData loc <$> rnData dta)
+
+rnDecl (DSyn loc syn) = withLoc loc (DSyn loc <$> rnSyn syn)
+
+rnDecl (DModBind loc lname e) =
+  withLoc loc $
+  withModuleScope lname $ \ name ->
+    DModBind loc name <$> rnModExpr (Just (FromMod name)) e
+
+rnDecl (DModType loc lname ty) =
+  withLoc loc $
+  withModuleScope lname $ \ name ->
+    DModType loc name <$> rnModType ty
+
+
+rnModExpr :: Maybe ParamSource -> Rename ModExpr
+rnModExpr mbParent = go
+  where
+  go (MEName loc n) = withLoc loc $
+    MEName loc <$> rnModName n
+
+  go (MEApp loc f x) = withLoc loc $
+    MEApp loc <$> go f <*> go x
+
+  go (MEStruct loc s) = withLoc loc (MEStruct loc <$> rnModStruct s)
+
+  go (MEFunctor loc p ty e) = withLoc loc $
+    do p'  <- newFunctorParam (fromMaybe (FromFunctor loc) mbParent) p
+       ty' <- rnModType ty
+       e'  <- go e
+       return (MEFunctor loc p' ty' e')
+
+  go (MEConstraint loc m ty) = withLoc loc $
+    MEConstraint loc <$> go m <*> rnModType ty
+
+
+-- | Rename the declarations held within a struct.
+rnModStruct :: Rename ModStruct
+rnModStruct (ModStruct loc es) = withLoc loc $
+  ModStruct loc <$> traverse rnDecl es
+
+
+rnModType :: Rename ModType
+
+rnModType (MTVar loc n) =
+  MTVar loc <$> rnModName n
+
+rnModType (MTSig loc sig) = withLoc loc $
+  MTSig loc <$> traverse rnModSpec sig
+
+rnModType (MTFunctor loc p ty rty) = undefined
+
+
+rnModSpec :: Rename ModSpec
+rnModSpec (MSSig  loc sig) = withLoc loc (MSKind loc <$> rnSig sig)
+rnModSpec (MSKind loc sig) = withLoc loc (MSKind loc <$> rnSig sig)
+rnModSpec (MSData loc dat) = withLoc loc (MSData loc <$> rnData dat)
+rnModSpec (MSMod  loc n ty) = withLoc loc $
+  MSMod loc <$> newModuleBind n <*> rnModType ty
 
 
 -- | Introduce names from a binding.
@@ -299,18 +360,28 @@ rnBind b =
 
 -- | Rename a binding, assuming that it's name has already been introduced.
 rnBindAux :: Rename Bind
-rnBindAux b =
-  withLoc (bMeta b) $
+rnBindAux Bind { .. } =
+  withLoc bMeta $
   withDeclScope $
-    do n'  <- rnValueName (bName b)
-       ps' <- traverse (rnPat (FromBind n')) (bParams b)
-       b'  <- rnExpr (bBody b)
-       return Bind { bName = n', bMeta = bMeta b, bParams = ps', bBody = b' }
+    do n'  <- rnValueName bName
+       ps' <- traverse (rnPat (FromBind n')) bParams
+       b'  <- rnExpr bBody
+       ty' <- traverse (rnSchema (FromBind n')) bSig
+       return Bind { bName = n'
+                   , bParams = ps'
+                   , bBody = b'
+                   , bSig = ty'
+                   , .. }
 
+-- | Rename a value signature from a module type. This introduces a fresh name
+-- for the name bound by the signature, as there is no accompanying value
+-- binding at this point.
 rnSig :: Rename Sig
-rnSig Sig { .. } =
-  panic $ text "Unexpected DSig remaining, bug in resolveSignatures?" $$
-          pp sigName
+rnSig Sig { .. } = withLoc sigMeta $
+  do name <- newValueBind sigName
+     withDeclScope $
+       do ty <- rnSchema (FromType name) sigSchema
+          return Sig { sigName = name, sigSchema = ty, .. }
 
 
 -- | Introduce names for the type that is introduced, as well as for each
@@ -318,13 +389,12 @@ rnSig Sig { .. } =
 rnData :: Rename Data
 rnData Data { .. } = withLoc dMeta $
   do ty <- newTypeBind dName
-     withDeclScope $
-       do ps <- mapM (newTypeParam ty) dParams
-          cs <- mapM rnConstr dConstrs
-          return Data { dName = ty
-                      , dParams = ps
-                      , dConstrs = cs
-                      , .. }
+     ps <- mapM (newTypeParam (FromType ty)) dParams
+     cs <- mapM rnConstr dConstrs
+     return Data { dName = ty
+                 , dParams = ps
+                 , dConstrs = cs
+                 , .. }
 
 
 rnConstr :: Rename Constr
@@ -332,6 +402,21 @@ rnConstr Constr { .. } = withLoc cMeta $
   do name <- newValueBind cName
      ps   <- mapM rnType cParams
      return Constr { cName = name, cParams = ps, .. }
+
+
+-- | Rename a type synonym.
+rnSyn :: Rename Syn
+rnSyn Syn { .. } = withLoc synMeta $
+  do name' <- newTypeBind synName
+     ps'   <- mapM (newTypeParam (FromType name')) synParams
+     ty'   <- rnType synType
+     return Syn { synName = name', synParams = ps', synType = ty', .. }
+
+
+rnSchema :: ParamSource -> Rename Schema
+rnSchema src (Schema loc ps ty) = withLoc loc $
+  Schema loc <$> traverse (newTypeParam src) ps
+             <*> rnType ty
 
 
 rnType :: Rename Type
@@ -363,7 +448,10 @@ rnExpr :: Rename Expr
 rnExpr (EVar loc n)     = withLoc loc (EVar loc <$> rnValueName n)
 rnExpr (ECon loc n)     = withLoc loc (ECon loc <$> rnValueName n)
 rnExpr (EApp loc f xs)  = withLoc loc (EApp loc <$> rnExpr f <*> traverse rnExpr xs)
-rnExpr (EAbs loc xs m)  = undefined
+
+rnExpr (EAbs loc xs m)  = withLoc loc $
+  EAbs loc <$> traverse (rnPat (FromLambda loc)) xs <*> rnExpr m
+
 rnExpr (ELit loc lit)   = withLoc loc (ELit loc <$> rnLit lit)
 rnExpr (ELet loc lds e) =
   withLoc loc $
@@ -416,7 +504,9 @@ rnLetDecls lds body =
 -- NOTE: binding names will be introduced by the let block, as let is recursive.
 rnLetDecl :: Rename LetDecl
 rnLetDecl (LDBind loc b) = withLoc loc (LDBind loc <$> rnBindAux b)
-rnLetDecl (LDSig  loc s) = withLoc loc (LDSig  loc <$> rnSig     s)
+rnLetDecl (LDSig  loc s) =
+  panic $ text "Unexpected LDSig remaining, bug in resolveSignatures?" $$
+          pp (sigName s)
 
 
 rnLit :: Rename Literal
@@ -438,7 +528,6 @@ rnModName  = rnPName DefMod
 rnPName :: (T.Text -> Def) -> IdentOf Parsed -> RN (IdentOf Renamed)
 rnPName mkDef lpname =
   do RW { rwContext = ctx } <- RN get
-     io (print ctx)
      case resolve ctx of
        Just [] -> panic (text "Malformed name scope")
        Just ns -> return (head ns)
@@ -466,8 +555,7 @@ rnPName mkDef lpname =
 
 missingBinding :: IdentOf Parsed -> RN (IdentOf Renamed)
 missingBinding lpname = withLoc lpname $
-  do io (print ("missing", lpname))
-     addError ErrRnUnknown (pp lpname)
+  do addError ErrRnUnknown (pp lpname)
      ns  <- currentNamespace
      loc <- askLoc
      RN (withSupply (mkUnknown (Declaration (ModInfo ns)) lpname loc))

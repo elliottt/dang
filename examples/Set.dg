@@ -17,7 +17,6 @@ module type Ord = sig
 
   -- a kind signature
   type T : Type
-
   -- a value signature
   compare : T -> T -> Ordering
 
@@ -28,8 +27,8 @@ module Eq (Cmp : Ord) = struct
 
   eq a b =
     case Cmp.compare a b of
-      EQ -> True
-      _  -> False
+      Cmp.EQ -> True
+      _      -> False
 
   neq a b = not (eq a b)
 
@@ -43,13 +42,13 @@ module Make (Cmp : Ord) = struct
 
   insert x s = \ x' ->
     case Cmp.compare x x' of
-      EQ -> True
-      _  -> s x'
+      Cmp.EQ -> True
+      _      -> s x'
 
   delete x s = \ x' ->
     case Cmp.compare x x' of
-      EQ -> False
-      _  -> s x'
+      Cmp.EQ -> False
+      _      -> s x'
 
   member : Cmp.T -> Set -> Bool
   member x s = s x

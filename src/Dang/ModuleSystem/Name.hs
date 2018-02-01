@@ -31,9 +31,10 @@ import qualified Data.Text as T
 data ModInfo = ModInfo { modName :: !Namespace
                        } deriving (Eq,Show)
 
-data ParamSource = FromBind !Name
-                 | FromSig !Name
-                 | FromFunctor !Name
+data ParamSource = FromMod !Name
+                 | FromBind !Name
+                 | FromType !Name
+                 | FromFunctor !SourceRange
                  | FromLambda !SourceRange
                  | FromCase !SourceRange
                    deriving (Eq,Show)
@@ -148,17 +149,23 @@ ppNameOrigin Name { .. } =
     Declaration (ModInfo ns) ->
       text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
 
+    Parameter (FromMod m) ->
+      text "module parameter to" <+> quotes (pp m) <+> text "at" <+> pp nFrom
+
     Parameter (FromBind fn) ->
       text "parameter to" <+> quotes (pp fn) <+> text "at" <+> pp nFrom
 
-    Parameter (FromSig sig) ->
+    Parameter (FromType sig) ->
       text "type parameter to" <+> quotes (pp sig) <+> text "at" <+> pp nFrom
 
-    Parameter (FromFunctor f) ->
-      text "parameter to functor" <+> quotes (pp f) <+> text "at" <+> pp nFrom
+    Parameter FromFunctor{} ->
+      text "parameter to functor at" <+> pp nFrom
 
     Parameter FromLambda{} ->
       text "parameter to lambda abstraction at" <+> pp nFrom
+
+    Parameter FromCase{} ->
+      text "bound in case arm at" <+> pp nFrom
 
     ModDecl (Just (ModInfo ns)) ->
       text "from module" <+> quotes (pp ns) <+> text "at" <+> pp nFrom
